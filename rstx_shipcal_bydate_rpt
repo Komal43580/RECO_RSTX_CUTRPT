@@ -1,0 +1,3590 @@
+PROCEDURE rstx_shipcal_bydate_rpt( pi_QtyWeeks IN varchar2,
+                            pi_RoundToEndOfWeek IN varchar2,
+                            pi_GivenHistId IN varchar2,
+							pi_FirstDate IN VARCHAR2)
+IS
+  TYPE rec_SheetColumnInfo IS record
+            ( rptColTypeCode varchar2(30),
+              num_child_cols number,
+              shipment_date reco_shipment.shipment_date%TYPE,
+              tracking_number reco_shipment.tracking_number%TYPE,
+              shipment_status reco_shipment.shipment_status%TYPE,
+              shipment_id reco_shipment.shipment_id%TYPE,
+              STATE reco_shipping_addresses_v.state%TYPE,
+              daystrt_npb_tonn number,
+              daystrt_spb_tonn number,
+              daystrt_spg_tonn number,
+              daystrt_dpb_tonn number,
+              daystrt_dpg_tonn number,
+              
+              daystrt506_npb_tonn number,
+              daystrt506_spb_tonn number,
+              daystrt506_spg_tonn number,
+              daystrt506_dpb_tonn number,
+              daystrt506_dpg_tonn number,
+              
+              vcFirstNegativeDateText varchar2(30),
+              
+              ship_stlwgt number,
+              ship_stlwgtDP number,
+              ship_totwgt number,
+              day_manuf_spb_tonn number,
+              day_manuf_dpb_tonn number);
+  
+  TYPE coll_SheetColumnInfo IS TABLE OF rec_SheetColumnInfo;
+  --oTheSheetColumnInfo coll_SheetColumnInfo; -- Fetched, so don't initialize
+  oTheSheetColumnInfo coll_SheetColumnInfo := coll_SheetColumnInfo();
+  oTheSheetColumnInfoSP coll_SheetColumnInfo := coll_SheetColumnInfo();
+  oTheSheetColumnInfoDP coll_SheetColumnInfo := coll_SheetColumnInfo();
+                                        -- Initialize since not fetched
+  nCtrSheetColumnInfo number;
+  thelocation   varchar2(80);
+--  type rec_PartNameAndInv is record
+--            ( n_partid reco_rstx_originvqty_hist.inventory_item_id%type,
+--              n_partname reco_rstx_originvqty_hist.segment1%type,
+--              n_partpunch reco_rstx_originvqty_hist.thepunch%type,
+--              n_parttype reco_rstx_originvqty_hist.thetype%type,
+--              n_partcoat reco_rstx_originvqty_hist.thecoat%type,
+--              n_partnumlen reco_rstx_originvqty_hist.numlength%type,
+--              n_partcharlen reco_rstx_originvqty_hist.charlength%type,
+--              n_originvqty reco_rstx_originvqty_hist.quantity%type,
+--              b_partid reco_rstx_originvqty_hist.inventory_item_id%type,
+--              b_partname reco_rstx_originvqty_hist.segment1%type,
+--              b_partpunch reco_rstx_originvqty_hist.thepunch%type,
+--              b_parttype reco_rstx_originvqty_hist.thetype%type,
+--              b_partcoat reco_rstx_originvqty_hist.thecoat%type,
+--              b_partnumlen reco_rstx_originvqty_hist.numlength%type,
+--              b_partcharlen reco_rstx_originvqty_hist.charlength%type,
+--              b_originvqty reco_rstx_originvqty_hist.quantity%type,
+--              g_partid reco_rstx_originvqty_hist.inventory_item_id%type,
+--              g_partname reco_rstx_originvqty_hist.segment1%type,
+--              g_partpunch reco_rstx_originvqty_hist.thepunch%type,
+--              g_parttype reco_rstx_originvqty_hist.thetype%type,
+--              g_partcoat reco_rstx_originvqty_hist.thecoat%type,
+--              g_partnumlen reco_rstx_originvqty_hist.numlength%type,
+--              g_partcharlen reco_rstx_originvqty_hist.charlength%type,
+--              g_originvqty reco_rstx_originvqty_hist.quantity%type,
+--              groupnumber number);
+--  
+--  type coll_PartNameAndInv is table of rec_PartNameAndInv;
+--  --oThePartNameAndInv coll_PartNameAndInv; -- Fetched, so don't initialize
+--  oThePartNameAndInv coll_PartNameAndInv := coll_PartNameAndInv();
+--                                        -- Initialize since not fetched
+--  --nCtrPartNameAndInv number;
+  
+  vn_WorkingHistId number;
+  vc_WorkingHistUser reco_rstx_cutsch_hist.theusername%TYPE;
+  vd_WorkingHistDate date;
+  vn_MaxRecentHistId number;
+  vc_MaxRecentHistUser reco_rstx_cutsch_hist.theusername%TYPE;
+  vd_MaxRecentHistDate date;
+  
+  vr_Params reco_rstx_userparam_hist%ROWTYPE;
+  
+  vn_QtyColumnsInSpreadsheet number; -- This gets set when finding column info
+  
+  vc_Color_OddDayNorm varchar2(80);
+  vc_Color_EvenDayNorm varchar2(80);
+  vc_Color_BlackSteel varchar2(80);
+  vc_Color_Negative varchar2(80);
+  vc_Color_InvText varchar2(80);
+  vc_Color_DelivStdTxt varchar2(80);
+  
+  vd_FirstDateShown date;
+  vd_LastDateShown date;
+ 
+-- ----------------------------------------------------------------------------- JNL FUNCTION START
+-- -----------------------------------------------------------------------------
+FUNCTION WeightForPartType ( p_shipmentId IN NUMBER,
+                             p_partTypeToUse IN VARCHAR2)
+RETURN number
+IS
+   sumTotal number;
+
+   CURSOR c_getTotal IS
+   SELECT SUM(subrspv.calc_tons) totwgt
+   FROM   reco_shipment_parts_v subrspv
+   WHERE  subrspv.SHIPMENT_ID  = p_shipmentId
+     AND  subrspv.PART_NAME LIKE p_partTypeToUse ;
+
+BEGIN
+
+   OPEN c_getTotal;
+   FETCH c_getTotal INTO sumTotal;
+
+   IF c_getTotal%notfound THEN
+      sumTotal := 0;
+   END IF;
+
+   CLOSE c_getTotal;
+
+RETURN sumTotal;
+
+EXCEPTION
+WHEN OTHERS THEN
+   raise_application_error(-20001,'An error was encountered - '||SQLCODE||' -ERROR- '||SQLERRM);
+END;
+-- -----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------- JNL FUNCTION END  
+  --vn_TmpDayCtr number;
+BEGIN -- rstx_shipcal_rpt
+  thelocation := 'begin';
+  get_Reco_organization('0');  -- force to RECO US
+  -- 
+  -- Special History note:
+  -- 
+  -- We only use the HISTORY_ID in this method for calculating
+  -- the PART ORIGINAL INVENTORY, and nothing else -- CONTINUE HERE
+  -- 
+  -- Try to grab the inventory from start of day
+  -- (The cutschedule ID of user NIGHTLY AUTO REFRESH)
+  -- 
+  -- If that doesn't work then just use current inventory
+  -- (still print an error so we know what happened)
+  
+  DECLARE
+    vn_TmpQtyRows number;
+  BEGIN
+    SELECT COUNT(*) INTO vn_TmpQtyRows FROM reco_rstx_cutsch_hist;
+    IF NVL(vn_TmpQtyRows,0) = 0
+    THEN
+      reco_web_functions.reset_sheet;
+      reco_web_functions.table_attr := 'border="1" frame="border" rules="all"';
+--      reco_web_functions.open_spreadsheet;   
+	  IF NOT bSummaryReport THEN
+	  	reco_web_functions.open_spreadsheet('NODATE:reco_steel_shipments_report'); --Added by RS on 03/04/2026.
+	  ELSE
+	  	reco_web_functions.open_spreadsheet('NODATE:reco_steel_shipments_summary_report'); --Added by RS on 03/04/2026.
+	  END IF;
+      reco_web_functions.col_span := 10;
+      reco_web_functions.add_header_column(
+        'Internal Error 2070 - Invalid History / Info. Contact MIS.');
+      reco_web_functions.print_header;
+      reco_web_Functions.close_spreadsheet;
+      RETURN;
+    END IF;
+  END;
+  
+  SELECT cutsch_hist_id, thetime, theusername
+  INTO vn_MaxRecentHistId, vd_MaxRecentHistDate, vc_MaxRecentHistUser
+  FROM reco_rstx_cutsch_hist
+  WHERE cutsch_hist_id IN
+                  ( SELECT MAX(cutsch_hist_id)
+                    FROM reco_rstx_cutsch_hist );
+  
+  vn_WorkingHistId := vn_MaxRecentHistId;
+  vc_WorkingHistUser := vc_MaxRecentHistUser;
+  vd_WorkingHistDate := TRUNC(vd_MaxRecentHistDate);
+  
+  ---
+  -- Access user parameters
+  ---
+  
+  BEGIN
+    SELECT * INTO vr_Params
+    FROM reco_rstx_userparam_hist WHERE cutsch_hist_id = vn_WorkingHistId;
+    
+    IF vr_Params.min_cut_allowed IS NULL
+    OR vr_Params.max_cut_allowed IS NULL
+    OR vr_Params.first_date_of_reqs IS NULL
+    OR vr_Params.first_date_of_cutting IS NULL
+    OR vr_Params.first_date_of_cutting < vr_Params.first_date_of_reqs
+    THEN RAISE NO_DATA_FOUND;
+    END IF;
+    
+    -- MARCH 2013 - Added to synch Excel report with Row number
+    IF vr_Params.min_cut_allowed != 5
+    THEN vr_Params.min_cut_allowed := 5;
+    END IF;
+  EXCEPTION
+    WHEN others
+    THEN
+      reco_web_functions.reset_sheet;
+      reco_web_functions.table_attr := 'border="1" frame="border" rules="all"';
+--      reco_web_functions.open_spreadsheet;    
+	  IF NOT bSummaryReport THEN
+	  	reco_web_functions.open_spreadsheet('NODATE:reco_steel_shipments_report'); --Added by RS on 03/04/2026.
+	  ELSE
+	  	reco_web_functions.open_spreadsheet('NODATE:reco_steel_shipments_summary_report'); --Added by RS on 03/04/2026.
+	  END IF;
+      reco_web_functions.col_span := 10;
+      reco_web_functions.add_header_column(
+      'Internal Error 2031 - User params inaccessible. Contact MIS');
+      reco_web_functions.print_header;
+      reco_web_Functions.close_spreadsheet;
+      RETURN;
+  END;
+  
+  ---
+  -- Determine cell colors
+  ---
+  
+  vc_Color_OddDayNorm := 'bgcolor = #F7FFBB';
+  vc_Color_EvenDayNorm := 'bgcolor = #B3FBBF';
+  vc_Color_BlackSteel := 'bgcolor =#000000 <font color=WHITE';
+  vc_Color_Negative := 'bgcolor =#FFFFFF <font color=RED';
+  vc_Color_InvText := '<font color=BLUE';
+  vc_Color_DelivStdTxt := 'bgcolor =#C0C0C0 <font color=BLACK';
+  
+  ---
+  -- Determine first report date, last report date, and other parameters
+  ---
+  
+  SELECT  MIN(calday.thedate) INTO vd_FirstDateShown
+  FROM  reco_rstx_calday calday -- Good:see get_date_toshowin_rpt description
+  WHERE   calday.thedate >= vr_Params.first_date_of_reqs
+  AND     calday.thedate < vr_Params.first_date_of_cutting
+  AND     EXISTS (SELECT  1
+                  FROM  reco_truck rs,
+                        reco_truckstop_parts rsp,
+                        reco_rstx_originvqty_hist roiq
+                  WHERE   roiq.inventory_item_id = rsp.part_id
+                  AND     rsp.orig_subinventory_code = 'RSTX'
+                  AND     rsp.stop_truck_id = rs.truck_id
+                  AND     rs.truck_status IN ('A','H','B')
+                  AND     rs.truck_date = calday.thedate
+                  AND     roiq.cutsch_hist_id = vn_WorkingHistId);
+  
+  vd_FirstDateShown := NVL(vd_FirstDateShown,vr_Params.first_date_of_cutting);
+  
+  vd_LastDateShown :=
+      vd_FirstDateShown + (TO_NUMBER(NVL(pi_QtyWeeks,2) * 7));
+	  
+
+      ---------------------------------------------------------------------
+    -- Added by Komal 06-NOV-2025: Override logic if First Date provided
+    ---------------------------------------------------------------------
+ 
+
+       vd_FirstDateShown := pi_FirstDate;--vd_TransBeginDate;
+       --vd_LastDateShown  := vd_TransEndDate;
+        vd_LastDateShown :=
+        vd_FirstDateShown + (TO_NUMBER(NVL(pi_QtyWeeks,2) * 7));
+       DBMS_OUTPUT.PUT_LINE('First Date Override Active: ' ||
+                            TO_CHAR(vd_FirstDateShown,'DD-MON-YYYY') || ' to ' ||
+                            TO_CHAR(vd_LastDateShown,'DD-MON-YYYY'));
+ 
+    ---------------------------------------------------------------------
+
+
+  
+  IF vd_FirstDateShown IS NULL OR vd_LastDateShown IS NULL
+  THEN
+    reco_web_functions.reset_sheet;
+    reco_web_functions.table_attr := 'border="1" frame="border" rules="all"';
+--    reco_web_functions.open_spreadsheet;   
+	  IF NOT bSummaryReport THEN
+	  	reco_web_functions.open_spreadsheet('NODATE:reco_steel_shipments_report'); --Added by RS on 03/04/2026.
+	  ELSE
+	  	reco_web_functions.open_spreadsheet('NODATE:reco_steel_shipments_summary_report'); --Added by RS on 03/04/2026.
+	  END IF; 
+    reco_web_functions.col_span := 10;
+    reco_web_functions.add_header_column(
+    'Internal Error 2045 - Date is invalid or corrupt. Contact MIS');
+    reco_web_functions.print_header;
+    reco_web_Functions.close_spreadsheet;
+    RETURN;
+  END IF;
+  
+  IF UPPER(pi_RoundToEndOfWeek) LIKE 'T%'
+  THEN
+    LOOP
+      IF TO_CHAR(vd_LastDateShown,'DY') = 'SUN'
+      THEN exit;
+      END IF;
+      
+      vd_LastDateShown := vd_LastDateShown + 1;
+    END LOOP;
+  END IF;
+  
+  ---
+  -- Set values for: reco_rstx_tmpshpcalparts
+  -- (This table represents the part-row information in our spreadsheet)
+  -- 
+  -- NOTE #1 - PERFORMANCE
+  -- We only need to refresh reco_rstx_tmpshpcalparts if the parts
+  -- could have changed (e.g. the cutsch was refreshed)
+  -- 
+  -- NOTE #2
+  -- This does not include any blank lines between rows
+  ---
+  
+  DECLARE
+    vb_ForceRptRefresh BOOLEAN;
+    vn_PreviousCutSchHistId number;
+  BEGIN
+    
+    vb_ForceRptRefresh := FALSE;
+    
+    BEGIN
+      SELECT prev_rpt_cutsch_hist_id
+      INTO vn_PreviousCutSchHistId
+      FROM reco_rstx_lastshpcalrun;
+    EXCEPTION
+      WHEN NO_DATA_FOUND
+      THEN
+        vb_ForceRptRefresh := TRUE; 
+        vn_PreviousCutSchHistId := -1;
+      WHEN others
+      THEN
+        reco_web_functions.reset_sheet;
+        reco_web_functions.table_attr := 'border="1" frame="border" rules="all"';
+--        reco_web_functions.open_spreadsheet;           
+		  IF NOT bSummaryReport THEN
+		  	reco_web_functions.open_spreadsheet('NODATE:reco_steel_shipments_report'); --Added by RS on 03/04/2026.
+		  ELSE
+		  	reco_web_functions.open_spreadsheet('NODATE:reco_steel_shipments_summary_report'); --Added by RS on 03/04/2026.
+		  END IF;
+        reco_web_functions.col_span := 10;
+        reco_web_functions.add_header_column(
+          'Internal Error 2074 - Internal tracking '||
+          'of reports is corrupted. Contact MIS');
+        reco_web_functions.print_header;
+        reco_web_Functions.close_spreadsheet;
+        RETURN;
+    END;
+    
+    IF vb_ForceRptRefresh = TRUE
+    OR vn_WorkingHistId != vn_PreviousCutSchHistId
+    THEN
+      DELETE FROM reco_rstx_tmpshpcalparts;
+      
+      -- refresh the part records / table row information
+      INSERT INTO reco_rstx_tmpshpcalparts
+      ( N_PARTID,N_PARTNAME,N_PARTPUNCH,N_PARTTYPE,
+        N_PARTCOAT,N_PARTNUMLEN,N_PARTCHARLEN,N_ORIGINVQTY,
+        B_PARTID,B_PARTNAME,B_PARTPUNCH,B_PARTTYPE,
+        B_PARTCOAT,B_PARTNUMLEN,B_PARTCHARLEN,B_ORIGINVQTY,
+        G_PARTID,G_PARTNAME,G_PARTPUNCH,G_PARTTYPE,
+        G_PARTCOAT,G_PARTNUMLEN,G_PARTCHARLEN,G_ORIGINVQTY,
+        SORTORDER
+      )
+      (
+        SELECT  nopunroiq.inventory_item_id n_partid,
+                NVL(nopunroiq.segment1,'N'||galvroiq.thetype||
+                                       'B'||galvroiq.charlength) n_partname,
+                NVL(nopunroiq.thepunch,'N') n_partpunch,
+                NVL(nopunroiq.thetype,galvroiq.thetype) n_parttype,
+                NVL(nopunroiq.thecoat,'B') n_partcoat,
+                NVL(nopunroiq.numlength,galvroiq.numlength) n_partnumlen,
+                NVL(nopunroiq.charlength,galvroiq.charlength) n_partcharlen,
+                NVL(nopunroiq.quantity,0) n_originvqty,
+                blackroiq.inventory_item_id b_partid,
+                NVL(blackroiq.segment1,galvroiq.thepunch||galvroiq.thetype||
+                                       'B'||galvroiq.charlength) b_partname,
+                NVL(blackroiq.thepunch,'N') b_partpunch,
+                NVL(blackroiq.thetype,galvroiq.thetype) b_parttype,
+                NVL(blackroiq.thecoat,'B') b_partcoat,
+                NVL(blackroiq.numlength,galvroiq.numlength) b_partnumlen,
+                NVL(blackroiq.charlength,galvroiq.charlength) b_partcharlen,
+                NVL(blackroiq.quantity,0) b_originvqty,
+                galvroiq.inventory_item_id g_partid,
+                galvroiq.segment1 g_partname,
+                galvroiq.thepunch g_partpunch,
+                galvroiq.thetype g_parttype,
+                galvroiq.thecoat g_partcoat,
+                galvroiq.numlength g_partnumlen,
+                galvroiq.charlength g_partcharlen,
+                galvroiq.quantity g_originvqty,
+                CASE
+                  WHEN galvroiq.thepunch = 'S'
+                  AND galvroiq.thetype = '504'                             
+                  AND galvroiq.numlength >= vr_Params.min_cut_allowed
+                  AND galvroiq.numlength <= vr_Params.max_cut_allowed
+                  THEN 1
+                  WHEN galvroiq.thepunch = 'D'
+                  AND galvroiq.thetype = '504'                             
+                  AND galvroiq.numlength >= vr_Params.min_cut_allowed
+                  AND galvroiq.numlength <= vr_Params.max_cut_allowed
+                  THEN 2
+                  WHEN galvroiq.thepunch = 'S'
+                  AND galvroiq.thetype = '506'                             
+                  AND galvroiq.numlength >= vr_Params.min_cut_allowed
+                  AND galvroiq.numlength <= vr_Params.max_cut_allowed
+                  THEN 3
+                  WHEN galvroiq.thepunch = 'D'
+                  AND galvroiq.thetype = '506'                             
+                  AND galvroiq.numlength >= vr_Params.min_cut_allowed
+                  AND galvroiq.numlength <= vr_Params.max_cut_allowed
+                  THEN 4
+                  ELSE 5
+                END sortorder
+        FROM  reco_rstx_originvqty_hist nopunroiq,
+              reco_rstx_originvqty_hist blackroiq,
+              reco_rstx_originvqty_hist galvroiq
+        WHERE   galvroiq.category_set_id = nCSetG
+        AND     galvroiq.inventory_item_id IS NOT NULL
+        AND     galvroiq.cutsch_hist_id = vn_WorkingHistId
+        AND     galvroiq.actual_attribute4 = blackroiq.segment1 (+)
+        AND     blackroiq.category_set_id (+) = nCSetB
+        AND     blackroiq.cutsch_hist_id (+) = vn_WorkingHistId
+        AND     'N'||galvroiq.thetype||'B'||galvroiq.charlength
+                              = nopunroiq.segment1 (+)
+        AND     nopunroiq.category_set_id (+) = nCSetN
+        AND     nopunroiq.cutsch_hist_id (+) = vn_WorkingHistId
+      );
+      
+      COMMIT;
+    END IF;
+  END;
+  thelocation := 'refresh';  
+  ---
+  -- Cache our current cutsch_hist_id into reco_rstx_lastshpcalrun table
+  ---
+  
+  DECLARE
+    vn_TmpNumRows number; -- Should always be 1
+  BEGIN
+    UPDATE reco_rstx_lastshpcalrun
+    set prev_rpt_cutsch_hist_id = vn_WorkingHistId;
+    
+    vn_TmpNumRows := SQL%ROWCOUNT;
+    
+    IF vn_TmpNumRows > 1
+    THEN
+      reco_web_functions.reset_sheet;
+      reco_web_functions.table_attr := 'border="1" frame="border" rules="all"';
+--      reco_web_functions.open_spreadsheet;   
+	  IF NOT bSummaryReport THEN
+	  	reco_web_functions.open_spreadsheet('NODATE:reco_steel_shipments_report'); --Added by RS on 03/04/2026.
+	  ELSE
+	  	reco_web_functions.open_spreadsheet('NODATE:reco_steel_shipments_summary_report'); --Added by RS on 03/04/2026.
+	  END IF;
+      reco_web_functions.col_span := 10;
+      reco_web_functions.add_header_column(
+        'Internal Error 2075 - Caching Table is corrupted. Contact MIS');
+      reco_web_functions.print_header;
+      reco_web_Functions.close_spreadsheet;
+      RETURN;
+    ELSIF vn_TmpNumRows = 0
+    THEN
+      INSERT INTO reco_rstx_lastshpcalrun(prev_rpt_cutsch_hist_id)
+      VALUES (vn_WorkingHistId);
+    END IF;
+    
+    COMMIT;
+  END;  
+    thelocation := 'lastrun';
+  ---
+  -- Set values for: oTheSheetColumnInfo
+  -- 
+  -- The values in oTheSheetColumnInfo represent each cell in the
+  -- 2nd row of the spreadsheet (the row with shipment names in it)
+  -- 
+  -- Determine Report Column information: days / shipments / inventory numbers
+  -- Order is similar to:
+  -- PARTNAME
+  --        ->
+  --      Repeat(DAILYPARTINV -> DELIVEREDSHIP -> PENDINGSHIP -> DAYPARTPROPOSEDMFG)
+  --            ->
+  --                ENDINVTOTAL
+  ---
+  
+  ---
+  -- And vn_QtyColumnsInSpreadsheet gets set as well
+  ---
+
+  DECLARE
+    CURSOR cur_ColData (pi_FirstDate IN date,
+                        pi_LastDate IN date,
+                        pi_CurHistoryId IN number,
+                        pi_sortOrder IN NUMBER, pi_sortOrder2 IN NUMBER, 
+                        pi_sortorder3 number, pi_sortorder4 number, pi_sortorder5 number)        -- JNL
+    IS
+      -- Retreive a spot in collection for PartName (first column spot)
+      SELECT  1 sort_OverallLayout,
+              NULL shipment_date,
+              NULL sort_DayInvQty_Ship_Mfg,
+              NULL sort_DelivShip_Or_Not,
+              'PARTNAME' rptColTypeCode, 
+              ' ' vcFirstNegativeDateText,
+              1 num_child_cols,
+              NULL tracking_number,
+              NULL shipment_status,
+              NULL shipment_id,
+              NULL STATE,
+              NULL ship_stlwgt,
+              NULL ship_stlwgtDP,
+              NULL ship_totwgt
+      FROM  dual
+      -- Retreive a spot for INV label on each date (each date's INV column)
+      UNION
+      SELECT  2 sort_OverallLayout,
+              calday.thedate shipment_date,
+              1 sort_DayInvQty_Ship_Mfg,
+              NULL sort_DelivShip_Or_Not,
+              'DAILYPARTINV' rptColTypeCode, 
+              ' ' vcFirstNegativeDateText,
+              CASE
+              WHEN calday.thedate = pi_FirstDate
+              THEN 3
+              ELSE 2
+              END num_child_cols,
+              NULL tracking_number,
+              NULL shipment_status,
+              NULL shipment_id,
+              NULL STATE,
+              NULL ship_stlwgt,
+              NULL ship_stlwgtDP,
+              NULL ship_totwgt
+      FROM  reco_rstx_calday calday -- Good:see get_date_toshowin_rpt description
+      WHERE   calday.thedate >= pi_FirstDate
+      AND     calday.thedate <= pi_LastDate
+      -- Retreive a spot for each day's DELIVERED shipments
+      UNION
+      SELECT  /*+ USE_NL( rs,rsav,subQSteelWgt,subQTotWgt) */ 2 sort_OverallLayout,
+              rs.truck_date shipment_date,
+              2 sort_DayInvQty_Ship_Mfg,
+              1 sort_DelivShip_Or_Not,
+              'DELIVEREDSHIP' rptColTypeCode, 
+              ' ' vcFirstNegativeDateText,
+              2 num_child_cols,
+              NVL(rs.tracking_number,rsav.stop_identifier) tracking_number,
+              rs.truck_status shipment_status,
+              rsav.shipment_id shipment_id,
+              rsav.state STATE,
+              subQSteelWgt.stlwgt ship_stlwgt,
+              subQSteelWgt.stlwgt ship_stlwgtDP,
+              subQTotWgt.totwgt ship_totwgt
+      FROM  reco_truck rs,
+            reco_truckstop_v rsav,
+            (
+              SELECT  /*+ USE_NL( subrs,ts,subrsp,subQPartsToSum) */ ts.shipment_id,
+                      SUM(subrsp.calc_tons) stlwgt
+              FROM  reco_truckstop ts, reco_truckstop_parts subrsp,
+                    reco_truck subrs,
+                    (
+                      SELECT n_partid partid FROM reco_rstx_tmpshpcalparts
+                      WHERE sortorder IN (1,2,3,4,5)  -- JNL TEST in 1 -- (1,2)
+                      UNION
+                      SELECT b_partid partid FROM reco_rstx_tmpshpcalparts
+                      WHERE sortorder IN (1,2,3,4,5)  -- JNL TEST in 1 -- (1,2)
+                      UNION
+                      SELECT g_partid partid FROM reco_rstx_tmpshpcalparts
+                      WHERE sortorder IN (1,2,3,4,5)  -- JNL TEST in 1 -- (1,2)
+                    ) subQPartsToSum -- Verify part relevancy
+              WHERE   subrs.truck_id = ts.stop_truck_id
+              AND     subrsp.stop_truck_id = ts.stop_truck_id
+              AND     subrsp.stop_order_id = ts.stop_order_id
+              AND     subrsp.part_id = subQPartsToSum.partid
+              AND     subrs.truck_date >= TO_DATE('22-sep-20')
+              AND     subrs.truck_date <= TO_DATE('05-oct-20')
+              AND     subrs.truck_status IN ('D')
+              AND     subrsp.orig_subinventory_code = 'RSTX'
+              --and     subroiq.cutsch_hist_id = pi_CurHistoryId
+              GROUP BY  ts.shipment_id
+            ) subQSteelWgt,
+            (
+              SELECT  /*+ USE_NL( subrs,ts,subrsp,submsib ) */ ts.shipment_id,
+                      SUM(subrsp.calc_tons) totwgt
+             FROM  reco_truckstop ts, reco_truckstop_parts subrsp,
+                   reco_truck subrs,
+                    apps.mtl_system_items_b_kfv submsib
+                        -- do not use reco_rstx_originvqty_hist here, cause we need
+                        -- ALL parts, and not just steel parts for the total weight
+              WHERE   subrs.truck_id = ts.stop_truck_id
+              AND    subrsp.stop_truck_id = ts.stop_Truck_id
+              AND    subrsp.stop_order_id = ts.stop_order_id
+              AND     subrsp.part_id = submsib.inventory_item_id AND submsib.organization_id = 0
+              AND     subrs.truck_date >= pi_FirstDate
+              AND     subrs.truck_date <= pi_LastDate
+              AND     subrs.truck_status IN ('D')
+              AND     submsib.inventory_item_status_code = 'Active'
+              GROUP BY  ts.shipment_id
+            ) subQTotWgt
+      WHERE   rs.truck_id = rsav.stop_truck_id
+      AND     rsav.shipment_id = subQSteelWgt.shipment_id
+      AND     rsav.shipment_id = subQTotWgt.shipment_id
+      AND     rs.truck_date >= pi_FirstDate
+      AND     rs.truck_date <= pi_LastDate
+      AND     rs.truck_status IN ('D')
+      AND     EXISTS (SELECT /* USE_NL( roiq,rsp ) */ 'Y'
+                      FROM  reco_truckstop ts, reco_truckstop_parts rsp,
+                            reco_rstx_originvqty_hist roiq
+                      WHERE   rsav.shipment_id = ts.shipment_id
+                      AND     rsp.stop_truck_id = ts.stop_truck_id
+                      AND     rsp.stop_order_id = ts.stop_order_id
+                      AND     rsp.part_id = roiq.inventory_item_id
+                      AND     rsp.orig_subinventory_code = 'RSTX'
+                      AND     roiq.cutsch_hist_id = pi_CurHistoryId)
+      -- Retreive a spot for each day's PENDING shipments
+      UNION
+      SELECT  2 sort_OverallLayout,
+              rs.truck_date shipment_date,
+              2 sort_DayInvQty_Ship_Mfg,
+              2 sort_DelivShip_Or_Not,
+              'PENDINGSHIP' rptColTypeCode, 
+              ' ' vcFirstNegativeDateText,
+              2 num_child_cols,
+              NVL(rs.tracking_number,rsav.stop_identifier) tracking_number,
+              rs.truck_status shipment_status,
+              rsav.shipment_id shipment_id,
+              rsav.state STATE,
+              subQSteelWgt.stlwgt ship_stlwgt,
+              subQSteelWgt.stlwgt ship_stlwgtDP,
+              subQTotWgt.totwgt ship_totwgt
+      FROM  reco_truck rs,
+            reco_truckstop_v rsav,
+            (
+              SELECT  /*+ USE_NL(subrs,ts,subrsp,subqpartstosum) */ts.shipment_id,
+                      SUM(subrsp.calc_tons) stlwgt
+              FROM  reco_truckstop ts, reco_truckstop_parts subrsp,
+                    reco_truck subrs,
+                    (
+                      SELECT n_partid partid FROM reco_rstx_tmpshpcalparts
+                      WHERE sortorder IN (pi_sortOrder , pi_sortOrder2, pi_sortorder3, pi_sortorder4,pi_sortorder5)  -- JNL TEST in 1 -- (1,2)
+                      UNION
+                      SELECT b_partid partid FROM reco_rstx_tmpshpcalparts
+                      WHERE sortorder IN (pi_sortOrder , pi_sortOrder2, pi_sortorder3, pi_sortorder4,pi_sortorder5)  -- JNL TEST in 1 -- (1,2)
+                      UNION
+                      SELECT g_partid partid FROM reco_rstx_tmpshpcalparts
+                      WHERE sortorder IN (pi_sortOrder , pi_sortOrder2, pi_sortorder3, pi_sortorder4,pi_sortorder5)  -- JNL TEST in 1 -- (1,2)
+                    ) subQPartsToSum -- Verify part relevancy
+              WHERE   subrs.truck_id = ts.stop_truck_id
+              AND     subrsp.stop_truck_id = ts.stop_truck_id
+              AND     subrsp.stop_order_id = ts.stop_order_id
+              AND     subrsp.part_id = subQPartsToSum.partid
+              AND     subrs.truck_date >= pi_FirstDate
+              AND     subrs.truck_date <= pi_LastDate
+              AND     subrs.truck_status IN ('A','H','B')
+              AND     subrsp.orig_subinventory_code = 'RSTX'
+              GROUP BY  ts.shipment_id
+            ) subQSteelWgt,
+            (
+              SELECT  /*+ USE_NL( subrs,ts,subrsp,submsib ) */ts.shipment_id,
+                      SUM(subrsp.calc_tons) totwgt
+              FROM  reco_truckstop ts, reco_truckstop_parts subrsp,
+                    reco_truck subrs,
+                    apps.mtl_system_items_b_kfv submsib
+                        -- do not use reco_rstx_originvqty_hist here, cause we need
+                        -- ALL parts, and not just steel parts for the total weight
+              WHERE   subrs.truck_id = ts.stop_truck_id
+              AND     subrsp.stop_Truck_id = ts.stop_truck_id
+              AND     subrsp.stop_order_id = ts.stop_order_id
+              AND     subrsp.part_id = submsib.inventory_item_id AND submsib.organization_id = 0
+              AND     subrs.truck_date >= pi_FirstDate
+              AND     subrs.truck_date <= pi_LastDate
+              AND     subrs.truck_status IN ('A','H','B')
+              AND     submsib.inventory_item_status_code = 'Active'
+              GROUP BY  ts.shipment_id
+            ) subQTotWgt
+      WHERE   rs.truck_id = rsav.stop_truck_id
+      AND     rsav.shipment_id = subQSteelWgt.shipment_id
+      AND     rsav.shipment_id = subQTotWgt.shipment_id
+      AND     rs.truck_date >= pi_FirstDate
+      AND     rs.truck_date <= pi_LastDate
+      AND     rs.truck_status IN ('A','H','B')
+      AND     EXISTS (SELECT /*+ USE_NL( roiq, ts, rsp ) */'Y'
+                      FROM  reco_truckstop ts, reco_truckstop_parts rsp,
+                            reco_rstx_originvqty_hist roiq
+                      WHERE   rsav.shipment_id = ts.shipment_id
+                      AND     rsp.part_id = roiq.inventory_item_id
+                      AND     rsp.orig_subinventory_code = 'RSTX'
+                      AND     roiq.cutsch_hist_id = pi_CurHistoryId)
+      -- Retreive a spot for each day's proposed MANUFACTING totals           -- JNL STEEL MANUF COMMENTED
+--      union
+--      select  2 sort_OverallLayout,
+--              calday.thedate shipment_date,
+--              3 sort_DayInvQty_Ship_Mfg,
+--              null sort_DelivShip_Or_Not,
+--              'DAYPARTPROPOSEDMFG' rptColTypeCode,
+--              1 num_child_cols,
+--              null tracking_number,
+--              null shipment_status,
+--              null shipment_id,
+--              null state,
+--              null ship_stlwgt,
+--              null ship_stlwgtDP,
+--              null ship_totwgt
+--      from  reco_rstx_calday calday -- Good:see get_date_toshowin_rpt description
+--      where   calday.thedate >= pi_FirstDate
+--      and     calday.thedate <= pi_LastDate
+      -- Retreive a spot in collection for Final Inv Qty (last column spot)
+      UNION
+      SELECT  3 sort_OverallLayout,
+              NULL shipment_date,
+              NULL sort_DayInvQty_Ship_Mfg,
+              NULL sort_DelivShip_Or_Not,
+              'ENDINVTOTAL' rptColTypeCode, 
+              ' ' vcFirstNegativeDateText,
+              2 num_child_cols,
+              NULL tracking_number,
+              NULL shipment_status,
+              NULL shipment_id,
+              NULL STATE,
+              NULL ship_stlwgt,
+              NULL ship_stlwgtDP,
+              NULL ship_totwgt
+      FROM  dual
+--      order by  sort_OverallLayout,         -- JNL COMMENT START -- V9.0
+--                shipment_date,
+--                sort_DayInvQty_Ship_Mfg,
+--                sort_DelivShip_Or_Not,
+--                tracking_number,
+--                shipment_id;                -- JNL COMMENT END -- V9.0
+      UNION                                   -- JNL CODE START -- V9.0
+      SELECT  3 sort_OverallLayout,
+              NULL shipment_date,
+              NULL sort_DayInvQty_Ship_Mfg,
+              NULL sort_DelivShip_Or_Not,
+              'NEGATIVEINV' rptColTypeCode, 
+              ' ' vcFirstNegativeDateText,
+              2 num_child_cols,
+              NULL tracking_number,
+              NULL shipment_status,
+              NULL shipment_id,
+              NULL STATE,
+              NULL ship_stlwgt,
+              NULL ship_stlwgtDP,
+              NULL ship_totwgt
+      FROM  dual
+      ORDER BY  sort_OverallLayout,
+                shipment_date,
+                sort_DayInvQty_Ship_Mfg,
+                sort_DelivShip_Or_Not,
+                tracking_number,
+                shipment_id;                  -- JNL CODE END -- V9.0
+            
+                
+  BEGIN
+    vn_QtyColumnsInSpreadsheet := 0;
+  thelocation := 'sheetstore';    
+    FOR rec_ColData
+    IN cur_ColData (vd_FirstDateShown,vd_LastDateShown,vn_WorkingHistId, 1, 2, 3, 4,5)
+    LOOP
+      oTheSheetColumnInfo.extend(1);
+  thelocation := 'sheetstore'||rec_ColData.shipment_id;   
+      
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).rptColTypeCode
+              := rec_ColData.rptColTypeCode;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).num_child_cols
+              := rec_ColData.num_child_cols;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).shipment_date
+              := rec_ColData.shipment_date;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).tracking_number
+              := rec_ColData.tracking_number;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).shipment_status
+              := rec_ColData.shipment_status;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).shipment_id
+              := rec_ColData.shipment_id;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).STATE
+              := rec_ColData.state;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).daystrt_npb_tonn
+              := NULL;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).daystrt_spb_tonn
+              := NULL;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).daystrt_spg_tonn
+              := NULL;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).daystrt_dpb_tonn
+              := NULL;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).daystrt_dpg_tonn
+              := NULL;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).daystrt506_npb_tonn
+              := NULL;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).daystrt506_spb_tonn
+              := NULL;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).daystrt506_spg_tonn
+              := NULL;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).daystrt506_dpb_tonn
+              := NULL;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).daystrt506_dpg_tonn        
+              := NULL;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).vcFirstNegativeDateText
+              := rec_ColData.vcFirstNegativeDateText;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).ship_stlwgt
+              := rec_ColData.ship_stlwgt;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).ship_stlwgtDP
+              := rec_ColData.ship_stlwgtDP;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).ship_totwgt
+              := rec_ColData.ship_totwgt;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).day_manuf_spb_tonn
+              := NULL;
+      oTheSheetColumnInfo(oTheSheetColumnInfo.count).day_manuf_dpb_tonn
+              := NULL;
+      
+      vn_QtyColumnsInSpreadsheet :=
+        vn_QtyColumnsInSpreadsheet + rec_ColData.num_child_cols;
+  END LOOP;
+    
+  END;
+    thelocation := 'endstore';
+-- ************************************************************************************* JNL TEST  END  
+  
+  DECLARE
+    -- Selects all the numbers we will need for inventory-tonnage
+    -- totals on a given day.
+    -- Note#1 - When in doubt, assume SinglePunch is root table (over galv)
+    -- Note#2 - When in doubt, assume Galv is root table (over black/nopunch)
+    CURSOR cur_TonnagesForRptDate (pi_DesiredDay IN date, 
+                                   pi_sortOrder IN NUMBER, pi_sortOrder2 IN NUMBER)
+    IS
+      SELECT  rptGrp1Parts.n_originvqty npb_originvqty,
+              msibGrp1NoPun.unit_weight npb_unit_weight,
+              msibGrp1NoPun.weight_uom_code npb_weight_uom_code,
+              rptGrp1Parts.b_originvqty spb_originvqty,
+              msibGrp1Black.unit_weight spb_unit_weight,
+              msibGrp1Black.weight_uom_code spb_weight_uom_code,
+              rptGrp1Parts.g_originvqty spg_originvqty,
+              msibGrp1Galv.unit_weight spg_unit_weight,
+              msibGrp1Galv.weight_uom_code spg_weight_uom_code,
+              
+              NVL(rptGrp2Parts.b_originvqty,0) dpb_originvqty,
+              NVL(msibGrp2Black.unit_weight,0) dpb_unit_weight,
+              NVL(msibGrp2Black.weight_uom_code,'LB') dpb_weight_uom_code,
+              NVL(rptGrp2Parts.g_originvqty,0) dpg_originvqty,
+              NVL(msibGrp2Galv.unit_weight,0) dpg_unit_weight,
+              NVL(msibGrp2Galv.weight_uom_code,'LB') dpg_weight_uom_code,
+              
+              NVL(subQGrp1BlackShippedQty.totalPcs,0) spb_ship_cumm_qty,
+              NVL(subQGrp1GalvShippedQty.totalPcs,0) spg_ship_cumm_qty,
+              NVL(subQGrp1BlackMfgDailyQty.totalPcs,0) spb_newpun_today_qty,
+              NVL(subQGrp1BlackMfgCummQty.totalPcs,0) spb_newpun_cumm_qty,
+                            
+              NVL(subQGrp2BlackShippedQty.totalPcs,0) dpb_ship_cumm_qty,
+              NVL(subQGrp2GalvShippedQty.totalPcs,0) dpg_ship_cumm_qty,
+              NVL(subQGrp2BlackMfgDailyQty.totalPcs,0) dpb_newpun_today_qty,
+              NVL(subQGrp2BlackMfgCummQty.totalPcs,0) dpb_newpun_cumm_qty
+                            
+      FROM  reco_rstx_tmpshpcalparts rptGrp1Parts,
+            reco_rstx_tmpshpcalparts rptGrp2Parts,
+            apps.mtl_system_items_b_kfv msibGrp1NoPun,
+            apps.mtl_system_items_b_kfv msibGrp1Black,
+            apps.mtl_system_items_b_kfv msibGrp1Galv,
+            apps.mtl_system_items_b_kfv msibGrp2Black,
+            apps.mtl_system_items_b_kfv msibGrp2Galv,
+        
+            (
+              SELECT  subparts.b_partid,
+                      SUM(subrsp.quantity) totalPcs
+              FROM  reco_truck subrs,
+                    reco_truckstop_parts_v subrsp,
+                    reco_rstx_tmpshpcalparts subparts
+              WHERE   subrsp.stop_truck_id = subrs.truck_id
+              AND     subrsp.part_id = subparts.b_partid
+              AND     subrs.truck_date >= vd_FirstDateShown
+              AND     subrs.truck_date < pi_DesiredDay
+              AND     subrs.truck_status
+                        -- Note: Rpt shows deliviered for today and future
+                        IN ('A','H','B','D')
+              AND     subrsp.orig_subinventory_code = 'RSTX'
+              AND     subparts.sortorder IN (pi_sortOrder, pi_sortOrder2)
+              GROUP BY  subparts.b_partid
+            ) subQGrp1BlackShippedQty,
+
+            (
+              SELECT  subparts.g_partid,
+                      SUM(subrsp.quantity) totalPcs
+              FROM  reco_truck subrs,
+                    reco_truckstop_parts_v subrsp,
+                    reco_rstx_tmpshpcalparts subparts
+              WHERE   subrsp.stop_truck_id = subrs.truck_id
+              AND     subrsp.part_id = subparts.g_partid
+              AND     subrs.truck_date >= vd_FirstDateShown
+              AND     subrs.truck_date < pi_DesiredDay
+              AND     subrs.truck_status
+                        -- Note: Rpt shows deliviered for today and future
+                        IN ('A','H','B','D')
+              AND     subrsp.orig_subinventory_code = 'RSTX'
+              AND     subparts.sortorder IN (pi_sortOrder, pi_sortOrder2)
+              GROUP BY  subparts.g_partid
+            ) subQGrp1GalvShippedQty,
+
+            (
+              SELECT  subparts.b_partid,
+                      SUM(punrunhist.qty_bars_processed) totalPcs
+              FROM  reco_rstx_calday calday,
+                              -- Good:get_date_toshowin_rpt description
+                    reco_rstx_punrun_hist punrunhist,
+                    (
+                      SELECT DISTINCT
+                              subasg.punrun_id,
+                              subreq.reqlength,
+                              subreq.reqtype,
+                              subreq.reqpunch
+                              --NOTE: We do not care about PunchSch coating
+                              --      because for this report we label all
+                              --      punching results as black pieces
+                      FROM  reco_rstx_punrun_hist subrun,
+                            reco_rstx_punreq_hist subreq,
+                            reco_rstx_punasg_hist subasg
+                      WHERE   subrun.punrun_id = subasg.punrun_id
+                      AND     subasg.punreq_id = subreq.punreq_id
+                      AND     subrun.cutsch_hist_id = vn_WorkingHistId
+                      AND     subasg.cutsch_hist_id = vn_WorkingHistId
+                      AND     subreq.cutsch_hist_id = vn_WorkingHistId
+                    ) subQPartData,
+                    reco_rstx_tmpshpcalparts subparts
+              WHERE   calday.thedate = pi_DesiredDay
+              AND     calday.calday_id = punrunhist.calday_id
+              AND     punrunhist.cutsch_hist_id = vn_WorkingHistId
+              AND     punrunhist.punrun_id = subQPartData.punrun_id
+              AND     subQPartData.reqlength = subparts.b_partnumlen
+              AND     subQPartData.reqtype = subparts.b_parttype
+              AND     subQPartData.reqpunch = subparts.b_partpunch
+              AND     subparts.sortorder IN (pi_sortOrder, pi_sortOrder2)
+              GROUP BY  subparts.b_partid
+            ) subQGrp1BlackMfgDailyQty,
+
+            (
+              SELECT  subparts.b_partid,
+                      SUM(punrunhist.qty_bars_processed) totalPcs
+              FROM  reco_rstx_calday calday,
+                              -- Good:get_date_toshowin_rpt description
+                    reco_rstx_punrun_hist punrunhist,
+                    (
+                      SELECT DISTINCT
+                              subasg.punrun_id,
+                              subreq.reqlength,
+                              subreq.reqtype,
+                              subreq.reqpunch
+                              --NOTE: We do not care about PunchSch coating
+                              --      because for this report we label all
+                              --      punching results as black pieces
+                      FROM  reco_rstx_punrun_hist subrun,
+                            reco_rstx_punreq_hist subreq,
+                            reco_rstx_punasg_hist subasg
+                      WHERE   subrun.punrun_id = subasg.punrun_id
+                      AND     subasg.punreq_id = subreq.punreq_id
+                      AND     subrun.cutsch_hist_id = vn_WorkingHistId
+                      AND     subasg.cutsch_hist_id = vn_WorkingHistId
+                      AND     subreq.cutsch_hist_id = vn_WorkingHistId
+                    ) subQPartData,
+                    reco_rstx_tmpshpcalparts subparts
+              WHERE   calday.thedate >= vd_FirstDateShown
+              AND     calday.thedate < pi_DesiredDay
+              AND     calday.calday_id = punrunhist.calday_id
+              AND     punrunhist.cutsch_hist_id = vn_WorkingHistId
+              AND     punrunhist.punrun_id = subQPartData.punrun_id
+              AND     subQPartData.reqlength = subparts.b_partnumlen
+              AND     subQPartData.reqtype = subparts.b_parttype
+              AND     subQPartData.reqpunch = subparts.b_partpunch
+              AND     subparts.sortorder IN (pi_sortOrder, pi_sortOrder2)
+              GROUP BY  subparts.b_partid
+            ) subQGrp1BlackMfgCummQty,
+
+            (
+              SELECT  subparts.b_partid,
+                      SUM(subrsp.quantity) totalPcs
+              FROM  reco_truck subrs,
+                    reco_truckstop_parts_v subrsp,
+                    reco_rstx_tmpshpcalparts subparts
+              WHERE   subrsp.stop_truck_id = subrs.truck_id
+              AND     subrsp.part_id = subparts.b_partid
+              AND     subrs.truck_date >= vd_FirstDateShown
+              AND     subrs.truck_date < pi_DesiredDay
+              AND     subrs.truck_status
+                        -- Note: Rpt shows deliviered for today and future
+                        IN ('A','H','B','D')
+              AND     subrsp.orig_subinventory_code = 'RSTX'
+              AND     subparts.sortorder IN (pi_sortOrder, pi_sortOrder2)
+              GROUP BY  subparts.b_partid
+            ) subQGrp2BlackShippedQty,
+
+            (
+              SELECT  subparts.g_partid,
+                      SUM(subrsp.quantity) totalPcs
+              FROM  reco_truck subrs,
+                    reco_truckstop_parts_v subrsp,
+                    reco_rstx_tmpshpcalparts subparts
+              WHERE   subrsp.stop_truck_id = subrs.truck_id
+              AND     subrsp.part_id = subparts.g_partid
+              AND     subrs.truck_date >= vd_FirstDateShown
+              AND     subrs.truck_date < pi_DesiredDay
+              AND     subrs.truck_status
+                        -- Note: Rpt shows deliviered for today and future
+                        IN ('A','H','B','D')
+              AND     subrsp.orig_subinventory_code = 'RSTX'
+              AND     subparts.sortorder IN (pi_sortOrder, pi_sortOrder2)
+              GROUP BY  subparts.g_partid
+            ) subQGrp2GalvShippedQty,
+
+            (
+              SELECT  subparts.b_partid,
+                      SUM(punrunhist.qty_bars_processed) totalPcs
+              FROM  reco_rstx_calday calday,
+                              -- Good:get_date_toshowin_rpt description
+                    reco_rstx_punrun_hist punrunhist,
+                    (
+                      SELECT DISTINCT
+                              subasg.punrun_id,
+                              subreq.reqlength,
+                              subreq.reqtype,
+                              subreq.reqpunch
+                              --NOTE: We do not care about PunchSch coating
+                              --      because for this report we label all
+                              --      punching results as black pieces
+                      FROM  reco_rstx_punrun_hist subrun,
+                            reco_rstx_punreq_hist subreq,
+                            reco_rstx_punasg_hist subasg
+                      WHERE   subrun.punrun_id = subasg.punrun_id
+                      AND     subasg.punreq_id = subreq.punreq_id
+                      AND     subrun.cutsch_hist_id = vn_WorkingHistId
+                      AND     subasg.cutsch_hist_id = vn_WorkingHistId
+                      AND     subreq.cutsch_hist_id = vn_WorkingHistId
+                    ) subQPartData,
+                    reco_rstx_tmpshpcalparts subparts
+              WHERE   calday.thedate = pi_DesiredDay
+              AND     calday.calday_id = punrunhist.calday_id
+              AND     punrunhist.cutsch_hist_id = vn_WorkingHistId
+              AND     punrunhist.punrun_id = subQPartData.punrun_id
+              AND     subQPartData.reqlength = subparts.b_partnumlen
+              AND     subQPartData.reqtype = subparts.b_parttype
+              AND     subQPartData.reqpunch = subparts.b_partpunch
+              AND     subparts.sortorder IN (pi_sortOrder, pi_sortOrder2)
+              GROUP BY  subparts.b_partid
+            ) subQGrp2BlackMfgDailyQty,
+
+            (
+              SELECT  subparts.b_partid,
+                      SUM(punrunhist.qty_bars_processed) totalPcs
+              FROM  reco_rstx_calday  calday,
+                              -- Good:get_date_toshowin_rpt description
+                    reco_rstx_punrun_hist punrunhist,
+                    (
+                      SELECT DISTINCT
+                              subasg.punrun_id,
+                              subreq.reqlength,
+                              subreq.reqtype,
+                              subreq.reqpunch
+                              --NOTE: We do not care about PunchSch coating
+                              --      because for this report we label all
+                              --      punching results as black pieces
+                      FROM  reco_rstx_punrun_hist subrun,
+                            reco_rstx_punreq_hist subreq,
+                            reco_rstx_punasg_hist subasg
+                      WHERE   subrun.punrun_id = subasg.punrun_id
+                      AND     subasg.punreq_id = subreq.punreq_id
+                      AND     subrun.cutsch_hist_id = vn_WorkingHistId
+                      AND     subasg.cutsch_hist_id = vn_WorkingHistId
+                      AND     subreq.cutsch_hist_id = vn_WorkingHistId
+                    ) subQPartData,
+                    reco_rstx_tmpshpcalparts subparts
+              WHERE   calday.thedate >= vd_FirstDateShown
+              AND     calday.thedate < pi_DesiredDay
+              AND     calday.calday_id = punrunhist.calday_id
+              AND     punrunhist.cutsch_hist_id = vn_WorkingHistId
+              AND     punrunhist.punrun_id = subQPartData.punrun_id
+              AND     subQPartData.reqlength = subparts.b_partnumlen
+              AND     subQPartData.reqtype = subparts.b_parttype
+              AND     subQPartData.reqpunch = subparts.b_partpunch
+              AND     subparts.sortorder IN (pi_sortOrder, pi_sortOrder2)
+              GROUP BY  subparts.b_partid
+            ) subQGrp2BlackMfgCummQty    
+            
+      WHERE   rptGrp1Parts.sortorder = pi_sortOrder
+      AND     rptGrp1Parts.n_partid = rptGrp2Parts.n_partid (+)
+      AND     rptGrp2Parts.sortorder (+) = pi_sortOrder2
+      AND     rptGrp1Parts.n_partid = msibGrp1NoPun.inventory_item_id (+)
+      and   msibgrp1nopun.organization_id(+) = 0
+      AND     rptGrp1Parts.b_partid = msibGrp1Black.inventory_item_id (+)
+      and   msibgrp1black.organization_id(+) = 0
+      AND     rptGrp1Parts.g_partid = msibGrp1Galv.inventory_item_id (+)
+      and   msibgrp1galv.organization_id(+) = 0
+      AND     rptGrp2Parts.b_partid = msibGrp2Black.inventory_item_id (+)
+      and   msibgrp2black.organization_id(+) = 0
+      AND     rptGrp2Parts.g_partid = msibGrp2Galv.inventory_item_id (+)
+      and   msibgrp2galv.organization_id(+) = 0
+      AND     rptGrp1Parts.b_partid = subQGrp1BlackShippedQty.b_partid (+)
+      AND     rptGrp1Parts.g_partid = subQGrp1GalvShippedQty.g_partid (+)
+      AND     rptGrp1Parts.b_partid = subQGrp1BlackMfgDailyQty.b_partid (+)
+      AND     rptGrp1Parts.b_partid = subQGrp1BlackMfgCummQty.b_partid (+)
+      AND     rptGrp2Parts.b_partid = subQGrp2BlackShippedQty.b_partid (+)
+      AND     rptGrp2Parts.g_partid = subQGrp2GalvShippedQty.g_partid (+)
+      AND     rptGrp2Parts.b_partid = subQGrp2BlackMfgDailyQty.b_partid (+)
+      AND     rptGrp2Parts.b_partid = subQGrp2BlackMfgCummQty.b_partid (+);
+    
+    vn_CachedSPBMfgTot number;
+    vn_CachedDPBMfgTot number;
+    vn_CachedSPBMfgTot506 number;
+    vn_CachedDPBMfgTot506 number;
+    
+    --vb_FirstNegativeDateSet BOOLEAN;
+  BEGIN
+    
+   -- vb_FirstNegativeDateSet := false;
+  thelocation := 'dailyquery';    
+    IF oTheSheetColumnInfo.count > 0
+    THEN
+      
+      nCtrSheetColumnInfo := 1;
+      
+      LOOP
+        
+        IF oTheSheetColumnInfo(nCtrSheetColumnInfo).rptColTypeCode
+                = 'DAILYPARTINV'
+        THEN
+          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn := 0;
+          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn := 0;
+          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn := 0;
+          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn := 0;
+          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn := 0;
+          vn_CachedSPBMfgTot := 0;
+          vn_CachedDPBMfgTot := 0;
+--          vb_FirstNegativeDateSet := false;
+          
+          FOR rec_TonnagesForRptDate
+          IN cur_TonnagesForRptDate(
+                  oTheSheetColumnInfo(nCtrSheetColumnInfo).shipment_date, 1, 2)
+          LOOP
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn :=
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn
+                +
+                (
+                  reco_estimation.convert_to(
+                        rec_TonnagesForRptDate.npb_unit_weight,
+                        rec_TonnagesForRptDate.npb_weight_uom_code,
+                        'TO')
+                  *
+                  (
+                    (
+                      rec_TonnagesForRptDate.npb_originvqty - 0 + 0
+                    )
+                  )
+                );
+            
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn :=
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn
+                +
+                (
+                  reco_estimation.convert_to(
+                        rec_TonnagesForRptDate.spb_unit_weight,
+                        rec_TonnagesForRptDate.spb_weight_uom_code,
+                        'TO')
+                  *
+                  (
+                    (
+                      rec_TonnagesForRptDate.spb_originvqty
+                      -
+                      rec_TonnagesForRptDate.spb_ship_cumm_qty
+                    )
+                    +
+                    rec_TonnagesForRptDate.spb_newpun_cumm_qty
+                  )
+                );
+                           
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn :=
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn
+                +
+                (
+                  reco_estimation.convert_to(
+                        rec_TonnagesForRptDate.spg_unit_weight,
+                        rec_TonnagesForRptDate.spg_weight_uom_code,
+                        'TO')
+                  *
+                  (
+                    (
+                      rec_TonnagesForRptDate.spg_originvqty
+                      -
+                      rec_TonnagesForRptDate.spg_ship_cumm_qty
+                    )
+                    +
+                    0
+                  )
+                );
+                
+            -- -------------------------------------------------------------------------------------------
+--            if ( oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn < 0 AND vb_FirstNegativeDateSet = false  )
+--              then 
+--              oTheSheetColumnInfo(nCtrSheetColumnInfo).vcFirstNegativeDateText := 'TEST';
+--              --((to_char(oTheSheetColumnInfo(nCtrSheetColumnInfo).shipment_date,'DY DD-MON')));
+--              vb_FirstNegativeDateSet := true;
+--            end if;
+--                   
+--            if ( oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn < 0 AND vb_FirstNegativeDateSet = false )
+--              then 
+--              oTheSheetColumnInfo(nCtrSheetColumnInfo).vcFirstNegativeDateText := 'TEST';
+--              --((to_char(oTheSheetColumnInfo(nCtrSheetColumnInfo).shipment_date,'DY DD-MON')));
+--              vb_FirstNegativeDateSet := true;
+--            end if;              
+            -- --------------------------------------------------------------------------------------------
+            
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn :=
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn
+                +
+                (
+                  reco_estimation.convert_to(
+                        rec_TonnagesForRptDate.dpb_unit_weight,
+                        rec_TonnagesForRptDate.dpb_weight_uom_code,
+                        'TO')
+                  *
+                  (
+                    (
+                      rec_TonnagesForRptDate.dpb_originvqty
+                      -
+                      rec_TonnagesForRptDate.dpb_ship_cumm_qty
+                    )
+                    +
+                    rec_TonnagesForRptDate.dpb_newpun_cumm_qty
+                  )
+                );
+            
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn :=
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn
+                +
+                (
+                  reco_estimation.convert_to(
+                        rec_TonnagesForRptDate.dpg_unit_weight,
+                        rec_TonnagesForRptDate.dpg_weight_uom_code,
+                        'TO')
+                  *
+                  (
+                    (
+                      rec_TonnagesForRptDate.dpg_originvqty
+                      -
+                      rec_TonnagesForRptDate.dpg_ship_cumm_qty
+                    )
+                    +
+                    0
+                  )
+                );
+          END LOOP;
+        ELSIF oTheSheetColumnInfo(nCtrSheetColumnInfo).rptColTypeCode
+                = 'ENDINVTOTAL'
+        THEN
+          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn := 0;
+          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn := 0;
+          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn := 0;
+          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn := 0;
+          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn := 0;
+          vn_CachedSPBMfgTot := 0;
+          vn_CachedDPBMfgTot := 0;
+          
+          FOR rec_TonnagesForRptDate
+          IN cur_TonnagesForRptDate( (vd_LastDateShown + 1), 1, 2)
+          LOOP
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn :=
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn
+                +
+                (
+                  reco_estimation.convert_to(
+                        rec_TonnagesForRptDate.npb_unit_weight,
+                        rec_TonnagesForRptDate.npb_weight_uom_code,
+                        'TO')
+                  *
+                  (
+                    (
+                      rec_TonnagesForRptDate.npb_originvqty - 0 + 0
+                    )
+                  )
+                );
+            
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn :=
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn
+                +
+                (
+                  reco_estimation.convert_to(
+                        rec_TonnagesForRptDate.spb_unit_weight,
+                        rec_TonnagesForRptDate.spb_weight_uom_code,
+                        'TO')
+                  *
+                  (
+                    (
+                      rec_TonnagesForRptDate.spb_originvqty
+                      -
+                      rec_TonnagesForRptDate.spb_ship_cumm_qty
+                    )
+                    +
+                    rec_TonnagesForRptDate.spb_newpun_cumm_qty
+                  )
+                );
+            
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn :=
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn
+                +
+                (
+                  reco_estimation.convert_to(
+                        rec_TonnagesForRptDate.spg_unit_weight,
+                        rec_TonnagesForRptDate.spg_weight_uom_code,
+                        'TO')
+                  *
+                  (
+                    (
+                      rec_TonnagesForRptDate.spg_originvqty
+                      -
+                      rec_TonnagesForRptDate.spg_ship_cumm_qty
+                    )
+                    +
+                    0
+                  )
+                );
+            
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn :=
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn
+                +
+                (
+                  reco_estimation.convert_to(
+                        rec_TonnagesForRptDate.dpb_unit_weight,
+                        rec_TonnagesForRptDate.dpb_weight_uom_code,
+                        'TO')
+                  *
+                  (
+                    (
+                      rec_TonnagesForRptDate.dpb_originvqty
+                      -
+                      rec_TonnagesForRptDate.dpb_ship_cumm_qty
+                    )
+                    +
+                    rec_TonnagesForRptDate.dpb_newpun_cumm_qty
+                  )
+                );
+            
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn :=
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn
+                +
+                (
+                  reco_estimation.convert_to(
+                        rec_TonnagesForRptDate.dpg_unit_weight,
+                        rec_TonnagesForRptDate.dpg_weight_uom_code,
+                        'TO')
+                  *
+                  (
+                    (
+                      rec_TonnagesForRptDate.dpg_originvqty
+                      -
+                      rec_TonnagesForRptDate.dpg_ship_cumm_qty
+                    )
+                    +
+                    0
+                  )
+                );
+            
+          END LOOP;
+        END IF;
+
+        IF nCtrSheetColumnInfo = oTheSheetColumnInfo.count
+        THEN exit;
+        END IF;
+        
+        nCtrSheetColumnInfo := nCtrSheetColumnInfo + 1;
+      END LOOP;
+    END IF;
+      thelocation := 'enddaily';
+-- ********************************************************************************** JNL 6.0 START
+-- **********************************************************************************
+    IF oTheSheetColumnInfo.count > 0
+        THEN
+          
+          nCtrSheetColumnInfo := 1;
+          
+          LOOP
+            
+            IF oTheSheetColumnInfo(nCtrSheetColumnInfo).rptColTypeCode
+                    = 'DAILYPARTINV'
+            THEN
+              oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_npb_tonn := 0;
+              oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_spb_tonn := 0;
+              oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_spg_tonn := 0;
+              oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_dpb_tonn := 0;
+              oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_dpg_tonn := 0;
+              oTheSheetColumnInfo(nCtrSheetColumnInfo).vcFirstNegativeDateText := '';
+              vn_CachedSPBMfgTot506 := 0;
+              vn_CachedDPBMfgTot506 := 0;
+              
+              FOR rec_TonnagesForRptDate
+              IN cur_TonnagesForRptDate(
+                      oTheSheetColumnInfo(nCtrSheetColumnInfo).shipment_date, 3, 4)
+              LOOP
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_npb_tonn :=
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_npb_tonn
+                    +
+                    (
+                      reco_estimation.convert_to(
+                            rec_TonnagesForRptDate.npb_unit_weight,
+                            rec_TonnagesForRptDate.npb_weight_uom_code,
+                            'TO')
+                      *
+                      (
+                        (
+                          NVL(rec_TonnagesForRptDate.npb_originvqty - 0 + 0,0)
+                        )
+                      )
+                    );
+                
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_spb_tonn :=
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_spb_tonn
+                    +
+                    (
+                      reco_estimation.convert_to(
+                            rec_TonnagesForRptDate.spb_unit_weight,
+                            rec_TonnagesForRptDate.spb_weight_uom_code,
+                            'TO')
+                      *
+                      (
+                        (
+                          rec_TonnagesForRptDate.spb_originvqty
+                          -
+                          rec_TonnagesForRptDate.spb_ship_cumm_qty
+                        )
+                        +
+                        rec_TonnagesForRptDate.spb_newpun_cumm_qty
+                      )
+                    );
+                
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_spg_tonn :=
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_spg_tonn
+                    +
+                    (
+                      reco_estimation.convert_to(
+                            rec_TonnagesForRptDate.spg_unit_weight,
+                            rec_TonnagesForRptDate.spg_weight_uom_code,
+                            'TO')
+                      *
+                      (
+                        (
+                          rec_TonnagesForRptDate.spg_originvqty
+                          -
+                          rec_TonnagesForRptDate.spg_ship_cumm_qty
+                        )
+                        +
+                        0
+                      )
+                    );
+                
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_dpb_tonn :=
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_dpb_tonn
+                    +
+                    (
+                      reco_estimation.convert_to(
+                            rec_TonnagesForRptDate.dpb_unit_weight,
+                            rec_TonnagesForRptDate.dpb_weight_uom_code,
+                            'TO')
+                      *
+                      (
+                        (
+                          rec_TonnagesForRptDate.dpb_originvqty
+                          -
+                          rec_TonnagesForRptDate.dpb_ship_cumm_qty
+                        )
+                        +
+                        rec_TonnagesForRptDate.dpb_newpun_cumm_qty
+                      )
+                    );
+                
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_dpg_tonn :=
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_dpg_tonn
+                    +
+                    (
+                      reco_estimation.convert_to(
+                            rec_TonnagesForRptDate.dpg_unit_weight,
+                            rec_TonnagesForRptDate.dpg_weight_uom_code,
+                            'TO')
+                      *
+                      (
+                        (
+                          rec_TonnagesForRptDate.dpg_originvqty
+                          -
+                          rec_TonnagesForRptDate.dpg_ship_cumm_qty
+                        )
+                        +
+                        0
+                      )
+                    );
+              END LOOP;
+            ELSIF oTheSheetColumnInfo(nCtrSheetColumnInfo).rptColTypeCode
+                    = 'ENDINVTOTAL'
+            THEN
+              oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_npb_tonn := 0;
+              oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_spb_tonn := 0;
+              oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_spg_tonn := 0;
+              oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_dpb_tonn := 0;
+              oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_dpg_tonn := 0;
+              vn_CachedSPBMfgTot506 := 0;
+              vn_CachedDPBMfgTot506 := 0;
+              
+              FOR rec_TonnagesForRptDate
+              IN cur_TonnagesForRptDate( (vd_LastDateShown + 1), 3, 4)
+              LOOP
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_npb_tonn :=
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_npb_tonn
+                    +
+                    (
+                      reco_estimation.convert_to(
+                            rec_TonnagesForRptDate.npb_unit_weight,
+                            rec_TonnagesForRptDate.npb_weight_uom_code,
+                            'TO')
+                      *
+                      (
+                        (
+                          rec_TonnagesForRptDate.npb_originvqty - 0 + 0
+                        )
+                      )
+                    );
+                
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_spb_tonn :=
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_spb_tonn
+                    +
+                    (
+                      reco_estimation.convert_to(
+                            rec_TonnagesForRptDate.spb_unit_weight,
+                            rec_TonnagesForRptDate.spb_weight_uom_code,
+                            'TO')
+                      *
+                      (
+                        (
+                          rec_TonnagesForRptDate.spb_originvqty
+                          -
+                          rec_TonnagesForRptDate.spb_ship_cumm_qty
+                        )
+                        +
+                        rec_TonnagesForRptDate.spb_newpun_cumm_qty
+                      )
+                    );
+                
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_spg_tonn :=
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_spg_tonn
+                    +
+                    (
+                      reco_estimation.convert_to(
+                            rec_TonnagesForRptDate.spg_unit_weight,
+                            rec_TonnagesForRptDate.spg_weight_uom_code,
+                            'TO')
+                      *
+                      (
+                        (
+                          rec_TonnagesForRptDate.spg_originvqty
+                          -
+                          rec_TonnagesForRptDate.spg_ship_cumm_qty
+                        )
+                        +
+                        0
+                      )
+                    );
+                
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_dpb_tonn :=
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_dpb_tonn
+                    +
+                    (
+                      reco_estimation.convert_to(
+                            rec_TonnagesForRptDate.dpb_unit_weight,
+                            rec_TonnagesForRptDate.dpb_weight_uom_code,
+                            'TO')
+                      *
+                      (
+                        (
+                          rec_TonnagesForRptDate.dpb_originvqty
+                          -
+                          rec_TonnagesForRptDate.dpb_ship_cumm_qty
+                        )
+                        +
+                        rec_TonnagesForRptDate.dpb_newpun_cumm_qty
+                      )
+                    );
+                
+                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_dpg_tonn :=
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt506_dpg_tonn
+                    +
+                    (
+                      reco_estimation.convert_to(
+                            rec_TonnagesForRptDate.dpg_unit_weight,
+                            rec_TonnagesForRptDate.dpg_weight_uom_code,
+                            'TO')
+                      *
+                      (
+                        (
+                          rec_TonnagesForRptDate.dpg_originvqty
+                          -
+                          rec_TonnagesForRptDate.dpg_ship_cumm_qty
+                        )
+                        +
+                        0
+                      )
+                    );
+              END LOOP;
+            END IF;
+            
+            IF nCtrSheetColumnInfo = oTheSheetColumnInfo.count
+            THEN exit;
+            END IF;
+            
+            nCtrSheetColumnInfo := nCtrSheetColumnInfo + 1;
+          END LOOP;
+        END IF;
+          thelocation := 'enddaily2';
+-- **********************************************************************************
+-- ********************************************************************************** JNL 6.0 END
+  END;
+  
+  ---
+  -- Prepare spreadsheet
+  ---
+
+  reco_web_functions.reset_sheet;
+  thelocation := 'reset';
+  reco_web_functions.table_attr := 'border="1" frame="border" rules="all"';
+  thelocation := 'attr';
+--  reco_web_functions.open_spreadsheet;  --('Shipping_Calendar');  
+  IF NOT bSummaryReport THEN
+  	reco_web_functions.open_spreadsheet('NODATE:reco_steel_shipments_report'); --Added by RS on 03/04/2026.
+  ELSE
+  	reco_web_functions.open_spreadsheet('NODATE:reco_steel_shipments_summary_report'); --Added by RS on 03/04/2026.
+  END IF;
+  thelocation := 'open';
+  ---
+  -- Print notification if we couldn't actually access start-of-day info
+  ---
+  
+  IF vc_WorkingHistUser != 'NIGHTLY AUTO REFRESH'
+  THEN
+    reco_web_functions.clear_headers;
+    reco_web_functions.col_span := 16;
+    reco_web_functions.cell_attr := '';
+    reco_web_functions.add_header_column(
+      'Warning: Could not access Morning INV numbers. '||
+      'The shipping is accurate, but the displayed inventory numbers '||
+      'may not match the Morning INV quantities');
+    reco_web_functions.print_header;
+  END IF;
+  
+  ---
+  -- Header - Print First Row - Date
+  ---
+  thelocation := 'clear';
+  reco_web_functions.clear_headers;
+  
+  reco_web_functions.col_span := oTheSheetColumnInfo(1).num_child_cols;
+  --reco_web_functions.col_span := oTheSheetColumnInfoSP(1).num_child_cols;
+  --reco_web_functions.col_span := oTheSheetColumnInfoDP(1).num_child_cols;
+  reco_web_functions.cell_attr := '';
+  reco_web_functions.add_header_column('Steel Ship');
+  thelocation := 'begin sheet';  
+   
+    DECLARE
+        vn_TmpDayCtr number;
+         TYPE nt_type IS TABLE OF number;
+         nt nt_type := nt_type (2 ,(oTheSheetColumnInfo.count - 1) , (oTheSheetColumnInfo.count - 2));
+    BEGIN
+        vn_TmpDayCtr := 1;
+        
+        reco_web_functions.col_span := 0;
+        
+        IF NOT bSummaryReport THEN
+          FOR colctr IN 2 .. (oTheSheetColumnInfo.count - 1)
+          LOOP
+            reco_web_functions.col_span :=
+                reco_web_functions.col_span
+                  + oTheSheetColumnInfo(colctr).num_child_cols;
+            
+            IF oTheSheetColumnInfo(colctr).shipment_date
+                    != oTheSheetColumnInfo(colctr+1).shipment_date
+            OR oTheSheetColumnInfo(colctr+1).shipment_date IS NULL
+            THEN
+              reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+              IF MOD(vn_TmpDayCtr,2) = 0
+              THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+              END IF;
+              
+              reco_web_functions.add_header_column(
+                TO_CHAR(oTheSheetColumnInfo(colctr).shipment_date,'DY DD-MON'));
+              
+              vn_TmpDayCtr := vn_TmpDayCtr + 1;
+              
+              reco_web_functions.col_span := 0;
+            END IF;
+          END LOOP;
+        
+        ELSIF bSummaryReport THEN
+          -- JNL REPORTING CONDITION START
+          FOR colctr IN 1..nt.count
+          LOOP
+            reco_web_functions.col_span :=
+                reco_web_functions.col_span
+                  + oTheSheetColumnInfo(colctr).num_child_cols;
+            
+            IF oTheSheetColumnInfo(colctr).shipment_date
+                    != oTheSheetColumnInfo(colctr+1).shipment_date
+            OR oTheSheetColumnInfo(colctr+1).shipment_date IS NULL
+            THEN
+              reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+              IF MOD(vn_TmpDayCtr,2) = 0
+              THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+              END IF;
+              
+              reco_web_functions.add_header_column(
+                TO_CHAR(oTheSheetColumnInfo(colctr).shipment_date,'DY DD-MON'));
+              
+              vn_TmpDayCtr := vn_TmpDayCtr + 1;
+              
+              reco_web_functions.col_span := 0;
+            END IF;
+          END LOOP;
+          -- JNL REPORTING CONDITION END
+          
+        END IF;
+        
+      END;
+  
+  reco_web_functions.col_span :=
+          oTheSheetColumnInfo(oTheSheetColumnInfo.count).num_child_cols;
+  reco_web_functions.cell_attr := '';
+  reco_web_functions.add_header_column(' ');
+  
+  reco_web_functions.print_header;
+   thelocation := 'header';
+  ---
+  -- Header - Print each date shipment name and inventory header / etc
+  ---
+  
+  reco_web_functions.clear_headers;
+  
+  DECLARE
+    vn_TmpDayCtr number;
+    vc_TmpTxtToPrint varchar2(1000);
+    TYPE nt_type IS TABLE OF number;
+    nt nt_type := nt_type (2 ,(oTheSheetColumnInfo.count - 1) , (oTheSheetColumnInfo.count - 2));
+
+  BEGIN
+    vn_TmpDayCtr := 0;
+    
+    IF NOT bSummaryReport THEN
+  thelocation := 'docount';      
+      FOR colctr IN 1 .. oTheSheetColumnInfo.count
+      LOOP
+        reco_web_functions.col_span :=
+            oTheSheetColumnInfo(colctr).num_child_cols;
+        
+        IF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PARTNAME'
+        THEN
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint :=
+              TO_CHAR(SYSDATE,'YYYY')||'<br>'||TO_CHAR(SYSDATE,'DD-MON');
+                      
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAILYPARTINV'
+        THEN
+          reco_web_functions.cell_attr := vc_Color_InvText;
+          vc_TmpTxtToPrint := 'Morning<br>INV';
+  
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DELIVEREDSHIP'
+        THEN
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint :=
+              '<A HREF="http://ebs.vincic-sf.grpsc.net:8000/pls/RECO/reco_web_info.display_shipment?p_shipment_id='||
+              TO_CHAR(oTheSheetColumnInfo(colctr).shipment_id)||
+              '" target="new">'||
+              SUBSTR(oTheSheetColumnInfo(colctr).tracking_number,1,
+                INSTR(oTheSheetColumnInfo(colctr).tracking_number,'-',1,3))||
+              '<br>'||
+              SUBSTR(oTheSheetColumnInfo(colctr).tracking_number,
+                INSTR(oTheSheetColumnInfo(colctr).tracking_number,'-',1,3) + 1)||
+              '-'||
+              oTheSheetColumnInfo(colctr).shipment_status||
+              '</A>';
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PENDINGSHIP'
+        THEN
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint :=
+              '<A HREF="http://ebs.vincic-sf.grpsc.net:8000/pls/RECO/reco_web_info.display_shipment?p_shipment_id='||
+              TO_CHAR(oTheSheetColumnInfo(colctr).shipment_id)||
+              '" target="new">'||
+              SUBSTR(oTheSheetColumnInfo(colctr).tracking_number,1,
+                INSTR(oTheSheetColumnInfo(colctr).tracking_number,'-',1,3))||
+              '<br>'||
+              SUBSTR(oTheSheetColumnInfo(colctr).tracking_number,
+                INSTR(oTheSheetColumnInfo(colctr).tracking_number,'-',1,3) + 1)||
+              '-'||
+              oTheSheetColumnInfo(colctr).STATE||
+              '</A>';
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAYPARTPROPOSEDMFG'
+        THEN
+          reco_web_functions.cell_attr := vc_Color_InvText;
+          vc_TmpTxtToPrint := 'Steel<br>Manuf';
+          
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'ENDINVTOTAL'
+        THEN
+          reco_web_functions.cell_attr := vc_Color_InvText;
+          vc_TmpTxtToPrint := 'Ending<br>INV';
+          
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'NEGATIVEINV'
+        THEN
+          reco_web_functions.cell_attr := vc_Color_InvText;
+          vc_TmpTxtToPrint := 'INV <br>Negative on';
+          
+        END IF;
+        
+        reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+        
+        vn_TmpDayCtr := vn_TmpDayCtr + 1;
+      END LOOP;
+      
+    ELSIF bSummaryReport THEN
+    
+      -- JNL REPORTING CONDITION START
+        FOR colctr IN 1 .. oTheSheetColumnInfo.count
+        LOOP
+          reco_web_functions.col_span :=
+              oTheSheetColumnInfo(colctr).num_child_cols;
+          
+          IF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PARTNAME'
+          THEN
+            reco_web_functions.cell_attr := '';
+            vc_TmpTxtToPrint :=
+                TO_CHAR(SYSDATE,'YYYY')||'<br>'||TO_CHAR(SYSDATE,'DD-MON');
+                        
+          ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAILYPARTINV'
+          THEN
+            reco_web_functions.cell_attr := vc_Color_InvText;
+            vc_TmpTxtToPrint := 'Morning<br>INV';
+            
+          ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'ENDINVTOTAL'
+          THEN
+            reco_web_functions.cell_attr := vc_Color_InvText;
+            vc_TmpTxtToPrint := 'Ending<br>INV';
+            
+          ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'NEGATIVEINV'
+          THEN
+            reco_web_functions.cell_attr := vc_Color_InvText;
+            vc_TmpTxtToPrint := 'INV <br>Negative on';
+            
+          END IF;
+          
+          --JNL REPORT IF CONDITION
+        IF colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+           reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+        END IF;
+          
+          vn_TmpDayCtr := vn_TmpDayCtr + 1;
+        END LOOP;
+       -- JNL REPORTING CONDITION END
+    END IF;
+    
+  END;
+   thelocation := 'header2';
+  reco_web_functions.print_header;
+  
+  ---
+  -- Header - Print B / G items
+  ---
+  
+  reco_web_functions.clear_headers;
+  
+  DECLARE
+    vn_TmpDayCtr number;
+    vc_TmpTxtToPrint varchar2(1000);
+    
+    TYPE nt_type IS TABLE OF number;
+	  nt nt_type := nt_type (2 ,(oTheSheetColumnInfo.count - 1) , (oTheSheetColumnInfo.count - 2));
+    
+    -- ************************************************************************************************ JNL START TOTWGHT
+    PROCEDURE proc_PrintTotalWght
+    IS
+    BEGIN -- proc_PrintTotalWght
+    
+        IF NOT bSummaryReport THEN
+          FOR colctr IN 1 .. oTheSheetColumnInfo.count
+          LOOP
+            
+            IF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PARTNAME'
+            THEN
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+              reco_web_functions.add_data_column('ShipTot');                      
+            
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAILYPARTINV'
+            THEN
+                reco_web_functions.col_span := 2;
+                IF colctr = 2
+                THEN reco_web_functions.col_span := 3;
+                END IF;
+                reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+                reco_web_functions.add_data_column(' ');                            -- JNL END
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DELIVEREDSHIP'
+            THEN
+              reco_web_functions.col_span := 2;
+              reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+                reco_web_functions.add_data_column(
+                  TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).ship_totwgt,2),
+                          '9999.00')||' Tons');
+  
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PENDINGSHIP'
+            THEN
+              reco_web_functions.col_span := 2;
+              reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+  
+                reco_web_functions.add_data_column(
+                  TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).ship_totwgt,2),
+                          '9999.00')||' Tons');
+  --          elsif oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAYPARTPROPOSEDMFG'
+  --          then
+  -- 
+  --              reco_web_functions.col_span := 1;
+  --              reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+  --              reco_web_functions.add_data_column(' ');                          -- JNL END
+  
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'ENDINVTOTAL'
+            THEN
+                reco_web_functions.col_span := 2;
+                reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+                reco_web_functions.add_data_column(' ');                      
+           
+           ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'NEGATIVEINV'
+            THEN
+                reco_web_functions.col_span := 2;
+                reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+                reco_web_functions.add_data_column(' ');  
+           
+            END IF;
+          END LOOP;
+        
+        -- JNL REPORTING CONDITION START
+        ELSIF bSummaryReport THEN
+          FOR colctr IN 1 .. oTheSheetColumnInfo.count
+          LOOP
+            
+            IF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PARTNAME'
+            THEN
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+              --JNL REPORT IF CONDITION
+              IF colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                reco_web_functions.add_data_column('ShipTot');                      
+              END IF;
+              
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAILYPARTINV'
+            THEN
+                reco_web_functions.col_span := 2;
+                IF colctr = 2
+                THEN reco_web_functions.col_span := 3;
+                END IF;
+                reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+                
+                --JNL REPORT IF CONDITION
+                IF colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                 reco_web_functions.add_data_column(' ');                            -- JNL END
+                END IF;
+                
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DELIVEREDSHIP'
+            THEN
+              reco_web_functions.col_span := 2;
+              reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+              
+              --JNL REPORT IF CONDITION
+              IF colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                reco_web_functions.add_data_column(
+                  TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).ship_totwgt,2),
+                          '9999.00')||' Tons');
+              END IF;
+  
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PENDINGSHIP'
+            THEN
+              reco_web_functions.col_span := 2;
+              reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+  
+            --JNL REPORT IF CONDITION
+              IF colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                
+                reco_web_functions.add_data_column(
+                  TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).ship_totwgt,2),
+                          '9999.00')||' Tons');
+              END IF;
+              
+  --          elsif oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAYPARTPROPOSEDMFG'
+  --          then
+  -- 
+  --              reco_web_functions.col_span := 1;
+  --              reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+  --              reco_web_functions.add_data_column(' ');                          -- JNL END
+  
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'ENDINVTOTAL'
+            THEN
+                reco_web_functions.col_span := 2;
+                reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+                
+              --JNL REPORT IF CONDITION
+              IF colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                reco_web_functions.add_data_column(' ');                      
+              END IF;
+              
+           ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'NEGATIVEINV'
+            THEN
+                reco_web_functions.col_span := 2;
+                reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+                
+                --JNL REPORT IF CONDITION
+                IF colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                  reco_web_functions.add_data_column(' '); 
+                END IF;
+           
+            END IF;
+          END LOOP;
+        END IF;
+        -- JNL REPORTING CONDITION END
+        
+        reco_web_functions.print_datarow;
+    END; -- proc_PrintTotalWght
+-- ************************************************************************************************ JNL END TOTWGHT 
+
+  BEGIN
+    vn_TmpDayCtr := 0;
+    proc_PrintTotalWght;                         -- JNL TOTAL Weight 8.0
+      thelocation := 'sheetsummary';
+    IF NOT bSummaryReport THEN
+      FOR colctr IN 1 .. oTheSheetColumnInfo.count
+      LOOP
+        
+        IF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PARTNAME'
+        THEN
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := vc_Color_InvText;
+          vc_TmpTxtToPrint := '<b>Parts</b>';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAILYPARTINV'
+        THEN
+          IF oTheSheetColumnInfo(colctr).num_child_cols = 3
+          THEN
+            reco_web_functions.col_span := 1;
+            reco_web_functions.cell_attr := '';
+            vc_TmpTxtToPrint := '<b>N</b>';
+            reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+          END IF;
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := '<b>B</b>';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := '<b>G</b>';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+  --      elsif oTheSheetColumnInfo(colctr).rptColTypeCode = 'ENDINVTOTAL'
+  --      then
+  --        reco_web_functions.col_span := 1;
+  --        reco_web_functions.cell_attr := '';
+  --        vc_TmpTxtToPrint := '<b>B</b>';
+  --        reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+  --        reco_web_functions.col_span := 1;
+  --        reco_web_functions.cell_attr := '';
+  --        vc_TmpTxtToPrint := '<b>G</b>';
+  --        reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DELIVEREDSHIP'
+        THEN
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := '<b>B</b>';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := '<b>G</b>';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PENDINGSHIP'
+        THEN
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := '<b>B</b>';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := '<b>G</b>';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAYPARTPROPOSEDMFG'
+        THEN
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := '<b>B</b>';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'ENDINVTOTAL'
+        THEN
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := '<b>B</b>';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := '<b>G</b>';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'NEGATIVEINV'
+        THEN
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := ' ';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := ' ';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+        END IF;
+        
+        vn_TmpDayCtr := vn_TmpDayCtr + 1;
+      END LOOP;
+      
+    -- JNL REPORTING CONDITION START 
+    ELSIF bSummaryReport THEN    
+      FOR colctr IN 1 .. oTheSheetColumnInfo.count
+      LOOP
+        
+        IF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PARTNAME'
+        THEN
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := vc_Color_InvText;
+          vc_TmpTxtToPrint := '<b>Parts</b>';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAILYPARTINV'
+        THEN
+          IF oTheSheetColumnInfo(colctr).num_child_cols = 3
+          THEN
+            reco_web_functions.col_span := 1;
+            reco_web_functions.cell_attr := '';
+            vc_TmpTxtToPrint := '<b>N</b>';
+            reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+          END IF;
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := '<b>B</b>';
+          
+          --JNL REPORT IF CONDITION
+          IF colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+            reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+          END IF;
+          
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := '<b>G</b>';
+          
+          --JNL REPORT IF CONDITION
+          IF colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+            reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+          END IF;
+          
+  --      elsif oTheSheetColumnInfo(colctr).rptColTypeCode = 'ENDINVTOTAL'
+  --      then
+  --        reco_web_functions.col_span := 1;
+  --        reco_web_functions.cell_attr := '';
+  --        vc_TmpTxtToPrint := '<b>B</b>';
+  --        reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+  --        reco_web_functions.col_span := 1;
+  --        reco_web_functions.cell_attr := '';
+  --        vc_TmpTxtToPrint := '<b>G</b>';
+  --        reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+  
+        -- JNL COMMENTED THE BELOW SECTION - REPORTING - 6/13/2017
+  --      elsif oTheSheetColumnInfo(colctr).rptColTypeCode = 'DELIVEREDSHIP'
+  --      then
+  --        reco_web_functions.col_span := 1;
+  --        reco_web_functions.cell_attr := '';
+  --        vc_TmpTxtToPrint := '<b>B</b>';
+  --        reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+  --        reco_web_functions.col_span := 1;
+  --        reco_web_functions.cell_attr := '';
+  --        vc_TmpTxtToPrint := '<b>G</b>';
+  --        
+  --        --JNL REPORT IF CONDITION
+  --        if colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) then
+  --          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+  --        end if;  
+  --        
+  --      elsif oTheSheetColumnInfo(colctr).rptColTypeCode = 'PENDINGSHIP'
+  --      then
+  --        reco_web_functions.col_span := 1;
+  --        reco_web_functions.cell_attr := '';
+  --        vc_TmpTxtToPrint := '<b>B</b>';
+  --        reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+  --        reco_web_functions.col_span := 1;
+  --        reco_web_functions.cell_attr := '';
+  --        vc_TmpTxtToPrint := '<b>G</b>';
+  --        
+  --         --JNL REPORT IF CONDITION
+  --        if colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) then
+  --          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+  --        end if;
+  --        
+  --      elsif oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAYPARTPROPOSEDMFG'
+  --      then
+  --        reco_web_functions.col_span := 1;
+  --        reco_web_functions.cell_attr := '';
+  --        vc_TmpTxtToPrint := '<b>B</b>';
+  --        
+  --         --JNL REPORT IF CONDITION
+  --        if colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) then
+  --          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+  --        end if;
+        
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'ENDINVTOTAL'
+        THEN
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := '<b>B</b>';
+          
+          --JNL REPORT IF CONDITION
+          IF colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+           reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+          END IF;
+          
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          
+          --JNL REPORT IF CONDITION
+          IF colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+            vc_TmpTxtToPrint := '<b>G</b>';
+          END IF;
+          
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'NEGATIVEINV'
+        THEN
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := ' ';
+          reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+          reco_web_functions.col_span := 1;
+          reco_web_functions.cell_attr := '';
+          vc_TmpTxtToPrint := ' ';
+          
+           --JNL REPORT IF CONDITION
+          IF colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+            reco_web_functions.add_header_column(vc_TmpTxtToPrint);
+          END IF;
+          
+        END IF;
+        
+        vn_TmpDayCtr := vn_TmpDayCtr + 1;
+      END LOOP;
+      
+    END IF;
+    -- JNL REPORTING CONDITION END
+    
+  END;
+  
+  reco_web_functions.print_header;
+  
+  ---
+  -- If there are no parts / rows, then we can exit early
+  -- (and also prevent possible errors of partqty = 0)
+  ---
+    thelocation := 'parts2';
+  DECLARE
+    vn_TotalPartRows number;
+  BEGIN
+    SELECT COUNT(*) INTO vn_TotalPartRows FROM reco_rstx_tmpshpcalparts;
+
+    IF vn_TotalPartRows = 0
+    THEN
+      reco_web_functions.clear_headers;
+      
+      reco_web_functions.col_span := 9;
+      reco_web_functions.cell_attr := '';
+      reco_web_functions.add_header_column(
+        'Steel Shipments');
+      reco_web_functions.print_header;
+      
+      reco_web_functions.clear_headers;
+      reco_web_functions.col_span := 9;
+      reco_web_functions.cell_attr := '';
+      reco_web_functions.add_header_column(
+        'There are no pending Shipments or Parts that are shown');
+      reco_web_functions.print_header;
+      
+      reco_web_functions.clear_headers;
+      reco_web_functions.col_span := 9;
+      reco_web_functions.cell_attr := '';
+      reco_web_functions.add_header_column(
+        'for parameter dates '||TO_CHAR(vd_FirstDateShown,'DD-MON-YYYY')||
+        ' to '||TO_CHAR(vd_LastDateShown,'DD-MON-YYYY')||', so report is blank');
+      reco_web_functions.print_header;
+      reco_web_Functions.close_spreadsheet;
+      RETURN;
+    END IF;
+  END;
+  
+  ---
+  -- Body - Print part rows
+  ---
+  
+  DECLARE
+    vb_PrevPartRowExists BOOLEAN;
+    vr_PrevPartRow reco_rstx_tmpshpcalparts%ROWTYPE;
+    
+    vn_TmpNPInvQty number;
+    vn_TmpBPInvQty number;
+    vn_TmpGPInvQty number;
+    
+    vn_TmpDayCtr number;
+       
+    CURSOR cur_ThisPartVals(pi_GivenBlackId IN number,
+                            pi_GivenGalvId IN number)
+    IS
+      SELECT  rs.truck_date shipment_date,
+              NVL(rs.tracking_number,rst.stop_identifier) tracking_number,
+              rst.shipment_id,
+              CASE
+              WHEN rs.truck_status = 'D'
+              THEN 1
+              ELSE 2
+              END sortord_shipstat,
+              rs.truck_status shipment_status,
+              SUM(NVL(rspblack.quantity,0)) totblack,
+              SUM(NVL(rspgalv.quantity,0)) totgalv
+      FROM  reco_truck rs, reco_truckstop rst,
+            reco_shipment_parts_v rspblack,
+            reco_shipment_parts_v rspgalv
+      WHERE   rst.shipment_id = rspblack.shipment_id (+)
+      AND     rspblack.part_id (+) = pi_GivenBlackId
+      AND     rspblack.orig_subinventory_code (+) = 'RSTX'
+      AND     rst.shipment_id = rspgalv.shipment_id (+)
+      AND     rspgalv.part_id (+) = pi_GivenGalvId
+      AND     rspgalv.orig_subinventory_code (+) = 'RSTX'
+      AND     rs.truck_status IN ('A','H','B','D')
+      AND     rs.truck_date >= vd_FirstDateShown
+      AND     rs.truck_date <= vd_LastDateShown
+      AND     rst.stop_truck_id = rs.truck_id
+      GROUP BY  rs.truck_date,
+                NVL(rs.tracking_number,rst.stop_identifier),
+                rst.shipment_id,
+                CASE
+                WHEN rs.truck_status = 'D'
+                THEN 1
+                ELSE 2
+                END,
+                rs.truck_status
+      HAVING      SUM(NVL(rspblack.quantity,0)) > 0
+      OR          SUM(NVL(rspgalv.quantity,0)) > 0
+      ORDER BY  rs.truck_date,
+                CASE
+                WHEN rs.truck_status = 'D'
+                THEN 1
+                ELSE 2
+                END,
+                NVL(rs.tracking_number,rst.stop_identifier),
+                rst.shipment_id;
+    
+    TYPE coll_ThisPartVals IS TABLE OF cur_ThisPartVals%ROWTYPE;
+    oThisPartVals coll_ThisPartVals; -- Fetched, so don't initialize
+    nCtrPartVals number;
+
+
+
+
+-- ************************************************************************************************* -- JNL 6.0    
+    PROCEDURE proc_PrintTwoWeightsRowsSP( p_partType IN VARCHAR2)
+    IS
+      v_partType VARCHAR2(20);
+    BEGIN -- proc_PrintTwoWeightsRowsSP
+      
+      v_partType := p_partType;
+      
+      FOR rowctr IN 1 .. 1
+      LOOP
+       
+       IF NOT bSummaryReport THEN
+          FOR colctr IN 1 .. oTheSheetColumnInfo.count
+          LOOP
+            
+            IF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PARTNAME'
+            THEN
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := '';
+              IF rowctr = 1
+              THEN reco_web_functions.add_data_column('StlTons');
+              END IF;
+  
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAILYPARTINV'
+            THEN
+              IF rowctr = 1
+              THEN
+                IF colctr = 2
+                THEN
+                  reco_web_functions.col_span := 1;
+                  reco_web_functions.cell_attr := '';
+                  
+                  IF v_partType LIKE ('S504%') THEN                         
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_npb_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D504%') THEN
+                    reco_web_functions.add_data_column(' ');
+                    
+                  ELSIF v_partType LIKE ('S506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_npb_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D506%') THEN
+                    reco_web_functions.add_data_column(' ');
+                  END IF;
+                  
+                END IF;
+                
+                reco_web_functions.col_span := 1;                                
+                reco_web_functions.cell_attr := '';
+                
+                 IF v_partType LIKE ('S504%') THEN                         
+                    reco_web_functions.add_data_column(
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2),
+                        '9999.00')||'T');
+                 ELSIF v_partType LIKE ('D504%') THEN
+                     reco_web_functions.add_data_column(           
+                       TO_CHAR(
+                         ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2),
+                         '9999.00')||'T');
+                  ELSIF v_partType LIKE ('S506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2),
+                        '9999.00')||'T');
+                  END IF;
+                
+                reco_web_functions.col_span := 1;                                  
+                reco_web_functions.cell_attr := '';
+                IF v_partType LIKE ('S504%') THEN                         
+                    reco_web_functions.add_data_column(
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D504%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('S506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2),
+                        '9999.00')||'T');
+                  END IF;
+             
+              ELSIF rowctr = 2                                                      
+              THEN
+                reco_web_functions.col_span := 2;
+                IF colctr = 2
+                THEN reco_web_functions.col_span := 3;
+                END IF;
+                reco_web_functions.cell_attr := '';
+                reco_web_functions.add_data_column(' ');                           
+              END IF;                                                               
+  
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DELIVEREDSHIP'
+            THEN
+              reco_web_functions.col_span := 2;
+              reco_web_functions.cell_attr := '';
+              IF rowctr = 1
+              THEN
+                reco_web_functions.add_data_column(
+                  TO_CHAR(ROUND(WeightForPartType(oTheSheetColumnInfo(colctr).shipment_id, v_partType),2),         --oTheSheetColumnInfoSP(colctr).ship_stlwgt,2),
+                          '9999.00')||' Tons');
+              END IF;
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PENDINGSHIP'
+            THEN
+              reco_web_functions.col_span := 2;
+              reco_web_functions.cell_attr := '';
+              IF rowctr = 1
+              THEN
+                reco_web_functions.add_data_column(
+                  TO_CHAR(ROUND(WeightForPartType(oTheSheetColumnInfo(colctr).shipment_id, v_partType),2),         --oTheSheetColumnInfo(colctr).ship_stlwgt,2),
+                          '9999.00')||' Tons');
+              END IF; 
+            
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'ENDINVTOTAL'
+            THEN
+              IF rowctr = 1
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := '';
+                IF v_partType LIKE ('S504%') THEN                         
+                    reco_web_functions.add_data_column(
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D504%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('S506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2),
+                        '9999.00')||'T');
+                END IF;
+                
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := '';
+                
+                IF v_partType LIKE ('S504%') THEN                         -- JNL NEW WRITE UP
+                    reco_web_functions.add_data_column(
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D504%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('S506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2),
+                        '9999.00')||'T');
+                END IF;
+                  
+              ELSIF rowctr = 2                                                -- JNL START
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := '';
+                reco_web_functions.add_data_column(' ');                      -- JNL END
+              END IF;
+              
+              ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'NEGATIVEINV'
+              THEN
+                reco_web_functions.col_span := 2;
+                reco_web_functions.cell_attr := '';
+                IF rowctr = 1
+                THEN
+                  reco_web_functions.add_data_column(' ');
+                ELSIF rowctr = 2                                                -- JNL START
+                THEN
+                  reco_web_functions.col_span := 2;
+                  reco_web_functions.cell_attr := '';
+                  reco_web_functions.add_data_column(' ');                      -- JNL END
+              END IF;
+              
+            END IF;
+          END LOOP;
+        
+        ELSIF bSummaryReport THEN
+          -- JNL REPORTING CONDITION START
+          FOR colctr IN 1 .. oTheSheetColumnInfo.count
+          LOOP
+            
+            IF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PARTNAME' AND
+               (colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1))
+            THEN
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := '';
+              IF rowctr = 1 
+              THEN reco_web_functions.add_data_column('StlTons');
+              END IF;
+  
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAILYPARTINV' AND
+               (colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1))
+            THEN
+              IF rowctr = 1
+              THEN
+                IF colctr = 2 
+                THEN
+                  reco_web_functions.col_span := 1;
+                  reco_web_functions.cell_attr := '';
+                  
+                  IF v_partType LIKE ('S504%')  THEN                         
+                    
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_npb_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D504%') THEN
+                    
+                    reco_web_functions.add_data_column(' ');
+                    
+                  ELSIF v_partType LIKE ('S506%') THEN
+                    
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_npb_tonn,2),
+                        '9999.00')||'T');
+                        
+                  ELSIF v_partType LIKE ('D506%') THEN
+                    reco_web_functions.add_data_column(' ');
+                  END IF;
+                  
+                END IF;
+                
+                reco_web_functions.col_span := 1;                                
+                reco_web_functions.cell_attr := '';
+                
+                 IF v_partType LIKE ('S504%') THEN                         
+                    
+                    reco_web_functions.add_data_column(
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2),
+                        '9999.00')||'T');
+                        
+                 ELSIF v_partType LIKE ('D504%')THEN
+                     reco_web_functions.add_data_column(           
+                       TO_CHAR(
+                         ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2),
+                         '9999.00')||'T');
+                  ELSIF v_partType LIKE ('S506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2),
+                        '9999.00')||'T');
+                  END IF;
+                
+                reco_web_functions.col_span := 1;                                  
+                reco_web_functions.cell_attr := '';
+                IF v_partType LIKE ('S504%') THEN                         
+                    reco_web_functions.add_data_column(
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D504%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('S506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2),
+                        '9999.00')||'T');
+                  END IF;
+             
+              ELSIF rowctr = 2                                                      
+              THEN
+                reco_web_functions.col_span := 2;
+                IF colctr = 2
+                THEN reco_web_functions.col_span := 3;
+                END IF;
+                reco_web_functions.cell_attr := '';
+                reco_web_functions.add_data_column(' ');                           
+              END IF;                                                               
+            
+            ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'ENDINVTOTAL' AND
+               (colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1))
+            THEN
+              IF rowctr = 1
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := '';
+                IF v_partType LIKE ('S504%') THEN                         
+                    reco_web_functions.add_data_column(
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D504%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('S506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2),
+                        '9999.00')||'T');
+                END IF;
+                
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := '';
+                
+                IF v_partType LIKE ('S504%') THEN                         -- JNL NEW WRITE UP
+                    reco_web_functions.add_data_column(
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D504%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('S506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2),
+                        '9999.00')||'T');
+                  ELSIF v_partType LIKE ('D506%') THEN
+                    reco_web_functions.add_data_column(           
+                      TO_CHAR(
+                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2),
+                        '9999.00')||'T');
+                END IF;
+                  
+              ELSIF rowctr = 2                                           -- JNL START
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := '';
+                reco_web_functions.add_data_column(' ');                      -- JNL END
+              END IF;
+              
+              ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'NEGATIVEINV' AND
+               (colctr = 1 OR colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1))
+              THEN
+                reco_web_functions.col_span := 2;
+                reco_web_functions.cell_attr := '';
+                IF rowctr = 1 
+                THEN
+                  reco_web_functions.add_data_column(' ');
+                ELSIF rowctr = 2                                                -- JNL START
+                THEN
+                  reco_web_functions.col_span := 2;
+                  reco_web_functions.cell_attr := '';
+                  reco_web_functions.add_data_column(' ');                      -- JNL END
+              END IF;
+              
+            END IF;
+          END LOOP;
+        
+        END IF;
+        -- JNL REPORTING CONDITION END
+        
+        reco_web_functions.print_datarow;
+      END LOOP;
+    END; -- proc_PrintTwoWeightsRowsSP
+-- ------------------------------------------------------------------------------------------------------------------------------
+-- ------------------------------------------------------------------------------------------------------------------------------
+FUNCTION getFirstNegativeDateText(
+         sectionorder IN number, 
+         pi_partName IN VARCHAR2)
+RETURN VARCHAR2
+IS
+    vc_FirstNegativeDateText VARCHAR2(100);
+    vb_FirstNegativeDateSet BOOLEAN;
+    vc_PartName VARCHAR2(100);
+BEGIN
+    vb_FirstNegativeDateSet := FALSE;
+    vc_PartName := '';
+    
+    FOR rec_CurrPartRow  IN
+    (
+      SELECT *
+      FROM reco_rstx_tmpshpcalparts 
+      WHERE 
+           n_PartNumLen BETWEEN 4 AND 34        -- JNL 4.0
+           --and sortorder = sectionorder
+           AND reco_rstx_tmpshpcalparts.G_PARTNAME = pi_partName
+      ORDER BY  sortorder,          -- 1=S504 parts, 2=D504 parts, 3=s506, 4=d506, 5=AllOther parts
+                g_partpunch,
+                g_parttype,
+                g_partnumlen
+    )
+    LOOP
+          
+      vb_FirstNegativeDateSet := FALSE;
+      vc_PartName := rec_CurrPartRow.G_PARTNAME;
+      vn_TmpNPInvQty := rec_CurrPartRow.n_originvqty;
+      vn_TmpBPInvQty := rec_CurrPartRow.b_originvqty;
+      vn_TmpGPInvQty := rec_CurrPartRow.g_originvqty;
+            
+      OPEN cur_ThisPartVals(rec_CurrPartRow.b_partid,
+                            rec_CurrPartRow.g_partid);
+      FETCH cur_ThisPartVals BULK COLLECT INTO oThisPartVals;
+      CLOSE cur_ThisPartVals;
+      
+      nCtrPartVals := 1;
+      
+      FOR colctr IN 1 .. oTheSheetColumnInfo.count
+      LOOP     
+      
+        IF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAILYPARTINV'
+        THEN
+      
+            IF ( vn_TmpGPInvQty < 0 AND vb_FirstNegativeDateSet = FALSE  )
+              THEN vc_FirstNegativeDateText := ((TO_CHAR(oTheSheetColumnInfo(colctr).shipment_date,'DY DD-MON')));
+                   vb_FirstNegativeDateSet := TRUE;
+                  EXIT;
+            END IF;
+                   
+            IF ( vn_TmpBPInvQty < 0 AND vb_FirstNegativeDateSet = FALSE )
+                THEN vc_FirstNegativeDateText := ((TO_CHAR(oTheSheetColumnInfo(colctr).shipment_date,'DY DD-MON')));
+                     vb_FirstNegativeDateSet := TRUE;
+                EXIT;
+            END IF; 
+            
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DELIVEREDSHIP'
+        THEN
+          IF nCtrPartVals <= oThisPartVals.count
+          AND oThisPartVals(nCtrPartVals).shipment_id =
+                oTheSheetColumnInfo(colctr).shipment_id
+          THEN
+          
+              -- ---------------------------------------------------------------------------------------------------------
+              -- ---------------------------------------------------------------------------------------------------------
+              IF ( oThisPartVals(nCtrPartVals).totgalv < 0 AND vb_FirstNegativeDateSet = FALSE  )
+              THEN vc_FirstNegativeDateText := ((TO_CHAR(oTheSheetColumnInfo(colctr).shipment_date,'DY DD-MON')));
+                   vb_FirstNegativeDateSet := TRUE;
+                  EXIT;
+              END IF;
+                     
+              IF ( oThisPartVals(nCtrPartVals).totblack < 0 AND vb_FirstNegativeDateSet = FALSE )
+                  THEN vc_FirstNegativeDateText := ((TO_CHAR(oTheSheetColumnInfo(colctr).shipment_date,'DY DD-MON')));
+                       vb_FirstNegativeDateSet := TRUE;
+                  EXIT;
+              END IF; 
+              -- ---------------------------------------------------------------------------------------------------------
+              -- ---------------------------------------------------------------------------------------------------------
+              
+              nCtrPartVals := nCtrPartVals + 1;
+
+          END IF;
+        ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PENDINGSHIP'
+        THEN
+          IF nCtrPartVals <= oThisPartVals.count
+          AND oThisPartVals(nCtrPartVals).shipment_id =
+                oTheSheetColumnInfo(colctr).shipment_id
+          THEN
+            IF oThisPartVals(nCtrPartVals).totblack != 0
+            THEN
+              vn_TmpBPInvQty := vn_TmpBPInvQty - oThisPartVals(nCtrPartVals).totblack;
+            END IF;
+            
+            IF oThisPartVals(nCtrPartVals).totgalv != 0
+            THEN
+              vn_TmpGPInvQty := vn_TmpGPInvQty - oThisPartVals(nCtrPartVals).totgalv;
+            END IF;
+            
+            nCtrPartVals := nCtrPartVals + 1;
+            
+            -- ---------------------------------------------------------------------------------------------------------
+            -- ---------------------------------------------------------------------------------------------------------
+            IF ( vn_TmpGPInvQty < 0 AND vb_FirstNegativeDateSet = FALSE  )
+              THEN vc_FirstNegativeDateText := ((TO_CHAR(oTheSheetColumnInfo(colctr).shipment_date,'DY DD-MON')));
+                   vb_FirstNegativeDateSet := TRUE;
+                  EXIT;
+            END IF;
+                   
+            IF ( vn_TmpBPInvQty < 0 AND vb_FirstNegativeDateSet = FALSE )
+                THEN vc_FirstNegativeDateText := ((TO_CHAR(oTheSheetColumnInfo(colctr).shipment_date,'DY DD-MON')));
+                     vb_FirstNegativeDateSet := TRUE;
+                EXIT;
+            END IF;
+            -- ---------------------------------------------------------------------------------------------------------
+            -- ---------------------------------------------------------------------------------------------------------
+
+          END IF;
+            
+        END IF;
+      END LOOP;
+thelocation := 'partrow';
+--      vr_PrevPartRow := rec_CurrPartRow;
+    
+    END LOOP; 
+    
+RETURN vc_FirstNegativeDateText;   
+EXCEPTION
+WHEN OTHERS THEN
+   raise_application_error(-20001,'An error was encountered - '||thelocation||':'||SQLCODE||' -ERROR- '||SQLERRM);
+END;
+-- -------------------------------------------------------------------------------------------------------------------------------- ------------------------------------------------------------------------------------------------------------------------------
+-- ------------------------------------------------------------------------------------------------------------------------------
+FUNCTION getEndInvNumber(
+         sectionorder IN number, 
+         pi_partName IN VARCHAR2,
+         pi_partType IN VARCHAR2)
+RETURN NUMBER
+IS
+    vc_TotalEndInvNumber NUMBER;
+    vb_FirstNegativeDateSet BOOLEAN;
+    vc_PartName VARCHAR2(100);
+BEGIN
+    vc_TotalEndInvNumber := 0;
+    vc_PartName := ' ';
+    
+    FOR rec_CurrPartRow  IN
+    (
+      SELECT *
+      FROM reco_rstx_tmpshpcalparts 
+      WHERE 
+           n_PartNumLen BETWEEN 4 AND 34        -- JNL 4.0
+           AND sortorder = sectionorder
+           AND reco_rstx_tmpshpcalparts.G_PARTNAME = pi_partName
+      ORDER BY  sortorder,          -- 1=S504 parts, 2=D504 parts, 3=s506, 4=d506, 5=AllOther parts
+                g_partpunch,
+                g_parttype,
+                g_partnumlen
+    )
+    LOOP
+          
+      vc_PartName := rec_CurrPartRow.G_PARTNAME;
+      vn_TmpNPInvQty := rec_CurrPartRow.n_originvqty;
+      vn_TmpBPInvQty := rec_CurrPartRow.b_originvqty;
+      vn_TmpGPInvQty := rec_CurrPartRow.g_originvqty;
+      
+      OPEN cur_ThisPartVals(rec_CurrPartRow.b_partid,
+                            rec_CurrPartRow.g_partid);
+      FETCH cur_ThisPartVals BULK COLLECT INTO oThisPartVals;
+      CLOSE cur_ThisPartVals;
+      
+      nCtrPartVals := 1;
+      
+--      for colctr in 1 .. oTheSheetColumnInfo.count
+--      loop     
+--      
+----        if oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAILYPARTINV'
+----        then
+----            if ( vn_TmpGPInvQty < 0 AND vb_FirstNegativeDateSet = false  )
+----              then vc_FirstNegativeDateText := ((to_char(oTheSheetColumnInfo(colctr).shipment_date,'DY DD-MON')));
+----                   vb_FirstNegativeDateSet := true;
+----                  EXIT;
+----            end if;
+----                   
+----            if ( vn_TmpBPInvQty < 0 AND vb_FirstNegativeDateSet = false )
+----                then vc_FirstNegativeDateText := ((to_char(oTheSheetColumnInfo(colctr).shipment_date,'DY DD-MON')));
+----                     vb_FirstNegativeDateSet := true;
+----                EXIT;
+----            end if;    
+----            
+----        end if;
+--      end loop;
+
+--      vr_PrevPartRow := rec_CurrPartRow;
+    
+    END LOOP; 
+    
+RETURN vc_TotalEndInvNumber;   
+EXCEPTION
+WHEN OTHERS THEN
+   raise_application_error(-20001,'An error was encountered - '||SQLCODE||' -ERROR- '||SQLERRM);
+END;
+-- ------------------------------------------------------------------------------------------------------------------------------
+-- ------------------------------------------------------------------------------------------------------------------------------
+
+PROCEDURE printsection( sectionorder IN number ) 
+IS
+    vc_PartName VARCHAR2(100);
+BEGIN
+    vb_PrevPartRowExists := FALSE;
+    vc_PartName := ' ';
+    
+    FOR rec_CurrPartRow  IN
+    (
+      SELECT *
+      FROM reco_rstx_tmpshpcalparts 
+      WHERE 
+           n_PartNumLen BETWEEN 4 AND 34        -- JNL 4.0
+           AND sortorder = sectionorder
+      ORDER BY  sortorder,          -- 1=S504 parts, 2=D504 parts, 3=s506, 4=d506, 5=AllOther parts
+                g_partpunch,
+                g_parttype,
+                g_partnumlen
+    )
+    LOOP
+    
+      vc_PartName := rec_CurrPartRow.G_PARTNAME;
+      vn_TmpNPInvQty := rec_CurrPartRow.n_originvqty;
+      vn_TmpBPInvQty := rec_CurrPartRow.b_originvqty;
+      vn_TmpGPInvQty := rec_CurrPartRow.g_originvqty;
+      
+      OPEN cur_ThisPartVals(rec_CurrPartRow.b_partid,
+                            rec_CurrPartRow.g_partid);
+      FETCH cur_ThisPartVals BULK COLLECT INTO oThisPartVals;
+      CLOSE cur_ThisPartVals;
+      
+      nCtrPartVals := 1;
+      
+      vn_TmpDayCtr := 0;
+      
+      IF NOT bSummaryReport THEN
+        FOR colctr IN 1 .. oTheSheetColumnInfo.count
+        LOOP
+
+          IF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PARTNAME'
+          THEN
+            IF rec_CurrPartRow.sortorder = sectionorder
+            THEN
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := vc_Color_InvText;
+              reco_web_functions.add_data_column(rec_CurrPartRow.G_PARTNAME);  -- JNL
+            ELSE
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := '';
+              reco_web_functions.add_data_column(
+                rec_CurrPartRow.g_partname);
+            END IF;
+                              
+          ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAILYPARTINV'
+          THEN
+            vn_TmpDayCtr := vn_TmpDayCtr + 1;
+            
+            IF oTheSheetColumnInfo(colctr).num_child_cols = 3
+            THEN
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+              IF MOD(vn_TmpDayCtr,2) = 0
+              THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+              END IF;
+              IF vn_TmpNPInvQty < 0
+                THEN reco_web_functions.cell_attr := vc_Color_Negative;
+              END IF;
+              reco_web_functions.add_data_column(TO_CHAR(vn_TmpNPInvQty));
+            END IF;
+            
+            reco_web_functions.col_span := 1;
+            reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+            IF MOD(vn_TmpDayCtr,2) = 0
+              THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+            END IF;
+            IF vn_TmpBPInvQty < 0
+              THEN reco_web_functions.cell_attr := vc_Color_Negative;
+            END IF;
+            reco_web_functions.add_data_column(TO_CHAR(vn_TmpBPInvQty));
+            
+            reco_web_functions.col_span := 1;
+            reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+            IF MOD(vn_TmpDayCtr,2) = 0
+              THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+            END IF;
+            
+            IF vn_TmpGPInvQty < 0
+              THEN reco_web_functions.cell_attr := vc_Color_Negative;
+            END IF;
+            reco_web_functions.add_data_column(TO_CHAR(vn_TmpGPInvQty));
+                 
+          ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DELIVEREDSHIP'
+          THEN
+            IF nCtrPartVals <= oThisPartVals.count
+            AND oThisPartVals(nCtrPartVals).shipment_id =
+                  oTheSheetColumnInfo(colctr).shipment_id
+            THEN
+              IF oThisPartVals(nCtrPartVals).totblack = 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+                reco_web_functions.add_data_column(' ');
+              ELSIF oThisPartVals(nCtrPartVals).totblack != 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_BlackSteel;
+                reco_web_functions.add_data_column(
+                  TO_CHAR(oThisPartVals(nCtrPartVals).totblack));
+  --              vn_TmpBPInvQty := vn_TmpBPInvQty -
+  --                oThisPartVals(nCtrPartVals).totblack;
+              END IF;
+              
+              IF oThisPartVals(nCtrPartVals).totgalv = 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+                reco_web_functions.add_data_column(' ');
+              ELSIF oThisPartVals(nCtrPartVals).totgalv != 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+                reco_web_functions.add_data_column(
+                  TO_CHAR(oThisPartVals(nCtrPartVals).totgalv));
+  --              vn_TmpGPInvQty := vn_TmpGPInvQty -
+  --                oThisPartVals(nCtrPartVals).totgalv;
+              END IF;
+              
+              nCtrPartVals := nCtrPartVals + 1;
+            ELSE
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+              reco_web_functions.add_data_column(' ');
+              reco_web_functions.add_data_column(' ');
+            END IF;
+          ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PENDINGSHIP'
+          THEN
+            IF nCtrPartVals <= oThisPartVals.count
+            AND oThisPartVals(nCtrPartVals).shipment_id =
+                  oTheSheetColumnInfo(colctr).shipment_id
+            THEN
+              IF oThisPartVals(nCtrPartVals).totblack = 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+                IF MOD(vn_TmpDayCtr,2) = 0
+                THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+                END IF;
+                reco_web_functions.add_data_column(' ');
+              ELSIF oThisPartVals(nCtrPartVals).totblack != 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_BlackSteel;
+                reco_web_functions.add_data_column(
+                  TO_CHAR(oThisPartVals(nCtrPartVals).totblack));
+                vn_TmpBPInvQty := vn_TmpBPInvQty -
+                  oThisPartVals(nCtrPartVals).totblack;
+              END IF;
+              
+              IF oThisPartVals(nCtrPartVals).totgalv = 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+                IF MOD(vn_TmpDayCtr,2) = 0
+                THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+                END IF;
+                reco_web_functions.add_data_column(' ');
+              ELSIF oThisPartVals(nCtrPartVals).totgalv != 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+                IF MOD(vn_TmpDayCtr,2) = 0
+                THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+                END IF;
+                
+                reco_web_functions.add_data_column(
+                  TO_CHAR(oThisPartVals(nCtrPartVals).totgalv));
+                vn_TmpGPInvQty := vn_TmpGPInvQty -
+                  oThisPartVals(nCtrPartVals).totgalv;
+              END IF;
+              
+              nCtrPartVals := nCtrPartVals + 1;
+            ELSE
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+              IF MOD(vn_TmpDayCtr,2) = 0
+              THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+              END IF;
+              reco_web_functions.add_data_column(' ');
+              reco_web_functions.add_data_column(' ');
+            END IF;
+            
+          ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAYPARTPROPOSEDMFG'
+          THEN
+            DECLARE
+              vn_NumberForCell number;
+            BEGIN
+              
+              SELECT SUM(punrun.qty_bars_processed)
+              INTO vn_NumberForCell
+              FROM  reco_rstx_calday calday, -- Good:get_date_toshowin_rpt description
+                    reco_rstx_punrun_hist punrun,
+                    (
+                      SELECT DISTINCT
+                              subasg.punrun_id,
+                              subreq.reqlength,
+                              subreq.reqtype,
+                              subreq.reqpunch
+                      FROM  reco_rstx_punrun_hist subrun,
+                            reco_rstx_punreq_hist subreq,
+                            reco_rstx_punasg_hist subasg
+                      WHERE   subrun.punrun_id = subasg.punrun_id
+                      AND     subasg.punreq_id = subreq.punreq_id
+                      AND     subrun.cutsch_hist_id = vn_WorkingHistId
+                      AND     subasg.cutsch_hist_id = vn_WorkingHistId
+                      AND     subreq.cutsch_hist_id = vn_WorkingHistId
+                    ) subQPartData
+              WHERE   oTheSheetColumnInfo(colctr).shipment_date = calday.thedate
+              AND     calday.calday_id = punrun.calday_id
+              AND     punrun.cutsch_hist_id = vn_WorkingHistId
+              AND     punrun.punrun_id = subQPartData.punrun_id
+              AND     subQPartData.reqlength =
+                                  rec_CurrPartRow.b_partnumlen
+              AND     subQPartData.reqtype =
+                                  rec_CurrPartRow.b_parttype
+              AND     subQPartData.reqpunch =
+                                  rec_CurrPartRow.b_partpunch;
+              --NOTE: We do not care about PunchSch coating
+              --      because for this report we label all
+              --      punching results as black pieces
+              
+              vn_NumberForCell := NVL(vn_NumberForCell,0);
+              
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+              IF MOD(vn_TmpDayCtr,2) = 0
+              THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+              END IF;
+              IF vn_NumberForCell = 0
+              THEN reco_web_functions.add_data_column(' ');
+              ELSIF vn_NumberForCell != 0
+              THEN reco_web_functions.add_data_column(TO_CHAR(vn_NumberForCell));
+              END IF;
+              
+              vn_TmpBPInvQty := vn_TmpBPInvQty + vn_NumberForCell;
+            END;
+          
+          ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'ENDINVTOTAL'
+          THEN
+            vn_TmpDayCtr := vn_TmpDayCtr + 1;
+            
+            reco_web_functions.col_span := 1;
+            reco_web_functions.cell_attr := '';
+            reco_web_functions.add_data_column(TO_CHAR(vn_TmpBPInvQty));
+            
+            reco_web_functions.col_span := 1;
+            reco_web_functions.cell_attr := '';
+            reco_web_functions.add_data_column(TO_CHAR(vn_TmpGPInvQty));
+            
+         ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'NEGATIVEINV'
+          THEN
+                      
+            reco_web_functions.col_span := 2;
+            reco_web_functions.cell_attr := vc_Color_Negative;
+            reco_web_functions.add_data_column(getFirstNegativeDateText(sectionorder, vc_PartName));
+  
+          END IF;
+        END LOOP;
+      
+      ELSIF bSummaryReport THEN
+      -- JNL REPORTING CONDITION START
+      ----------------------------------------------------------------------------------------------------------------
+      ----------------------------------------------------------------------------------------------------------------
+        FOR colctr IN 1 .. oTheSheetColumnInfo.count
+        LOOP
+          IF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PARTNAME'
+          THEN
+            IF rec_CurrPartRow.sortorder = sectionorder
+            THEN
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := vc_Color_InvText;
+              reco_web_functions.add_data_column(rec_CurrPartRow.G_PARTNAME);  -- JNL
+            ELSE
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := '';
+              reco_web_functions.add_data_column(
+                rec_CurrPartRow.g_partname);
+            END IF;
+                              
+          ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAILYPARTINV'
+          THEN
+            vn_TmpDayCtr := vn_TmpDayCtr + 1;
+            
+            IF oTheSheetColumnInfo(colctr).num_child_cols = 3
+            THEN
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+              IF MOD(vn_TmpDayCtr,2) = 0
+              THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+              END IF;
+              IF vn_TmpNPInvQty < 0
+                THEN reco_web_functions.cell_attr := vc_Color_Negative;
+              END IF;
+              
+              -- JNL REPORT IF CONDITION
+              IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                reco_web_functions.add_data_column(TO_CHAR(vn_TmpNPInvQty));
+              END IF;
+                
+            END IF;
+            
+            reco_web_functions.col_span := 1;
+            reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+            IF MOD(vn_TmpDayCtr,2) = 0
+              THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+            END IF;
+            IF vn_TmpBPInvQty < 0
+              THEN reco_web_functions.cell_attr := vc_Color_Negative;
+            END IF;
+            
+            -- JNL REPORT IF CONDITION
+            IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+              reco_web_functions.add_data_column(TO_CHAR(vn_TmpBPInvQty));
+            END IF;
+            
+            reco_web_functions.col_span := 1;
+            reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+            IF MOD(vn_TmpDayCtr,2) = 0
+              THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+            END IF;
+            
+            IF vn_TmpGPInvQty < 0
+              THEN reco_web_functions.cell_attr := vc_Color_Negative;
+            END IF;
+            
+            -- JNL REPORT IF CONDITION
+            IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+              reco_web_functions.add_data_column(TO_CHAR(vn_TmpGPInvQty));
+            END IF;
+            
+          ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DELIVEREDSHIP'
+          THEN
+            IF nCtrPartVals <= oThisPartVals.count
+            AND oThisPartVals(nCtrPartVals).shipment_id =
+                  oTheSheetColumnInfo(colctr).shipment_id
+            THEN
+              IF oThisPartVals(nCtrPartVals).totblack = 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+                -- JNL REPORT IF CONDITION
+                IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                  reco_web_functions.add_data_column(' ');
+                END IF;
+              ELSIF oThisPartVals(nCtrPartVals).totblack != 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_BlackSteel;
+                 -- JNL REPORT IF CONDITION
+                IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                  reco_web_functions.add_data_column(
+                  TO_CHAR(oThisPartVals(nCtrPartVals).totblack));
+                END IF;
+                
+  --              vn_TmpBPInvQty := vn_TmpBPInvQty -
+  --                oThisPartVals(nCtrPartVals).totblack;
+              END IF;
+              
+              IF oThisPartVals(nCtrPartVals).totgalv = 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+                -- JNL REPORT IF CONDITION
+                IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                 reco_web_functions.add_data_column(' ');
+                END IF;
+                
+                
+              ELSIF oThisPartVals(nCtrPartVals).totgalv != 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+                -- JNL REPORT IF CONDITION
+                IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                 reco_web_functions.add_data_column(
+                  TO_CHAR(oThisPartVals(nCtrPartVals).totgalv));
+                END IF;
+  
+  --              vn_TmpGPInvQty := vn_TmpGPInvQty -
+  --                oThisPartVals(nCtrPartVals).totgalv;
+              END IF;
+              
+              nCtrPartVals := nCtrPartVals + 1;
+            ELSE
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := vc_Color_DelivStdTxt;
+              
+               -- JNL REPORT IF CONDITION
+                IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                 reco_web_functions.add_data_column(' ');
+                reco_web_functions.add_data_column(' ');
+                END IF;
+                
+            END IF;
+          ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'PENDINGSHIP'
+          THEN
+            IF nCtrPartVals <= oThisPartVals.count
+            AND oThisPartVals(nCtrPartVals).shipment_id =
+                  oTheSheetColumnInfo(colctr).shipment_id
+            THEN
+
+              IF oThisPartVals(nCtrPartVals).totblack = 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+                IF MOD(vn_TmpDayCtr,2) = 0
+                THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+                END IF;
+                
+                -- JNL REPORT IF CONDITION
+                IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                reco_web_functions.add_data_column(' ');
+                END IF;
+                
+              ELSIF oThisPartVals(nCtrPartVals).totblack != 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_BlackSteel;
+                
+                -- JNL REPORT IF CONDITION
+                IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                reco_web_functions.add_data_column(
+                  TO_CHAR(oThisPartVals(nCtrPartVals).totblack));
+                END IF;
+                
+                
+                vn_TmpBPInvQty := vn_TmpBPInvQty -
+                  oThisPartVals(nCtrPartVals).totblack;
+              END IF;
+              
+              IF oThisPartVals(nCtrPartVals).totgalv = 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+                IF MOD(vn_TmpDayCtr,2) = 0
+                THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+                END IF;
+                
+                -- JNL REPORT IF CONDITION
+                IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                  reco_web_functions.add_data_column(' ');
+                END IF;
+                
+                
+              ELSIF oThisPartVals(nCtrPartVals).totgalv != 0
+              THEN
+                reco_web_functions.col_span := 1;
+                reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+                IF MOD(vn_TmpDayCtr,2) = 0
+                THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+                END IF;
+                
+                -- JNL REPORT IF CONDITION
+                IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                  reco_web_functions.add_data_column(
+                  TO_CHAR(oThisPartVals(nCtrPartVals).totgalv));
+                END IF;
+                
+                
+                vn_TmpGPInvQty := vn_TmpGPInvQty -
+                  oThisPartVals(nCtrPartVals).totgalv;
+              END IF;
+              
+              nCtrPartVals := nCtrPartVals + 1;
+            ELSE
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+              IF MOD(vn_TmpDayCtr,2) = 0
+              THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+              END IF;
+              
+                -- JNL REPORT IF CONDITION
+                IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                  reco_web_functions.add_data_column(' ');
+                  reco_web_functions.add_data_column(' ');
+                END IF;
+                  
+            END IF;
+            
+          ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'DAYPARTPROPOSEDMFG'
+          THEN
+            DECLARE
+              vn_NumberForCell number;
+            BEGIN
+              
+              SELECT SUM(punrun.qty_bars_processed)
+              INTO vn_NumberForCell
+              FROM  reco_rstx_calday calday, -- Good:get_date_toshowin_rpt description
+                    reco_rstx_punrun_hist punrun,
+                    (
+                      SELECT DISTINCT
+                              subasg.punrun_id,
+                              subreq.reqlength,
+                              subreq.reqtype,
+                              subreq.reqpunch
+                      FROM  reco_rstx_punrun_hist subrun,
+                            reco_rstx_punreq_hist subreq,
+                            reco_rstx_punasg_hist subasg
+                      WHERE   subrun.punrun_id = subasg.punrun_id
+                      AND     subasg.punreq_id = subreq.punreq_id
+                      AND     subrun.cutsch_hist_id = vn_WorkingHistId
+                      AND     subasg.cutsch_hist_id = vn_WorkingHistId
+                      AND     subreq.cutsch_hist_id = vn_WorkingHistId
+                    ) subQPartData
+              WHERE   oTheSheetColumnInfo(colctr).shipment_date = calday.thedate
+              AND     calday.calday_id = punrun.calday_id
+              AND     punrun.cutsch_hist_id = vn_WorkingHistId
+              AND     punrun.punrun_id = subQPartData.punrun_id
+              AND     subQPartData.reqlength =
+                                  rec_CurrPartRow.b_partnumlen
+              AND     subQPartData.reqtype =
+                                  rec_CurrPartRow.b_parttype
+              AND     subQPartData.reqpunch =
+                                  rec_CurrPartRow.b_partpunch;
+              --NOTE: We do not care about PunchSch coating
+              --      because for this report we label all
+              --      punching results as black pieces
+              
+              vn_NumberForCell := NVL(vn_NumberForCell,0);
+              
+              reco_web_functions.col_span := 1;
+              reco_web_functions.cell_attr := vc_Color_OddDayNorm;
+              IF MOD(vn_TmpDayCtr,2) = 0
+              THEN reco_web_functions.cell_attr := vc_Color_EvenDayNorm;
+              END IF;
+              IF vn_NumberForCell = 0
+              THEN 
+                -- JNL REPORT IF CONDITION
+                IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                  reco_web_functions.add_data_column(' ');
+                END IF;
+                
+              ELSIF vn_NumberForCell != 0
+              THEN 
+                -- JNL REPORT IF CONDITION
+                IF colctr = 2 OR colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+                  reco_web_functions.add_data_column(TO_CHAR(vn_NumberForCell));
+                END IF;
+                
+              END IF;
+              
+              vn_TmpBPInvQty := vn_TmpBPInvQty + vn_NumberForCell;
+            END;  
+          
+          ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'ENDINVTOTAL'
+          THEN
+            vn_TmpDayCtr := vn_TmpDayCtr + 1;
+            
+            reco_web_functions.col_span := 1;
+            reco_web_functions.cell_attr := '';
+            
+            -- JNL REPORT IF CONDITION
+            IF colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+              reco_web_functions.add_data_column(TO_CHAR(vn_TmpBPInvQty));
+            END IF;
+           
+            reco_web_functions.col_span := 1;
+            reco_web_functions.cell_attr := '';
+            
+            -- JNL REPORT IF CONDITION
+            IF colctr = (oTheSheetColumnInfo.count ) OR colctr = (oTheSheetColumnInfo.count - 1) THEN
+              reco_web_functions.add_data_column(TO_CHAR(vn_TmpGPInvQty));
+            END IF;
+            
+         ELSIF oTheSheetColumnInfo(colctr).rptColTypeCode = 'NEGATIVEINV'
+          THEN
+                      
+            reco_web_functions.col_span := 2;
+            reco_web_functions.cell_attr := vc_Color_Negative;
+            
+            -- JNL REPORT IF CONDITION
+            IF colctr = (oTheSheetColumnInfo.count )THEN
+              reco_web_functions.add_data_column(getFirstNegativeDateText(sectionorder, vc_PartName));
+          END IF;
+          
+          END IF;
+        END LOOP;
+      ----------------------------------------------------------------------------------------------------------------
+      ----------------------------------------------------------------------------------------------------------------
+      END IF;
+      -- JNL REPORTING CONDITION END
+      
+      reco_web_functions.print_datarow;
+      
+      vb_PrevPartRowExists := TRUE;
+      vr_PrevPartRow := rec_CurrPartRow;
+    
+    END LOOP; 
+  
+       IF sectionorder = 1 THEN proc_PrintTwoWeightsRowsSP('S504%');
+    ELSIF sectionorder = 2 THEN proc_PrintTwoWeightsRowsSP('D504%'); 
+    ELSIF sectionorder = 3 THEN proc_PrintTwoWeightsRowsSP('S506%'); 
+    ELSIF sectionorder = 4 THEN proc_PrintTwoWeightsRowsSP('D506%');      
+    ELSE proc_PrintTwoWeightsRowsSP('');
+    END IF;
+    
+END;
+
+    BEGIN -- Body - Print part rows
+      IF NVL(fnd_global.org_id,-1) <> 0 THEN
+        get_reco_organization('0');
+        END IF;
+      printsection(1);
+      printsection(2);
+      printsection(3);
+      printsection(4);
+      printsection(5);
+    
+    END; -- Body - Print part rows
+  
+  reco_web_Functions.close_spreadsheet;
+  
+EXCEPTION
+ WHEN others
+ THEN
+   htp.tableclose;
+   htp.print('Report Exception Condition:'||thelocation||'-'||sqlerrm|| -- CONTINUE HERE ADD TO OTHER FUNCTS
+            ' Date:'||TO_CHAR(SYSDATE,'DD-MON-YYYY'));
+   htp.htmlClose;
+   
+END; -- rstx_shipcal_bydate_rpt
