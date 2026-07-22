@@ -12877,157 +12877,42 @@ BEGIN -- rstx_shipcal_rpt
       
       LOOP
         
-        IF oTheSheetColumnInfo(nCtrSheetColumnInfo).rptColTypeCode
-                = 'DAILYPARTINV'
+        --added by komal 2026-07-21
+        
+        IF oTheSheetColumnInfo(nCtrSheetColumnInfo).rptColTypeCode =
+               'DAILYPARTINV'
         THEN
-          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn := 0;
-          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn := 0;
-          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn := 0;
-          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn := 0;
-          oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn := 0;
-          vn_CachedSPBMfgTot := 0;
-          vn_CachedDPBMfgTot := 0;
---          vb_FirstNegativeDateSet := false;
-          
-         /* FOR rec_TonnagesForRptDate
-          IN cur_TonnagesForRptDate(
-                  oTheSheetColumnInfo(nCtrSheetColumnInfo).shipment_date, 1, 2)
-          LOOP
-            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn :=
-                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn
-                +
-                (
-                  reco_estimation.convert_to(
-                        rec_TonnagesForRptDate.npb_unit_weight,
-                        rec_TonnagesForRptDate.npb_weight_uom_code,
-                        'TO')
-                  *
-                  (
-                    (
-                      rec_TonnagesForRptDate.npb_originvqty - 0 + 0
-                    )
-                  )
-                );
-            
-            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn :=
-                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn
-                +
-                (
-                  reco_estimation.convert_to(
-                        rec_TonnagesForRptDate.spb_unit_weight,
-                        rec_TonnagesForRptDate.spb_weight_uom_code,
-                        'TO')
-                  *
-                  (
-                    (
-                      rec_TonnagesForRptDate.spb_originvqty
-                      -
-                      rec_TonnagesForRptDate.spb_ship_cumm_qty
-                    )
-                    +
-                    rec_TonnagesForRptDate.spb_newpun_cumm_qty
-                  )
-                );
-                           
-            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn :=
-                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn
-                +
-                (
-                  reco_estimation.convert_to(
-                        rec_TonnagesForRptDate.spg_unit_weight,
-                        rec_TonnagesForRptDate.spg_weight_uom_code,
-                        'TO')
-                  *
-                  (
-                    (
-                      rec_TonnagesForRptDate.spg_originvqty
-                      -
-                      rec_TonnagesForRptDate.spg_ship_cumm_qty
-                    )
-                    +
-                    0
-                  )
-                );
-                
-            -- -------------------------------------------------------------------------------------------
---            if ( oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn < 0 AND vb_FirstNegativeDateSet = false  )
---              then 
---              oTheSheetColumnInfo(nCtrSheetColumnInfo).vcFirstNegativeDateText := 'TEST';
---              --((to_char(oTheSheetColumnInfo(nCtrSheetColumnInfo).shipment_date,'DY DD-MON')));
---              vb_FirstNegativeDateSet := true;
---            end if;
---                   
---            if ( oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn < 0 AND vb_FirstNegativeDateSet = false )
---              then 
---              oTheSheetColumnInfo(nCtrSheetColumnInfo).vcFirstNegativeDateText := 'TEST';
---              --((to_char(oTheSheetColumnInfo(nCtrSheetColumnInfo).shipment_date,'DY DD-MON')));
---              vb_FirstNegativeDateSet := true;
---            end if;              
-            -- --------------------------------------------------------------------------------------------
-            
-            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn :=
-                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn
-                +
-                (
-                  reco_estimation.convert_to(
-                        rec_TonnagesForRptDate.dpb_unit_weight,
-                        rec_TonnagesForRptDate.dpb_weight_uom_code,
-                        'TO')
-                  *
-                  (
-                    (
-                      rec_TonnagesForRptDate.dpb_originvqty
-                      -
-                      rec_TonnagesForRptDate.dpb_ship_cumm_qty
-                    )
-                    +
-                    rec_TonnagesForRptDate.dpb_newpun_cumm_qty
-                  )
-                );
-            
-            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn :=
-                oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn
-                +
-                (
-                  reco_estimation.convert_to(
-                        rec_TonnagesForRptDate.dpg_unit_weight,
-                        rec_TonnagesForRptDate.dpg_weight_uom_code,
-                        'TO')
-                  *
-                  (
-                    (
-                      rec_TonnagesForRptDate.dpg_originvqty
-                      -
-                      rec_TonnagesForRptDate.dpg_ship_cumm_qty
-                    )
-                    +
-                    0
-                  )
-                );
-          END LOOP;
-          */
-          
-        --added by KOMAL 2026-07-21
-          IF oTheSheetColumnInfo(nCtrSheetColumnInfo).rptColTypeCode = 'DAILYPARTINV'
-            THEN
-                load_daily_tonnages
-                (
-                    p_report_date => oTheSheetColumnInfo(nCtrSheetColumnInfo).shipment_date,
-                    p_sortorder1  => 1,
-                    p_sortorder2  => 2,
-                    p_n1_tons     => oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn,
-                    p_b1_tons     => oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn,
-                    p_g1_tons     => oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn,
-                    p_b2_tons     => oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn,
-                    p_g2_tons     => oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn
-                );
-            
-                vn_CachedSPBMfgTot := 0;
-                vn_CachedDPBMfgTot := 0;
-            
-            ELSIF oTheSheetColumnInfo(nCtrSheetColumnInfo).rptColTypeCode = 'ENDINVTOTAL'
-            THEN
-
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn := 0;
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn := 0;
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn := 0;
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn := 0;
+            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn := 0;
+        
+            vn_CachedSPBMfgTot := 0;
+            vn_CachedDPBMfgTot := 0;
+        
+            load_daily_tonnages
+            (
+                p_report_date =>
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).shipment_date,
+                p_sortorder1 => 1,
+                p_sortorder2 => 2,
+                p_n1_tons =>
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn,
+                p_b1_tons =>
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn,
+                p_g1_tons =>
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn,
+                p_b2_tons =>
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn,
+                p_g2_tons =>
+                    oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn
+            );
+        
+        ELSIF oTheSheetColumnInfo(nCtrSheetColumnInfo).rptColTypeCode =
+                  'ENDINVTOTAL'
+        THEN
+         
           oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn := 0;
           oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn := 0;
           oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn := 0;
@@ -14245,135 +14130,7 @@ THEN
         p_g_qty := NVL(p_g_qty, 0);
     END load_daily_inventory;
     
-        PROCEDURE load_daily_tonnages
-    (
-        p_report_date IN  DATE,
-        p_sortorder1  IN  NUMBER,
-        p_sortorder2  IN  NUMBER,
-    
-        p_n1_tons     OUT NUMBER,
-        p_b1_tons     OUT NUMBER,
-        p_g1_tons     OUT NUMBER,
-        p_b2_tons     OUT NUMBER,
-        p_g2_tons     OUT NUMBER
-    )
-    IS
-        l_hist_id NUMBER;
-    
-        FUNCTION get_part_tons
-        (
-            p_hist_id     IN NUMBER,
-            p_sortorder   IN NUMBER,
-            p_part_column IN VARCHAR2
-        )
-        RETURN NUMBER
-        IS
-            l_tons NUMBER;
-        BEGIN
-            IF p_part_column = 'N' THEN
-    
-                SELECT SUM(
-                           reco_estimation.convert_to(
-                               msib.unit_weight,
-                               msib.weight_uom_code,
-                               'TO'
-                           ) * NVL(q.quantity, 0)
-                       )
-                  INTO l_tons
-                  FROM reco_rstx_originvqty_hist q
-                  JOIN
-                  (
-                      SELECT DISTINCT n_partid AS inventory_item_id
-                        FROM reco_rstx_tmpshpcalparts
-                       WHERE sortorder = p_sortorder
-                         AND n_partid IS NOT NULL
-                  ) p
-                    ON p.inventory_item_id = q.inventory_item_id
-                  JOIN apps.mtl_system_items_b_kfv msib
-                    ON msib.inventory_item_id = q.inventory_item_id
-                   AND msib.organization_id = 0
-                 WHERE q.cutsch_hist_id = p_hist_id;
-    
-            ELSIF p_part_column = 'B' THEN
-    
-                SELECT SUM(
-                           reco_estimation.convert_to(
-                               msib.unit_weight,
-                               msib.weight_uom_code,
-                               'TO'
-                           ) * NVL(q.quantity, 0)
-                       )
-                  INTO l_tons
-                  FROM reco_rstx_originvqty_hist q
-                  JOIN
-                  (
-                      SELECT DISTINCT b_partid AS inventory_item_id
-                        FROM reco_rstx_tmpshpcalparts
-                       WHERE sortorder = p_sortorder
-                         AND b_partid IS NOT NULL
-                  ) p
-                    ON p.inventory_item_id = q.inventory_item_id
-                  JOIN apps.mtl_system_items_b_kfv msib
-                    ON msib.inventory_item_id = q.inventory_item_id
-                   AND msib.organization_id = 0
-                 WHERE q.cutsch_hist_id = p_hist_id;
-    
-            ELSIF p_part_column = 'G' THEN
-    
-                SELECT SUM(
-                           reco_estimation.convert_to(
-                               msib.unit_weight,
-                               msib.weight_uom_code,
-                               'TO'
-                           ) * NVL(q.quantity, 0)
-                       )
-                  INTO l_tons
-                  FROM reco_rstx_originvqty_hist q
-                  JOIN
-                  (
-                      SELECT DISTINCT g_partid AS inventory_item_id
-                        FROM reco_rstx_tmpshpcalparts
-                       WHERE sortorder = p_sortorder
-                         AND g_partid IS NOT NULL
-                  ) p
-                    ON p.inventory_item_id = q.inventory_item_id
-                  JOIN apps.mtl_system_items_b_kfv msib
-                    ON msib.inventory_item_id = q.inventory_item_id
-                   AND msib.organization_id = 0
-                 WHERE q.cutsch_hist_id = p_hist_id;
-    
-            END IF;
-    
-            RETURN NVL(l_tons, 0);
-        END get_part_tons;
-    
-    BEGIN
-        SELECT MAX(cutsch_hist_id)
-          INTO l_hist_id
-          FROM reco_rstx_cutsch_hist
-         WHERE thetime >= TRUNC(p_report_date)
-           AND thetime <  TRUNC(p_report_date) + 1;
-    
-        IF l_hist_id IS NULL THEN
-            /*
-              No historical snapshot exists for this date.
-              Leave Morning Inventory totals blank.
-            */
-            p_n1_tons := NULL;
-            p_b1_tons := NULL;
-            p_g1_tons := NULL;
-            p_b2_tons := NULL;
-            p_g2_tons := NULL;
-            RETURN;
-        END IF;
-    
-        p_n1_tons := get_part_tons(l_hist_id, p_sortorder1, 'N');
-        p_b1_tons := get_part_tons(l_hist_id, p_sortorder1, 'B');
-        p_g1_tons := get_part_tons(l_hist_id, p_sortorder1, 'G');
-    
-        p_b2_tons := get_part_tons(l_hist_id, p_sortorder2, 'B');
-        p_g2_tons := get_part_tons(l_hist_id, p_sortorder2, 'G');
-    END load_daily_tonnages;
+ 
 -- ************************************************************************************************* -- JNL 6.0    
     PROCEDURE proc_PrintTwoWeightsRowsSP( p_partType IN VARCHAR2)
     IS
@@ -16699,6 +16456,136 @@ BEGIN -- rstx_shipcal_rpt
     vn_CachedDPBMfgTot number;
     vn_CachedSPBMfgTot506 number;
     vn_CachedDPBMfgTot506 number;
+    
+           PROCEDURE load_daily_tonnages
+    (
+        p_report_date IN  DATE,
+        p_sortorder1  IN  NUMBER,
+        p_sortorder2  IN  NUMBER,
+    
+        p_n1_tons     OUT NUMBER,
+        p_b1_tons     OUT NUMBER,
+        p_g1_tons     OUT NUMBER,
+        p_b2_tons     OUT NUMBER,
+        p_g2_tons     OUT NUMBER
+    )
+    IS
+        l_hist_id NUMBER;
+    
+        FUNCTION get_part_tons
+        (
+            p_hist_id     IN NUMBER,
+            p_sortorder   IN NUMBER,
+            p_part_column IN VARCHAR2
+        )
+        RETURN NUMBER
+        IS
+            l_tons NUMBER;
+        BEGIN
+            IF p_part_column = 'N' THEN
+    
+                SELECT SUM(
+                           reco_estimation.convert_to(
+                               msib.unit_weight,
+                               msib.weight_uom_code,
+                               'TO'
+                           ) * NVL(q.quantity, 0)
+                       )
+                  INTO l_tons
+                  FROM reco_rstx_originvqty_hist q
+                  JOIN
+                  (
+                      SELECT DISTINCT n_partid AS inventory_item_id
+                        FROM reco_rstx_tmpshpcalparts
+                       WHERE sortorder = p_sortorder
+                         AND n_partid IS NOT NULL
+                  ) p
+                    ON p.inventory_item_id = q.inventory_item_id
+                  JOIN apps.mtl_system_items_b_kfv msib
+                    ON msib.inventory_item_id = q.inventory_item_id
+                   AND msib.organization_id = 0
+                 WHERE q.cutsch_hist_id = p_hist_id;
+    
+            ELSIF p_part_column = 'B' THEN
+    
+                SELECT SUM(
+                           reco_estimation.convert_to(
+                               msib.unit_weight,
+                               msib.weight_uom_code,
+                               'TO'
+                           ) * NVL(q.quantity, 0)
+                       )
+                  INTO l_tons
+                  FROM reco_rstx_originvqty_hist q
+                  JOIN
+                  (
+                      SELECT DISTINCT b_partid AS inventory_item_id
+                        FROM reco_rstx_tmpshpcalparts
+                       WHERE sortorder = p_sortorder
+                         AND b_partid IS NOT NULL
+                  ) p
+                    ON p.inventory_item_id = q.inventory_item_id
+                  JOIN apps.mtl_system_items_b_kfv msib
+                    ON msib.inventory_item_id = q.inventory_item_id
+                   AND msib.organization_id = 0
+                 WHERE q.cutsch_hist_id = p_hist_id;
+    
+            ELSIF p_part_column = 'G' THEN
+    
+                SELECT SUM(
+                           reco_estimation.convert_to(
+                               msib.unit_weight,
+                               msib.weight_uom_code,
+                               'TO'
+                           ) * NVL(q.quantity, 0)
+                       )
+                  INTO l_tons
+                  FROM reco_rstx_originvqty_hist q
+                  JOIN
+                  (
+                      SELECT DISTINCT g_partid AS inventory_item_id
+                        FROM reco_rstx_tmpshpcalparts
+                       WHERE sortorder = p_sortorder
+                         AND g_partid IS NOT NULL
+                  ) p
+                    ON p.inventory_item_id = q.inventory_item_id
+                  JOIN apps.mtl_system_items_b_kfv msib
+                    ON msib.inventory_item_id = q.inventory_item_id
+                   AND msib.organization_id = 0
+                 WHERE q.cutsch_hist_id = p_hist_id;
+    
+            END IF;
+    
+            RETURN NVL(l_tons, 0);
+        END get_part_tons;
+    
+    BEGIN
+        SELECT MAX(cutsch_hist_id)
+          INTO l_hist_id
+          FROM reco_rstx_cutsch_hist
+         WHERE thetime >= TRUNC(p_report_date)
+           AND thetime <  TRUNC(p_report_date) + 1;
+    
+        IF l_hist_id IS NULL THEN
+            /*
+              No historical snapshot exists for this date.
+              Leave Morning Inventory totals blank.
+            */
+            p_n1_tons := NULL;
+            p_b1_tons := NULL;
+            p_g1_tons := NULL;
+            p_b2_tons := NULL;
+            p_g2_tons := NULL;
+            RETURN;
+        END IF;
+    
+        p_n1_tons := get_part_tons(l_hist_id, p_sortorder1, 'N');
+        p_b1_tons := get_part_tons(l_hist_id, p_sortorder1, 'B');
+        p_g1_tons := get_part_tons(l_hist_id, p_sortorder1, 'G');
+    
+        p_b2_tons := get_part_tons(l_hist_id, p_sortorder2, 'B');
+        p_g2_tons := get_part_tons(l_hist_id, p_sortorder2, 'G');
+    END load_daily_tonnages;
     
     --vb_FirstNegativeDateSet BOOLEAN;
   BEGIN
