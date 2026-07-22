@@ -13008,40 +13008,26 @@ BEGIN -- rstx_shipcal_rpt
           */
           
         --added by KOMAL 2026-07-21
-        
-        IF oTheSheetColumnInfo(nCtrSheetColumnInfo).rptColTypeCode =
-       'DAILYPARTINV'
-THEN
-    load_daily_tonnages
-    (
-        p_report_date =>
-            oTheSheetColumnInfo(nCtrSheetColumnInfo).shipment_date,
+          IF oTheSheetColumnInfo(nCtrSheetColumnInfo).rptColTypeCode = 'DAILYPARTINV'
+            THEN
+                load_daily_tonnages
+                (
+                    p_report_date => oTheSheetColumnInfo(nCtrSheetColumnInfo).shipment_date,
+                    p_sortorder1  => 1,
+                    p_sortorder2  => 2,
+                    p_n1_tons     => oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn,
+                    p_b1_tons     => oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn,
+                    p_g1_tons     => oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn,
+                    p_b2_tons     => oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn,
+                    p_g2_tons     => oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn
+                );
+            
+                vn_CachedSPBMfgTot := 0;
+                vn_CachedDPBMfgTot := 0;
+            
+            ELSIF oTheSheetColumnInfo(nCtrSheetColumnInfo).rptColTypeCode = 'ENDINVTOTAL'
+            THEN
 
-        p_sortorder1  => 1,
-        p_sortorder2  => 2,
-
-        p_n1_tons =>
-            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn,
-
-        p_b1_tons =>
-            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn,
-
-        p_g1_tons =>
-            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn,
-
-        p_b2_tons =>
-            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpb_tonn,
-
-        p_g2_tons =>
-            oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_dpg_tonn
-    );
-
-    vn_CachedSPBMfgTot := 0;
-    vn_CachedDPBMfgTot := 0;
-    --end---
-        ELSIF oTheSheetColumnInfo(nCtrSheetColumnInfo).rptColTypeCode
-                = 'ENDINVTOTAL'
-        THEN
           oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_npb_tonn := 0;
           oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spb_tonn := 0;
           oTheSheetColumnInfo(nCtrSheetColumnInfo).daystrt_spg_tonn := 0;
