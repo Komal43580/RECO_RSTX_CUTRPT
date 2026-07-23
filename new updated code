@@ -1,4 +1,4 @@
-create or replace PACKAGE BODY           "RECO_RSTX_CUTRPT"
+create or replace PACKAGE BODY                "RECO_RSTX_CUTRPT"
 AS
   -- CONTINUE HERE BUGS FOUND
   -- 1) MPTX - The "uncuttable parts" exceptions does not work off the
@@ -12865,6 +12865,136 @@ BEGIN -- rstx_shipcal_rpt
     vn_CachedSPBMfgTot506 number;
     vn_CachedDPBMfgTot506 number;
     
+PROCEDURE load_daily_tonnages
+    (
+        p_report_date IN  DATE,
+        p_sortorder1  IN  NUMBER,
+        p_sortorder2  IN  NUMBER,
+    
+        p_n1_tons     OUT NUMBER,
+        p_b1_tons     OUT NUMBER,
+        p_g1_tons     OUT NUMBER,
+        p_b2_tons     OUT NUMBER,
+        p_g2_tons     OUT NUMBER
+    )
+    IS
+        l_hist_id NUMBER;
+    
+        FUNCTION get_part_tons
+        (
+            p_hist_id     IN NUMBER,
+            p_sortorder   IN NUMBER,
+            p_part_column IN VARCHAR2
+        )
+        RETURN NUMBER
+        IS
+            l_tons NUMBER;
+        BEGIN
+            IF p_part_column = 'N' THEN
+    
+                SELECT SUM(
+                           reco_estimation.convert_to(
+                               msib.unit_weight,
+                               msib.weight_uom_code,
+                               'TO'
+                           ) * NVL(q.quantity, 0)
+                       )
+                  INTO l_tons
+                  FROM reco_rstx_originvqty_hist q
+                  JOIN
+                  (
+                      SELECT DISTINCT n_partid AS inventory_item_id
+                        FROM reco_rstx_tmpshpcalparts
+                       WHERE sortorder = p_sortorder
+                         AND n_partid IS NOT NULL
+                  ) p
+                    ON p.inventory_item_id = q.inventory_item_id
+                  JOIN apps.mtl_system_items_b_kfv msib
+                    ON msib.inventory_item_id = q.inventory_item_id
+                   AND msib.organization_id = 0
+                 WHERE q.cutsch_hist_id = p_hist_id;
+    
+            ELSIF p_part_column = 'B' THEN
+    
+                SELECT SUM(
+                           reco_estimation.convert_to(
+                               msib.unit_weight,
+                               msib.weight_uom_code,
+                               'TO'
+                           ) * NVL(q.quantity, 0)
+                       )
+                  INTO l_tons
+                  FROM reco_rstx_originvqty_hist q
+                  JOIN
+                  (
+                      SELECT DISTINCT b_partid AS inventory_item_id
+                        FROM reco_rstx_tmpshpcalparts
+                       WHERE sortorder = p_sortorder
+                         AND b_partid IS NOT NULL
+                  ) p
+                    ON p.inventory_item_id = q.inventory_item_id
+                  JOIN apps.mtl_system_items_b_kfv msib
+                    ON msib.inventory_item_id = q.inventory_item_id
+                   AND msib.organization_id = 0
+                 WHERE q.cutsch_hist_id = p_hist_id;
+    
+            ELSIF p_part_column = 'G' THEN
+    
+                SELECT SUM(
+                           reco_estimation.convert_to(
+                               msib.unit_weight,
+                               msib.weight_uom_code,
+                               'TO'
+                           ) * NVL(q.quantity, 0)
+                       )
+                  INTO l_tons
+                  FROM reco_rstx_originvqty_hist q
+                  JOIN
+                  (
+                      SELECT DISTINCT g_partid AS inventory_item_id
+                        FROM reco_rstx_tmpshpcalparts
+                       WHERE sortorder = p_sortorder
+                         AND g_partid IS NOT NULL
+                  ) p
+                    ON p.inventory_item_id = q.inventory_item_id
+                  JOIN apps.mtl_system_items_b_kfv msib
+                    ON msib.inventory_item_id = q.inventory_item_id
+                   AND msib.organization_id = 0
+                 WHERE q.cutsch_hist_id = p_hist_id;
+    
+            END IF;
+    
+            RETURN NVL(l_tons, 0);
+        END get_part_tons;
+    
+    BEGIN
+        SELECT MAX(cutsch_hist_id)
+          INTO l_hist_id
+          FROM reco_rstx_cutsch_hist
+         WHERE thetime >= TRUNC(p_report_date)
+           AND thetime <  TRUNC(p_report_date) + 1;
+    
+        IF l_hist_id IS NULL THEN
+            /*
+              No historical snapshot exists for this date.
+              Leave Morning Inventory totals blank.
+            */
+            p_n1_tons := NULL;
+            p_b1_tons := NULL;
+            p_g1_tons := NULL;
+            p_b2_tons := NULL;
+            p_g2_tons := NULL;
+            RETURN;
+        END IF;
+    
+        p_n1_tons := get_part_tons(l_hist_id, p_sortorder1, 'N');
+        p_b1_tons := get_part_tons(l_hist_id, p_sortorder1, 'B');
+        p_g1_tons := get_part_tons(l_hist_id, p_sortorder1, 'G');
+    
+        p_b2_tons := get_part_tons(l_hist_id, p_sortorder2, 'B');
+        p_g2_tons := get_part_tons(l_hist_id, p_sortorder2, 'G');
+    END load_daily_tonnages;
+    
     --vb_FirstNegativeDateSet BOOLEAN;
   BEGIN
     
@@ -14165,17 +14295,19 @@ THEN
                   
                   IF v_partType LIKE ('S504%') THEN                         
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_npb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_npb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_npb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(' ');
                     
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_npb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_npb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_npb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(' ');
                   END IF;
@@ -14187,48 +14319,56 @@ THEN
                 
                  IF v_partType LIKE ('S504%') THEN                         
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2), '9999.00')||'T'
+                      END);
                  ELSIF v_partType LIKE ('D504%') THEN
                      reco_web_functions.add_data_column(           
-                       TO_CHAR(
-                         ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2),
-                         '9999.00')||'T');
+                       CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2), '9999.00')||'T'
+                      END);
                   END IF;
                 
                 reco_web_functions.col_span := 1;                                  
                 reco_web_functions.cell_attr := '';
                 IF v_partType LIKE ('S504%') THEN                         
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2), '9999.00')||'T'
+                      END);
                   END IF;
              
               ELSIF rowctr = 2                                                      
@@ -14270,24 +14410,28 @@ THEN
                 reco_web_functions.cell_attr := '';
                 IF v_partType LIKE ('S504%') THEN                         
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2), '9999.00')||'T'
+                      END);
                 END IF;
                 
                 reco_web_functions.col_span := 1;
@@ -14295,24 +14439,28 @@ THEN
                 
                 IF v_partType LIKE ('S504%') THEN                         -- JNL NEW WRITE UP
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2), '9999.00')||'T'
+                      END);
                 END IF;
                   
               ELSIF rowctr = 2                                                -- JNL START
@@ -14366,9 +14514,10 @@ THEN
                   IF v_partType LIKE ('S504%')  THEN                         
                     
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_npb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_npb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_npb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     
                     reco_web_functions.add_data_column(' ');
@@ -14376,9 +14525,10 @@ THEN
                   ELSIF v_partType LIKE ('S506%') THEN
                     
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_npb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_npb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_npb_tonn,2), '9999.00')||'T'
+                      END);
                         
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(' ');
@@ -14392,49 +14542,57 @@ THEN
                  IF v_partType LIKE ('S504%') THEN                         
                     
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2), '9999.00')||'T'
+                      END);
                         
                  ELSIF v_partType LIKE ('D504%')THEN
                      reco_web_functions.add_data_column(           
-                       TO_CHAR(
-                         ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2),
-                         '9999.00')||'T');
+                       CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2), '9999.00')||'T'
+                      END);
                   END IF;
                 
                 reco_web_functions.col_span := 1;                                  
                 reco_web_functions.cell_attr := '';
                 IF v_partType LIKE ('S504%') THEN                         
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2), '9999.00')||'T'
+                      END);
                   END IF;
              
               ELSIF rowctr = 2                                                      
@@ -14456,24 +14614,28 @@ THEN
                 reco_web_functions.cell_attr := '';
                 IF v_partType LIKE ('S504%') THEN                         
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2), '9999.00')||'T'
+                      END);
                 END IF;
                 
                 reco_web_functions.col_span := 1;
@@ -14481,24 +14643,28 @@ THEN
                 
                 IF v_partType LIKE ('S504%') THEN                         -- JNL NEW WRITE UP
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2), '9999.00')||'T'
+                      END);
                 END IF;
                   
               ELSIF rowctr = 2                                           -- JNL START
@@ -16457,135 +16623,7 @@ BEGIN -- rstx_shipcal_rpt
     vn_CachedSPBMfgTot506 number;
     vn_CachedDPBMfgTot506 number;
     
-           PROCEDURE load_daily_tonnages
-    (
-        p_report_date IN  DATE,
-        p_sortorder1  IN  NUMBER,
-        p_sortorder2  IN  NUMBER,
-    
-        p_n1_tons     OUT NUMBER,
-        p_b1_tons     OUT NUMBER,
-        p_g1_tons     OUT NUMBER,
-        p_b2_tons     OUT NUMBER,
-        p_g2_tons     OUT NUMBER
-    )
-    IS
-        l_hist_id NUMBER;
-    
-        FUNCTION get_part_tons
-        (
-            p_hist_id     IN NUMBER,
-            p_sortorder   IN NUMBER,
-            p_part_column IN VARCHAR2
-        )
-        RETURN NUMBER
-        IS
-            l_tons NUMBER;
-        BEGIN
-            IF p_part_column = 'N' THEN
-    
-                SELECT SUM(
-                           reco_estimation.convert_to(
-                               msib.unit_weight,
-                               msib.weight_uom_code,
-                               'TO'
-                           ) * NVL(q.quantity, 0)
-                       )
-                  INTO l_tons
-                  FROM reco_rstx_originvqty_hist q
-                  JOIN
-                  (
-                      SELECT DISTINCT n_partid AS inventory_item_id
-                        FROM reco_rstx_tmpshpcalparts
-                       WHERE sortorder = p_sortorder
-                         AND n_partid IS NOT NULL
-                  ) p
-                    ON p.inventory_item_id = q.inventory_item_id
-                  JOIN apps.mtl_system_items_b_kfv msib
-                    ON msib.inventory_item_id = q.inventory_item_id
-                   AND msib.organization_id = 0
-                 WHERE q.cutsch_hist_id = p_hist_id;
-    
-            ELSIF p_part_column = 'B' THEN
-    
-                SELECT SUM(
-                           reco_estimation.convert_to(
-                               msib.unit_weight,
-                               msib.weight_uom_code,
-                               'TO'
-                           ) * NVL(q.quantity, 0)
-                       )
-                  INTO l_tons
-                  FROM reco_rstx_originvqty_hist q
-                  JOIN
-                  (
-                      SELECT DISTINCT b_partid AS inventory_item_id
-                        FROM reco_rstx_tmpshpcalparts
-                       WHERE sortorder = p_sortorder
-                         AND b_partid IS NOT NULL
-                  ) p
-                    ON p.inventory_item_id = q.inventory_item_id
-                  JOIN apps.mtl_system_items_b_kfv msib
-                    ON msib.inventory_item_id = q.inventory_item_id
-                   AND msib.organization_id = 0
-                 WHERE q.cutsch_hist_id = p_hist_id;
-    
-            ELSIF p_part_column = 'G' THEN
-    
-                SELECT SUM(
-                           reco_estimation.convert_to(
-                               msib.unit_weight,
-                               msib.weight_uom_code,
-                               'TO'
-                           ) * NVL(q.quantity, 0)
-                       )
-                  INTO l_tons
-                  FROM reco_rstx_originvqty_hist q
-                  JOIN
-                  (
-                      SELECT DISTINCT g_partid AS inventory_item_id
-                        FROM reco_rstx_tmpshpcalparts
-                       WHERE sortorder = p_sortorder
-                         AND g_partid IS NOT NULL
-                  ) p
-                    ON p.inventory_item_id = q.inventory_item_id
-                  JOIN apps.mtl_system_items_b_kfv msib
-                    ON msib.inventory_item_id = q.inventory_item_id
-                   AND msib.organization_id = 0
-                 WHERE q.cutsch_hist_id = p_hist_id;
-    
-            END IF;
-    
-            RETURN NVL(l_tons, 0);
-        END get_part_tons;
-    
-    BEGIN
-        SELECT MAX(cutsch_hist_id)
-          INTO l_hist_id
-          FROM reco_rstx_cutsch_hist
-         WHERE thetime >= TRUNC(p_report_date)
-           AND thetime <  TRUNC(p_report_date) + 1;
-    
-        IF l_hist_id IS NULL THEN
-            /*
-              No historical snapshot exists for this date.
-              Leave Morning Inventory totals blank.
-            */
-            p_n1_tons := NULL;
-            p_b1_tons := NULL;
-            p_g1_tons := NULL;
-            p_b2_tons := NULL;
-            p_g2_tons := NULL;
-            RETURN;
-        END IF;
-    
-        p_n1_tons := get_part_tons(l_hist_id, p_sortorder1, 'N');
-        p_b1_tons := get_part_tons(l_hist_id, p_sortorder1, 'B');
-        p_g1_tons := get_part_tons(l_hist_id, p_sortorder1, 'G');
-    
-        p_b2_tons := get_part_tons(l_hist_id, p_sortorder2, 'B');
-        p_g2_tons := get_part_tons(l_hist_id, p_sortorder2, 'G');
-    END load_daily_tonnages;
+
     
     --vb_FirstNegativeDateSet BOOLEAN;
   BEGIN
@@ -17868,17 +17906,19 @@ BEGIN -- rstx_shipcal_rpt
                   
                   IF v_partType LIKE ('S504%') THEN                         
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_npb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_npb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_npb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(' ');
                     
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_npb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_npb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_npb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(' ');
                   END IF;
@@ -17890,48 +17930,56 @@ BEGIN -- rstx_shipcal_rpt
                 
                  IF v_partType LIKE ('S504%') THEN                         
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2), '9999.00')||'T'
+                      END);
                  ELSIF v_partType LIKE ('D504%') THEN
                      reco_web_functions.add_data_column(           
-                       TO_CHAR(
-                         ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2),
-                         '9999.00')||'T');
+                       CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2), '9999.00')||'T'
+                      END);
                   END IF;
                 
                 reco_web_functions.col_span := 1;                                  
                 reco_web_functions.cell_attr := '';
                 IF v_partType LIKE ('S504%') THEN                         
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2), '9999.00')||'T'
+                      END);
                   END IF;
              
               ELSIF rowctr = 2                                                      
@@ -17973,24 +18021,28 @@ BEGIN -- rstx_shipcal_rpt
                 reco_web_functions.cell_attr := '';
                 IF v_partType LIKE ('S504%') THEN                         
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2), '9999.00')||'T'
+                      END);
                 END IF;
                 
                 reco_web_functions.col_span := 1;
@@ -17998,24 +18050,28 @@ BEGIN -- rstx_shipcal_rpt
                 
                 IF v_partType LIKE ('S504%') THEN                         -- JNL NEW WRITE UP
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2), '9999.00')||'T'
+                      END);
                 END IF;
                   
               ELSIF rowctr = 2                                                -- JNL START
@@ -18069,9 +18125,10 @@ BEGIN -- rstx_shipcal_rpt
                   IF v_partType LIKE ('S504%')  THEN                         
                     
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_npb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_npb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_npb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     
                     reco_web_functions.add_data_column(' ');
@@ -18079,9 +18136,10 @@ BEGIN -- rstx_shipcal_rpt
                   ELSIF v_partType LIKE ('S506%') THEN
                     
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_npb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_npb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_npb_tonn,2), '9999.00')||'T'
+                      END);
                         
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(' ');
@@ -18095,49 +18153,57 @@ BEGIN -- rstx_shipcal_rpt
                  IF v_partType LIKE ('S504%') THEN                         
                     
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2), '9999.00')||'T'
+                      END);
                         
                  ELSIF v_partType LIKE ('D504%')THEN
                      reco_web_functions.add_data_column(           
-                       TO_CHAR(
-                         ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2),
-                         '9999.00')||'T');
+                       CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2), '9999.00')||'T'
+                      END);
                   END IF;
                 
                 reco_web_functions.col_span := 1;                                  
                 reco_web_functions.cell_attr := '';
                 IF v_partType LIKE ('S504%') THEN                         
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2), '9999.00')||'T'
+                      END);
                   END IF;
              
               ELSIF rowctr = 2                                                      
@@ -18159,24 +18225,28 @@ BEGIN -- rstx_shipcal_rpt
                 reco_web_functions.cell_attr := '';
                 IF v_partType LIKE ('S504%') THEN                         
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spb_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpb_tonn,2), '9999.00')||'T'
+                      END);
                 END IF;
                 
                 reco_web_functions.col_span := 1;
@@ -18184,24 +18254,28 @@ BEGIN -- rstx_shipcal_rpt
                 
                 IF v_partType LIKE ('S504%') THEN                         -- JNL NEW WRITE UP
                     reco_web_functions.add_data_column(
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D504%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt_dpg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('S506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_spg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_spg_tonn,2), '9999.00')||'T'
+                      END);
                   ELSIF v_partType LIKE ('D506%') THEN
                     reco_web_functions.add_data_column(           
-                      TO_CHAR(
-                        ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2),
-                        '9999.00')||'T');
+                      CASE
+                        WHEN oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn IS NULL THEN NULL
+                        ELSE TO_CHAR(ROUND(oTheSheetColumnInfo(colctr).daystrt506_dpg_tonn,2), '9999.00')||'T'
+                      END);
                 END IF;
                   
               ELSIF rowctr = 2                                           -- JNL START
