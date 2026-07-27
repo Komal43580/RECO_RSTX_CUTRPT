@@ -1,0 +1,3750 @@
+create or replace PACKAGE BODY reco_bill_production AS
+
+
+
+FUNCTION date_billed( indate IN date ) RETURN BOOLEAN IS
+
+CURSOR lookupdate IS
+  SELECT * FROM reco_pcf_billing
+ WHERE billed_date = indate;
+
+BEGIN
+  currentbilling := clearrow;
+  OPEN lookupdate;
+  FETCH lookupdate INTO currentbilling;
+  CLOSE lookupdate;
+
+  IF currentbilling.billed_date IS NOT NULL THEN
+     RETURN TRUE;
+  END IF;
+  RETURN FALSE;
+END;
+
+FUNCTION waco_date_billed( indate IN date ) RETURN BOOLEAN IS
+
+CURSOR lookupdate IS
+  SELECT * FROM reco_waco_pcf_billing
+ WHERE billed_date = indate;
+
+BEGIN
+  wacobilling := clearwaco;
+  OPEN lookupdate;
+  FETCH lookupdate INTO wacobilling;
+  CLOSE lookupdate;
+
+  IF wacobilling.billed_date IS NOT NULL THEN
+     RETURN TRUE;
+  END IF;
+  RETURN FALSE;
+END;
+
+FUNCTION georgia_date_billed( indate IN date ) RETURN BOOLEAN IS
+
+CURSOR lookupdate IS
+  SELECT * FROM reco_georgia_pcf_billing
+ WHERE billed_date = indate;
+
+BEGIN
+  georgiabilling := cleargeorgia;
+  OPEN lookupdate;
+  FETCH lookupdate INTO georgiabilling;
+  CLOSE lookupdate;
+
+  IF georgiabilling.billed_date IS NOT NULL THEN
+     RETURN TRUE;
+  END IF;
+  RETURN FALSE;
+END;
+
+FUNCTION florida_date_billed( indate IN date ) RETURN BOOLEAN IS
+
+CURSOR lookupdate IS
+  SELECT * FROM reco_florida_pcf_billing
+ WHERE billed_date = indate;
+
+BEGIN
+  floridabilling := clearflorida;
+  OPEN lookupdate;
+  FETCH lookupdate INTO floridabilling;
+  CLOSE lookupdate;
+
+  IF floridabilling.billed_date IS NOT NULL THEN
+     RETURN TRUE;
+  END IF;
+  RETURN FALSE;
+END;
+
+FUNCTION ca_date_billed( indate IN date ) RETURN BOOLEAN IS
+
+CURSOR lookupdate IS
+  SELECT * FROM reco_ca_pcf_billing
+ WHERE billed_date = indate;
+
+BEGIN
+  cabilling := clearca;
+  OPEN lookupdate;
+  FETCH lookupdate INTO cabilling;
+  CLOSE lookupdate;
+
+  IF cabilling.billed_date IS NOT NULL THEN
+     RETURN TRUE;
+  END IF;
+  RETURN FALSE;
+END;
+
+FUNCTION lb_date_billed( indate IN date ) RETURN BOOLEAN IS
+
+CURSOR lookupdate IS
+  SELECT * FROM reco_lb_pcf_billing
+ WHERE billed_date = indate;
+
+BEGIN
+  lbbilling := clearlb;
+  OPEN lookupdate;
+  FETCH lookupdate INTO lbbilling;
+  CLOSE lookupdate;
+
+  IF lbbilling.billed_date IS NOT NULL THEN
+     RETURN TRUE;
+  END IF;
+  RETURN FALSE;
+END;
+
+FUNCTION wm_date_billed( indate IN date ) RETURN BOOLEAN IS
+
+CURSOR lookupdate IS
+  SELECT * FROM reco_wm_pcf_billing
+ WHERE billed_date = indate;
+
+BEGIN
+  wmbilling := clearwm;
+  OPEN lookupdate;
+  FETCH lookupdate INTO wmbilling;
+  CLOSE lookupdate;
+
+  IF wmbilling.billed_date IS NOT NULL THEN
+     RETURN TRUE;
+  END IF;
+  RETURN FALSE;
+END;
+
+
+PROCEDURE  bill_all( errbuf OUT varchar2,
+                     retcode OUT number,
+                     billing_date IN varchar2 ) IS
+vv varchar2(500);
+n number := 0;
+lastrun varchar2(80) := get_reco_variable('Last Production Run Date');
+nn date;
+BEGIN
+  FND_FILE.PUT_LINE(FND_FILE.Log,'BILL_ALL LastRun:'||lastrun);
+  nn := fnd_date.string_to_date( lastrun, 'DD-MON-YYYY' );
+  if nn < trunc(sysdate-30) then
+     FND_FILE.PUT_LINE(FND_FILE.Log,'Date more than 30 days old, reset to 30 days LastRun:'||lastrun);
+     nn := trunc(sysdate-30);
+  end if;
+  IF nn < trunc(SYSDATE) THEN
+     nn := nn + 1;
+  END IF;
+  lastrun := TO_CHAR( nn, 'DD-MON-YYYY' );
+  FND_FILE.PUT_LINE(FND_FILE.Log,'BILL_ALL New LastRun:'||lastrun);
+
+  bill_precast( vv, retcode, lastrun );
+  errbuf := vv;
+  n := NVL(retcode,0);
+  vv := NULL;
+  bill_waco( vv, retcode, lastrun );
+  errbuf := errbuf || vv;
+  retcode := NVL(retcode,0) + n;
+  bill_georgia( vv, retcode, lastrun );
+  errbuf := errbuf || vv;
+  retcode := NVL(retcode,0) + n;
+  bill_florida( vv, retcode, lastrun );
+  errbuf := errbuf || vv;
+  retcode := NVL(retcode,0) + n;
+  bill_ca( vv, retcode, lastrun );
+  errbuf := errbuf || vv;
+  retcode := NVL(retcode,0) + n;
+  bill_lb( vv, retcode, lastrun );
+  errbuf := errbuf || vv;
+  retcode := NVL(retcode,0) + n;
+  bill_wm( vv, retcode, lastrun );
+  errbuf := errbuf || vv;
+  retcode := NVL(retcode,0) + n;
+
+  FND_FILE.PUT_LINE(FND_FILE.Log,'BILL_ALL result messages:'||errbuf);
+
+  IF retcode = 0 THEN
+     FND_FILE.PUT_LINE(FND_FILE.Log,'BILL_ALL No errors, New LastRun:'||lastrun);
+     UPDATE reco_domain_data set data_value = lastrun
+    WHERE domain_name = 'RECO_VARIABLES' AND data_desc = 'Last Production Run Date';
+    COMMIT;
+  END IF;
+
+END;
+
+
+PROCEDURE  bill_precast( errbuf OUT varchar2,
+                         retcode OUT number,
+                         billing_date IN varchar2  ) IS
+
+-- This procedure bills standard outside precaster entries only
+-- for the date entered.   It checks to be sure the date has not
+-- been processed, in which case it returns a failure code
+--
+junkval number;
+BEGIN
+  IF billing_date IS NULL THEN
+     errbuf := 'Invalid Date Entered';
+     retcode := -1;
+     RAISE NO_DATA_FOUND;
+  ELSE
+     currentbilldate := fnd_date.string_to_date( billing_date, 'DD-MON-YYYY' );
+
+     IF date_billed( billing_date ) THEN
+           errbuf := 'Precast Date billed';
+           retcode := -1;
+           RAISE NO_DATA_FOUND;
+     END IF;
+  END IF;
+  currentbilling.billed_date := billing_date;
+  currentbilling.bill_range_low := billing_date;
+  currentbilling.bill_range_high := billing_date;
+  currentbilling.last_UPDATE_date := SYSDATE;
+  currentbilling.creation_date := SYSDATE;
+  currentbilling.last_updated_by := apps.fnd_global.user_ID;
+  currentbilling.created_by := apps.fnd_global.user_id;
+  currentbilling.last_update_login := apps.fnd_global.session_id;
+
+  INSERT INTO reco_pcf_billing VALUES  currentbilling ;
+
+  reco_bill_production.reco_pass_production( billing_date, billing_date, 0, billing_date );
+
+  reco_bill_production.reco_ship_billing( billing_date, billing_date, 0 );
+
+--  Summary report
+     IF fnd_request.set_print_options( '\\OPRINT\O_ACC', 'LANDPS', 1, NULL,NULL ) = FALSE THEN
+        Dbms_Output.Put_Line( 'Unable to set printing options' );
+     END IF;
+   junkval := fnd_request.submit_request( 'RECPC', 'PRODTRANSLIST',
+            'RECO Production Transfer Import Listing',
+            NULL,FALSE  );
+   Dbms_Output.Put_Line( 'Import listing:'||TO_CHAR(junkval)  );
+
+
+  COMMIT;
+  retcode := 0;
+
+EXCEPTION
+  WHEN OTHERS THEN
+     errbuf := errbuf||' '||SQLERRM;
+END;
+
+
+PROCEDURE  bill_waco( errbuf OUT varchar2,
+                         retcode OUT number,
+                         billing_date IN varchar2  ) IS
+
+-- This procedure bills standard outside precaster entries only
+-- for the date entered.   It checks to be sure the date has not
+-- been processed, in which case it returns a failure code
+--
+junkval number;
+BEGIN
+  IF billing_date IS NULL THEN
+     errbuf := 'Invalid Date Entered';
+     retcode := -1;
+     RAISE NO_DATA_FOUND;
+  ELSE
+     currentbilldate := fnd_date.string_to_date( billing_date, 'DD-MON-YYYY' );
+
+     IF waco_date_billed( billing_date ) THEN
+           errbuf := 'WACO Date billed';
+           retcode := -1;
+           RAISE NO_DATA_FOUND;
+     END IF;
+  END IF;
+  wacobilling.billed_date := billing_date;
+  wacobilling.bill_range_low := billing_date;
+  wacobilling.bill_range_high := billing_date;
+  wacobilling.last_UPDATE_date := SYSDATE;
+  wacobilling.creation_date := SYSDATE;
+  wacobilling.last_updated_by := apps.fnd_global.user_ID;
+  wacobilling.created_by := apps.fnd_global.user_id;
+  wacobilling.last_update_login := apps.fnd_global.session_id;
+
+  INSERT INTO reco_waco_pcf_billing VALUES  wacobilling ;
+
+  reco_bill_production.reco_waco_pass_production( billing_date, billing_date, 0, billing_date );
+
+  reco_bill_production.reco_waco_ship_billing( billing_date, billing_date, 0 );
+
+  COMMIT;
+  retcode := 0;
+
+EXCEPTION
+  WHEN OTHERS THEN
+     errbuf := errbuf||' '||SQLERRM;
+END;
+
+PROCEDURE  bill_georgia( errbuf OUT varchar2,
+                         retcode OUT number,
+                         billing_date IN varchar2  ) IS
+
+-- This procedure bills standard georgia precaster entries only
+-- for the date entered.   It checks to be sure the date has not
+-- been processed, in which case it returns a failure code
+--
+junkval number;
+BEGIN
+  IF billing_date IS NULL THEN
+     errbuf := 'Invalid Date Entered';
+     retcode := -1;
+     RAISE NO_DATA_FOUND;
+  ELSE
+     currentbilldate := fnd_date.string_to_date( billing_date, 'DD-MON-YYYY' );
+
+     IF georgia_date_billed( billing_date ) THEN
+           errbuf := 'GEORGIA Date billed';
+           retcode := -1;
+           RAISE NO_DATA_FOUND;
+     END IF;
+  END IF;
+  georgiabilling.billed_date := billing_date;
+  georgiabilling.bill_range_low := billing_date;
+  georgiabilling.bill_range_high := billing_date;
+  georgiabilling.last_UPDATE_date := SYSDATE;
+  georgiabilling.creation_date := SYSDATE;
+  georgiabilling.last_updated_by := apps.fnd_global.user_ID;
+  georgiabilling.created_by := apps.fnd_global.user_id;
+  georgiabilling.last_update_login := apps.fnd_global.session_id;
+
+  INSERT INTO reco_georgia_pcf_billing VALUES  georgiabilling ;
+
+  reco_bill_production.reco_georgia_pass_production( billing_date, billing_date, 0, billing_date );
+
+  reco_bill_production.reco_georgia_ship_billing( billing_date, billing_date, 0 );
+
+  COMMIT;
+  retcode := 0;
+
+EXCEPTION
+  WHEN OTHERS THEN
+     errbuf := errbuf||' '||SQLERRM;
+END;
+
+PROCEDURE  bill_florida( errbuf OUT varchar2,
+                         retcode OUT number,
+                         billing_date IN varchar2  ) IS
+
+-- This procedure bills standard florida precaster entries only
+-- for the date entered.   It checks to be sure the date has not
+-- been processed, in which case it returns a failure code
+--
+junkval number;
+BEGIN
+  IF billing_date IS NULL THEN
+     errbuf := 'Invalid Date Entered';
+     retcode := -1;
+     RAISE NO_DATA_FOUND;
+  ELSE
+     currentbilldate := fnd_date.string_to_date( billing_date, 'DD-MON-YYYY' );
+
+     IF florida_date_billed( billing_date ) THEN
+           errbuf := 'FLORIDA Date billed';
+           retcode := -1;
+           RAISE NO_DATA_FOUND;
+     END IF;
+  END IF;
+  floridabilling.billed_date := billing_date;
+  floridabilling.bill_range_low := billing_date;
+  floridabilling.bill_range_high := billing_date;
+  floridabilling.last_UPDATE_date := SYSDATE;
+  floridabilling.creation_date := SYSDATE;
+  floridabilling.last_updated_by := apps.fnd_global.user_ID;
+  floridabilling.created_by := apps.fnd_global.user_id;
+  floridabilling.last_update_login := apps.fnd_global.session_id;
+
+  INSERT INTO reco_florida_pcf_billing VALUES  floridabilling ;
+
+  reco_bill_production.reco_florida_pass_production( billing_date, billing_date, 0, billing_date );
+
+  reco_bill_production.reco_florida_ship_billing( billing_date, billing_date, 0 );
+
+  COMMIT;
+  retcode := 0;
+
+EXCEPTION
+  WHEN OTHERS THEN
+     errbuf := errbuf||' '||SQLERRM;
+END;
+
+PROCEDURE  bill_ca( errbuf OUT varchar2,
+                         retcode OUT number,
+                         billing_date IN varchar2  ) IS
+
+-- This procedure bills standard ca precaster entries only
+-- for the date entered.   It checks to be sure the date has not
+-- been processed, in which case it returns a failure code
+--
+junkval number;
+BEGIN
+  IF billing_date IS NULL THEN
+     errbuf := 'Invalid Date Entered';
+     retcode := -1;
+     RAISE NO_DATA_FOUND;
+  ELSE
+     currentbilldate := fnd_date.string_to_date( billing_date, 'DD-MON-YYYY' );
+
+     IF ca_date_billed( billing_date ) THEN
+           errbuf := 'CA Date billed';
+           retcode := -1;
+           RAISE NO_DATA_FOUND;
+     END IF;
+  END IF;
+  cabilling.billed_date := billing_date;
+  cabilling.bill_range_low := billing_date;
+  cabilling.bill_range_high := billing_date;
+  cabilling.last_UPDATE_date := SYSDATE;
+  cabilling.creation_date := SYSDATE;
+  cabilling.last_updated_by := apps.fnd_global.user_ID;
+  cabilling.created_by := apps.fnd_global.user_id;
+  cabilling.last_update_login := apps.fnd_global.session_id;
+
+  INSERT INTO reco_ca_pcf_billing VALUES  cabilling ;
+
+  reco_bill_production.reco_ca_pass_production( billing_date, billing_date, 0, billing_date );
+
+  reco_bill_production.reco_ca_ship_billing( billing_date, billing_date, 0 );
+
+  COMMIT;
+  retcode := 0;
+
+EXCEPTION
+  WHEN OTHERS THEN
+     errbuf := errbuf||' '||SQLERRM;
+END;
+
+PROCEDURE  bill_lb( errbuf OUT varchar2,
+                         retcode OUT number,
+                         billing_date IN varchar2  ) IS
+
+-- This procedure bills standard ca precaster entries only
+-- for the date entered.   It checks to be sure the date has not
+-- been processed, in which case it returns a failure code
+--
+junkval number;
+BEGIN
+  IF billing_date IS NULL THEN
+     errbuf := 'Invalid Date Entered';
+     retcode := -1;
+     RAISE NO_DATA_FOUND;
+  ELSE
+     currentbilldate := fnd_date.string_to_date( billing_date, 'DD-MON-YYYY' );
+
+     IF lb_date_billed( billing_date ) THEN
+           errbuf := 'LB Date billed';
+           retcode := -1;
+           RAISE NO_DATA_FOUND;
+     END IF;
+  END IF;
+  lbbilling.billed_date := billing_date;
+  lbbilling.bill_range_low := billing_date;
+  lbbilling.bill_range_high := billing_date;
+  lbbilling.last_UPDATE_date := SYSDATE;
+  lbbilling.creation_date := SYSDATE;
+  lbbilling.last_updated_by := apps.fnd_global.user_ID;
+  lbbilling.created_by := apps.fnd_global.user_id;
+  lbbilling.last_update_login := apps.fnd_global.session_id;
+
+  INSERT INTO reco_lb_pcf_billing VALUES  lbbilling ;
+
+  reco_bill_production.reco_lb_pass_production( billing_date, billing_date, 0, billing_date );
+
+  reco_bill_production.reco_lb_ship_billing( billing_date, billing_date, 0 );
+
+  COMMIT;
+  retcode := 0;
+
+EXCEPTION
+  WHEN OTHERS THEN
+     errbuf := errbuf||' '||SQLERRM;
+END;
+
+PROCEDURE  bill_wm( errbuf OUT varchar2,
+                         retcode OUT number,
+                         billing_date IN varchar2  ) IS
+
+-- This procedure bills standard wm precaster entries only
+-- for the date entered.   It checks to be sure the date has not
+-- been processed, in which case it returns a failure code
+--
+junkval number;
+BEGIN
+  IF billing_date IS NULL THEN
+     errbuf := 'Invalid Date Entered';
+     retcode := -1;
+     RAISE NO_DATA_FOUND;
+  ELSE
+     currentbilldate := fnd_date.string_to_date( billing_date, 'DD-MON-YYYY' );
+
+     IF wm_date_billed( billing_date ) THEN
+           errbuf := 'WM Date billed';
+           retcode := -1;
+           RAISE NO_DATA_FOUND;
+     END IF;
+  END IF;
+  wmbilling.billed_date := billing_date;
+  wmbilling.bill_range_low := billing_date;
+  wmbilling.bill_range_high := billing_date;
+  wmbilling.last_UPDATE_date := SYSDATE;
+  wmbilling.creation_date := SYSDATE;
+  wmbilling.last_updated_by := apps.fnd_global.user_ID;
+  wmbilling.created_by := apps.fnd_global.user_id;
+  wmbilling.last_update_login := apps.fnd_global.session_id;
+
+  INSERT INTO reco_wm_pcf_billing VALUES  wmbilling ;
+
+  reco_bill_production.reco_wm_pass_production( billing_date, billing_date, 0, billing_date );
+
+  reco_bill_production.reco_wm_ship_billing( billing_date, billing_date, 0 );
+
+  COMMIT;
+  retcode := 0;
+
+EXCEPTION
+  WHEN OTHERS THEN
+     errbuf := errbuf||' '||SQLERRM;
+END;
+
+
+
+PROCEDURE RECO_PASS_PRODUCTION ( bdate IN date,
+                                                   edate IN date,
+                                                   action IN number,
+                                                   billdate IN date DEFAULT TRUNC(SYSDATE) ) IS
+--
+-- This procedure finds production entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated lots with a billed flag of 'X' for transfer begins
+-- and the date.
+-- After the transactions have been posted, billed is set to 'Y'.'
+--  It also updates the 'quantity billed' in the requirements table.
+--  for negative transactions it sets the appropriate flag
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+-- if -2 is passed, it outputs messages and does NOT commit
+--
+-- 3/10 added calls to run concurrent printouts
+--
+begindate date;
+enddate date;
+howmany number;
+
+-- only difference, this one does not do waco anymore
+CURSOR getproduction IS
+     SELECT /*+ ORDERED USE_NL( L,P,V,PC,PR,PA,T ) */ l.lot_id,
+          l.lot_date,
+          TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))) end_of_week,
+          segment1 project_num,
+          t.task_number,
+          v.expenditure_type,
+          SUM(p.quantity_produced*pr.area_per_piece) qty,
+          v.unit_price,
+          v.pcf_id
+  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+        reco_production p, reco_production_requirements pr,
+        pa_projects pa, pa_tasks t
+  WHERE   l.billed_flag = 'N'
+  AND     l.lot_date <= enddate
+  AND     p.lot_id = l.lot_id
+  AND     v.pcf_id = l.pcf_id
+  AND     pc.pcf_id = v.pcf_id
+  AND     pc.revision_number = v.revision_number
+  AND     pr.pc_id = p.pc_id
+  and     pr.revision_number = pc.revision_number
+  AND     v.task_id != 1995
+  AND     v.vendor_id not in ( wacovendorid, georgiavendorid, floridavendorid, cavendorid, lbvendorid, wmvendorid )
+  AND     pa.project_id = v.project_id
+  AND     t.task_id = v.task_id
+  GROUP BY l.lot_id, l.lot_date,
+            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+
+CURSOR startproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < begindate
+          AND pcf_id = pcfid;
+
+CURSOR endproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < enddate
+          AND pcf_id = pcfid;
+
+CURSOR pdbilled( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM reco_production_v
+        WHERE lot_date BETWEEN begindate AND enddate
+          AND billed_flag = 'Y'
+          AND pcf_id = pcfid;
+
+-- corrected to give correct overage number
+CURSOR startoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < begindate
+        AND billed_date < billdate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR endoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < enddate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR getbilled IS
+         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+          pp.project_id, pv.revision_number
+         FROM reco_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+
+CURSOR getemployee (thepid number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+CURSOR getvendor (pcfid number ) IS
+    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+
+CURSOR gnum IS
+   SELECT transentry_seq.NEXTVAL FROM dual;
+
+enum  per_people_f.employee_number%TYPE;
+calcunits number;
+calccost number;
+debug BOOLEAN := FALSE;
+tinum varchar2(10);
+tvalue  number;
+
+sprod number;
+eprod number;
+sover number;
+eover number;
+billed number;
+junkval number;
+
+isnegative  varchar2(1) := 'N';
+adjusteddate date := NULL;
+adjustedeow  date := NULL;
+expcomment   varchar2(240) := NULL;
+vendor  number;
+transtype varchar2(30);
+
+dfltempnum   number := get_reco_variable('Default Precast Employee');
+
+BEGIN
+
+  begindate := bdate;
+  enddate := edate + .999;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+  howmany := 0;
+
+--
+  FOR eachone IN getproduction LOOP
+--
+     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+     INSERT INTO reco_prod_billing (
+          lot_id, end_of_week, lot_date, project_num, task_number,
+          expenditure_type, qty, calccost, pcf_id, unit_price )
+     VALUES (
+          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+--
+     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+     END IF;
+     howmany := howmany + 1;
+  END LOOP;
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  FOR eachtwo IN getbilled LOOP
+-- get enum for each project line
+     OPEN getemployee( eachtwo.project_id );
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+--
+     -- get vendor 8/5
+     OPEN getvendor( eachtwo.pcf_id );
+     FETCH getvendor INTO vendor;
+     CLOSE getvendor;
+     --
+     OPEN gnum;
+     FETCH gnum INTO tvalue;
+     CLOSE gnum;
+     OPEN startproduction( eachtwo.pcf_id );
+     FETCH startproduction INTO sprod;
+     CLOSE startproduction;
+     OPEN endproduction( eachtwo.pcf_id );
+     FETCH endproduction INTO eprod;
+     CLOSE endproduction;
+     OPEN startoverage( eachtwo.pcf_id );
+     FETCH startoverage INTO sover;
+     CLOSE startoverage;
+     OPEN endoverage( eachtwo.pcf_id );
+     FETCH endoverage INTO eover;
+     CLOSE endoverage;
+     OPEN pdbilled( eachtwo.pcf_id );
+     FETCH pdbilled INTO billed;
+     CLOSE pdbilled;
+
+     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+     --calcunits := ( calcunits - nvl(billed,0) );
+     calccost := calcunits * eachtwo.unit_price;
+
+     tinum := 'P'||TO_CHAR(tvalue);
+
+     IF NVL(calccost,0) < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+--
+--  4-13 determine correct lot date if previous period lots
+     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+        adjusteddate := eachtwo.ldate;
+        adjustedeow  := eachtwo.eow;
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+        transtype := 'CURRENT';
+     ELSE
+        adjusteddate := begindate + (enddate - begindate)/2;
+        adjustedeow := TRUNC(adjusteddate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjusteddate),'d'))));
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Previous period production.';
+        transtype := 'PREVIOUS';
+     END IF;
+     IF NVL(calccost,0) <> 0 THEN
+        INSERT INTO apps.pa_transaction_interface_all (
+              transaction_source, batch_name, expenditure_ending_date,
+              expenditure_item_date, project_number, task_number,
+              expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+              orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+              expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, org_id )
+         VALUES (
+              --'PRODUCTION'
+              'RECO Production', tinum, adjustedeow, adjusteddate,
+              eachtwo.project_num, eachtwo.task_number, eachtwo.expenditure_type,
+              NVL(calcunits,0), calccost, 'P', tinum, enum, isnegative, expcomment,
+              'Precast Production', tinum, TO_CHAR(eachtwo.pcf_id), TO_CHAR(eachtwo.revision_number),
+                   vendor, transtype, 0 );
+    END IF;
+     IF debug THEN
+       Dbms_Output.Put_Line( 'Project:'||eachtwo.project_num||
+                             'Task:'||eachtwo.task_number||
+                             'Units:'||TO_CHAR(calcunits)||
+                             ' Cost:'||TO_CHAR(calccost)    );
+       Dbms_Output.Put_Line( 'Transaction '||tinum||' Value:'||TO_CHAR(calccost) );
+     END IF;
+     UPDATE reco_prod_billing
+       set tnum = tinum
+      WHERE project_num = eachtwo.project_num AND task_number = eachtwo.task_number
+        AND pcf_id = eachtwo.pcf_id
+        AND tnum IS NULL;
+     INSERT INTO reco_precast_linkage ( tnum, lot_id )
+     SELECT tnum, lot_id FROM reco_prod_billing
+      WHERE tnum = tinum;
+   END LOOP;
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        fnd_file.put_line(fnd_file.LOG, SQLERRM);
+END;
+
+PROCEDURE RECO_WACO_PASS_PRODUCTION ( bdate IN date,
+                                                   edate IN date,
+                                                   action IN number,
+                                                   billdate IN date DEFAULT TRUNC(SYSDATE) ) IS
+--
+-- This procedure finds production entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated lots with a billed flag of 'X' for transfer begins
+-- and the date.
+-- After the transactions have been posted, billed is set to 'Y'.'
+--  It also updates the 'quantity billed' in the requirements table.
+--  for negative transactions it sets the appropriate flag
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+-- if -2 is passed, it outputs messages and does NOT commit
+--
+-- 3/10 added calls to run concurrent printouts
+--
+begindate date;
+enddate date;
+howmany number;
+
+CURSOR getproduction IS
+     SELECT /*+ ORDERED USE_NL( L,P,V,PC,PR,PA,T ) */ l.lot_id,
+          l.lot_date,
+          TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))) end_of_week,
+          segment1 project_num,
+          t.task_number,
+          v.expenditure_type,
+          SUM(p.quantity_produced*pr.area_per_piece) qty,
+          v.unit_price,
+          v.pcf_id
+  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+        reco_production p, reco_production_requirements pr,
+        pa_projects pa, pa_tasks t
+  WHERE   l.billed_flag = 'N'
+  AND     l.lot_date <= enddate
+  AND     p.lot_id = l.lot_id
+  AND     v.pcf_id = l.pcf_id
+  AND     pc.pcf_id = v.pcf_id
+  AND     pc.revision_number = v.revision_number
+  AND     pr.pc_id = p.pc_id
+  and     pr.revision_number = pc.revision_number
+  AND     v.task_id != 1995
+  AND     v.vendor_id = wacovendorid
+  AND     pa.project_id = v.project_id
+  AND     t.task_id = v.task_id
+  GROUP BY l.lot_id, l.lot_date,
+            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+
+CURSOR startproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < begindate
+          AND pcf_id = pcfid;
+
+CURSOR endproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < enddate
+          AND pcf_id = pcfid;
+
+CURSOR pdbilled( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM reco_production_v
+        WHERE lot_date BETWEEN begindate AND enddate
+          AND billed_flag = 'Y'
+          AND pcf_id = pcfid;
+
+-- corrected to give correct overage number
+CURSOR startoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < begindate
+        AND billed_date < billdate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR endoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < enddate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR getbilled IS
+         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+          pp.project_id, pv.revision_number
+         FROM reco_waco_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+
+CURSOR getemployee (thepid number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+CURSOR getvendor (pcfid number ) IS
+    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+
+CURSOR gnum IS
+   SELECT transentry_seq.NEXTVAL FROM dual;
+
+enum  per_people_f.employee_number%TYPE;
+calcunits number;
+calccost number;
+debug BOOLEAN := FALSE;
+tinum varchar2(10);
+tvalue  number;
+
+sprod number;
+eprod number;
+sover number;
+eover number;
+billed number;
+junkval number;
+
+isnegative  varchar2(1) := 'N';
+adjusteddate date := NULL;
+adjustedeow  date := NULL;
+expcomment   varchar2(240) := NULL;
+vendor  number;
+transtype varchar2(30);
+
+dfltwacoempnum number := get_reco_variable('Default WACO Precast Employee');
+BEGIN
+
+  begindate := bdate;
+  enddate := edate + .999;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+  howmany := 0;
+--
+  FOR eachone IN getproduction LOOP
+--
+     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+     INSERT INTO reco_waco_prod_billing (
+          lot_id, end_of_week, lot_date, project_num, task_number,
+          expenditure_type, qty, calccost, pcf_id, unit_price )
+     VALUES (
+          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+--
+     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+     END IF;
+     howmany := howmany + 1;
+  END LOOP;
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  FOR eachtwo IN getbilled LOOP
+-- get enum for each project line
+     OPEN getemployee( eachtwo.project_id );
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltwacoempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+--
+     -- get vendor 8/5
+     OPEN getvendor( eachtwo.pcf_id );
+     FETCH getvendor INTO vendor;
+     CLOSE getvendor;
+     --
+     OPEN gnum;
+     FETCH gnum INTO tvalue;
+     CLOSE gnum;
+     OPEN startproduction( eachtwo.pcf_id );
+     FETCH startproduction INTO sprod;
+     CLOSE startproduction;
+     OPEN endproduction( eachtwo.pcf_id );
+     FETCH endproduction INTO eprod;
+     CLOSE endproduction;
+     OPEN startoverage( eachtwo.pcf_id );
+     FETCH startoverage INTO sover;
+     CLOSE startoverage;
+     OPEN endoverage( eachtwo.pcf_id );
+     FETCH endoverage INTO eover;
+     CLOSE endoverage;
+     OPEN pdbilled( eachtwo.pcf_id );
+     FETCH pdbilled INTO billed;
+     CLOSE pdbilled;
+
+     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+     --calcunits := ( calcunits - nvl(billed,0) );
+     calccost := calcunits * eachtwo.unit_price;
+
+     tinum := 'P'||TO_CHAR(tvalue);
+
+     IF NVL(calccost,0) < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+--
+--  4-13 determine correct lot date if previous period lots
+     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+        adjusteddate := eachtwo.ldate;
+        adjustedeow  := eachtwo.eow;
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+        transtype := 'CURRENT';
+     ELSE
+        adjusteddate := begindate + (enddate - begindate)/2;
+        adjustedeow := TRUNC(adjusteddate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjusteddate),'d'))));
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Previous period production.';
+        transtype := 'PREVIOUS';
+     END IF;
+
+     IF NVL(calccost,0) <> 0 THEN
+         INSERT INTO apps.pa_transaction_interface_all (
+              transaction_source, batch_name, expenditure_ending_date,
+              expenditure_item_date, project_number, task_number,
+              expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+              orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+              expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, org_id )
+         VALUES (
+              --'WACO PRODUCTION'
+              'RECO WACO Prod',tinum, adjustedeow, adjusteddate,
+              eachtwo.project_num, eachtwo.task_number, eachtwo.expenditure_type,
+              NVL(calcunits,0), calccost, 'P', tinum, enum, isnegative, expcomment,
+              'Precast Production', tinum, TO_CHAR(eachtwo.pcf_id), TO_CHAR(eachtwo.revision_number),
+                   vendor, transtype, 0 );
+    END IF;
+
+     IF debug THEN
+       Dbms_Output.Put_Line( 'Project:'||eachtwo.project_num||
+                             'Task:'||eachtwo.task_number||
+                             'Units:'||TO_CHAR(calcunits)||
+                             ' Cost:'||TO_CHAR(calccost)    );
+       Dbms_Output.Put_Line( 'Transaction '||tinum||' Value:'||TO_CHAR(calccost) );
+     END IF;
+     UPDATE reco_waco_prod_billing
+       set tnum = tinum
+      WHERE project_num = eachtwo.project_num AND task_number = eachtwo.task_number
+        AND pcf_id = eachtwo.pcf_id
+        AND tnum IS NULL;
+     INSERT INTO reco_precast_linkage ( tnum, lot_id )
+     SELECT tnum, lot_id FROM reco_waco_prod_billing
+      WHERE tnum = tinum;
+   END LOOP;
+-- update waco inventory schedules
+   --UPDATE reco_waco_lot_numbers
+   --  set lot_status = 'BILLED'
+   --WHERE waco_lot_id IN ( SELECT waco_lot_id FROM reco_lot_numbers l, reco_waco_prod_billing P
+   --                        WHERE l.lot_id = P.lot_id );
+--begin  -- adjustments do not need this, we ignore error
+--   UPDATE reco_production_schedule
+--     set schedule_status = 'BILLED'
+--    WHERE schedule_id IN ( SELECT /*+ USE_NL( b,l,p ) */ schedule_id
+--                FROM reco_prod_schedule_panels P, reco_lot_numbers l, reco_waco_prod_billing b
+--               WHERE P.waco_lot_id = l.waco_lot_id
+--                 AND l.lot_id = b.lot_id )
+--      and schedule_status = 'POSTED';
+--exception
+-- when others then
+--   null;
+--end;
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+END;
+
+PROCEDURE RECO_georgia_PASS_PRODUCTION ( bdate IN date,
+                                                   edate IN date,
+                                                   action IN number,
+                                                   billdate IN date DEFAULT TRUNC(SYSDATE) ) IS
+--
+-- This procedure finds production entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated lots with a billed flag of 'X' for transfer begins
+-- and the date.
+-- After the transactions have been posted, billed is set to 'Y'.'
+--  It also updates the 'quantity billed' in the requirements table.
+--  for negative transactions it sets the appropriate flag
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+-- if -2 is passed, it outputs messages and does NOT commit
+--
+-- 3/10 added calls to run concurrent printouts
+--
+begindate date;
+enddate date;
+howmany number;
+
+CURSOR getproduction IS
+     SELECT /*+ ORDERED USE_NL( L,P,V,PC,PR,PA,T ) */ l.lot_id,
+          l.lot_date,
+          TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))) end_of_week,
+          segment1 project_num,
+          t.task_number,
+          v.expenditure_type,
+          SUM(p.quantity_produced*pr.area_per_piece) qty,
+          v.unit_price,
+          v.pcf_id
+  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+        reco_production p, reco_production_requirements pr,
+        pa_projects pa, pa_tasks t
+  WHERE   l.billed_flag = 'N'
+  AND     l.lot_date <= enddate
+  AND     p.lot_id = l.lot_id
+  AND     v.pcf_id = l.pcf_id
+  AND     pc.pcf_id = v.pcf_id
+  AND     pc.revision_number = v.revision_number
+  AND     pr.pc_id = p.pc_id
+  and     pr.revision_number = pc.revision_number
+  AND     v.task_id != 1995
+  AND     v.vendor_id = georgiavendorid
+  AND     pa.project_id = v.project_id
+  AND     t.task_id = v.task_id
+  GROUP BY l.lot_id, l.lot_date,
+            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+
+CURSOR startproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < begindate
+          AND pcf_id = pcfid;
+
+CURSOR endproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < enddate
+          AND pcf_id = pcfid;
+
+CURSOR pdbilled( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM reco_production_v
+        WHERE lot_date BETWEEN begindate AND enddate
+          AND billed_flag = 'Y'
+          AND pcf_id = pcfid;
+
+-- corrected to give correct overage number
+CURSOR startoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < begindate
+        AND billed_date < billdate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR endoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < enddate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR getbilled IS
+         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+          pp.project_id, pv.revision_number
+         FROM reco_georgia_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+
+CURSOR getemployee (thepid number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+CURSOR getvendor (pcfid number ) IS
+    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+
+CURSOR gnum IS
+   SELECT transentry_seq.NEXTVAL FROM dual;
+
+enum  per_people_f.employee_number%TYPE;
+calcunits number;
+calccost number;
+debug BOOLEAN := FALSE;
+tinum varchar2(10);
+tvalue  number;
+
+sprod number;
+eprod number;
+sover number;
+eover number;
+billed number;
+junkval number;
+
+isnegative  varchar2(1) := 'N';
+adjusteddate date := NULL;
+adjustedeow  date := NULL;
+expcomment   varchar2(240) := NULL;
+vendor  number;
+transtype varchar2(30);
+
+dfltgeorgiaempnum number := get_reco_variable('Default GEORGIA Precast Employee');
+BEGIN
+
+  begindate := bdate;
+  enddate := edate + .999;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+  howmany := 0;
+--
+  FOR eachone IN getproduction LOOP
+--
+     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+     INSERT INTO reco_georgia_prod_billing (
+          lot_id, end_of_week, lot_date, project_num, task_number,
+          expenditure_type, qty, calccost, pcf_id, unit_price )
+     VALUES (
+          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+--
+     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+     END IF;
+     howmany := howmany + 1;
+  END LOOP;
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  FOR eachtwo IN getbilled LOOP
+-- get enum for each project line
+     OPEN getemployee( eachtwo.project_id );
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltgeorgiaempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+--
+     -- get vendor 8/5
+     OPEN getvendor( eachtwo.pcf_id );
+     FETCH getvendor INTO vendor;
+     CLOSE getvendor;
+     --
+     OPEN gnum;
+     FETCH gnum INTO tvalue;
+     CLOSE gnum;
+     OPEN startproduction( eachtwo.pcf_id );
+     FETCH startproduction INTO sprod;
+     CLOSE startproduction;
+     OPEN endproduction( eachtwo.pcf_id );
+     FETCH endproduction INTO eprod;
+     CLOSE endproduction;
+     OPEN startoverage( eachtwo.pcf_id );
+     FETCH startoverage INTO sover;
+     CLOSE startoverage;
+     OPEN endoverage( eachtwo.pcf_id );
+     FETCH endoverage INTO eover;
+     CLOSE endoverage;
+     OPEN pdbilled( eachtwo.pcf_id );
+     FETCH pdbilled INTO billed;
+     CLOSE pdbilled;
+
+     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+     --calcunits := ( calcunits - nvl(billed,0) );
+     calccost := calcunits * eachtwo.unit_price;
+
+     tinum := 'P'||TO_CHAR(tvalue);
+
+     IF NVL(calccost,0) < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+--
+--  4-13 determine correct lot date if previous period lots
+     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+        adjusteddate := eachtwo.ldate;
+        adjustedeow  := eachtwo.eow;
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+        transtype := 'CURRENT';
+     ELSE
+        adjusteddate := begindate + (enddate - begindate)/2;
+        adjustedeow := TRUNC(adjusteddate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjusteddate),'d'))));
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Previous period production.';
+        transtype := 'PREVIOUS';
+     END IF;
+
+     IF NVL(calccost,0) <> 0 THEN
+         INSERT INTO apps.pa_transaction_interface_all (
+              transaction_source, batch_name, expenditure_ending_date,
+              expenditure_item_date, project_number, task_number,
+              expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+              orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+              expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, org_id )
+         VALUES (
+              --'georgia PRODUCTION'
+              'RECO GEORGIA Prod',tinum, adjustedeow, adjusteddate,
+              eachtwo.project_num, eachtwo.task_number, eachtwo.expenditure_type,
+              NVL(calcunits,0), calccost, 'P', tinum, enum, isnegative, expcomment,
+              'Precast Production', tinum, TO_CHAR(eachtwo.pcf_id), TO_CHAR(eachtwo.revision_number),
+                   vendor, transtype, 0 );
+    END IF;
+
+     IF debug THEN
+       Dbms_Output.Put_Line( 'Project:'||eachtwo.project_num||
+                             'Task:'||eachtwo.task_number||
+                             'Units:'||TO_CHAR(calcunits)||
+                             ' Cost:'||TO_CHAR(calccost)    );
+       Dbms_Output.Put_Line( 'Transaction '||tinum||' Value:'||TO_CHAR(calccost) );
+     END IF;
+     UPDATE reco_georgia_prod_billing
+       set tnum = tinum
+      WHERE project_num = eachtwo.project_num AND task_number = eachtwo.task_number
+        AND pcf_id = eachtwo.pcf_id
+        AND tnum IS NULL;
+     INSERT INTO reco_precast_linkage ( tnum, lot_id )
+     SELECT tnum, lot_id FROM reco_georgia_prod_billing
+      WHERE tnum = tinum;
+   END LOOP;
+
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+END;
+
+PROCEDURE RECO_florida_PASS_PRODUCTION ( bdate IN date,
+                                                   edate IN date,
+                                                   action IN number,
+                                                   billdate IN date DEFAULT TRUNC(SYSDATE) ) IS
+--
+-- This procedure finds production entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated lots with a billed flag of 'X' for transfer begins
+-- and the date.
+-- After the transactions have been posted, billed is set to 'Y'.'
+--  It also updates the 'quantity billed' in the requirements table.
+--  for negative transactions it sets the appropriate flag
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+-- if -2 is passed, it outputs messages and does NOT commit
+--
+-- 3/10 added calls to run concurrent printouts
+--
+begindate date;
+enddate date;
+howmany number;
+
+CURSOR getproduction IS
+     SELECT /*+ ORDERED USE_NL( L,P,V,PC,PR,PA,T ) */ l.lot_id,
+          l.lot_date,
+          TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))) end_of_week,
+          segment1 project_num,
+          t.task_number,
+          v.expenditure_type,
+          SUM(p.quantity_produced*pr.area_per_piece) qty,
+          v.unit_price,
+          v.pcf_id
+  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+        reco_production p, reco_production_requirements pr,
+        pa_projects pa, pa_tasks t
+  WHERE   l.billed_flag = 'N'
+  AND     l.lot_date <= enddate
+  AND     p.lot_id = l.lot_id
+  AND     v.pcf_id = l.pcf_id
+  AND     pc.pcf_id = v.pcf_id
+  AND     pc.revision_number = v.revision_number
+  AND     pr.pc_id = p.pc_id
+  and     pr.revision_number = pc.revision_number
+  AND     v.task_id != 1995
+  AND     v.vendor_id = floridavendorid
+  AND     pa.project_id = v.project_id
+  AND     t.task_id = v.task_id
+  GROUP BY l.lot_id, l.lot_date,
+            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+
+CURSOR startproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < begindate
+          AND pcf_id = pcfid;
+
+CURSOR endproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < enddate
+          AND pcf_id = pcfid;
+
+CURSOR pdbilled( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM reco_production_v
+        WHERE lot_date BETWEEN begindate AND enddate
+          AND billed_flag = 'Y'
+          AND pcf_id = pcfid;
+
+-- corrected to give correct overage number
+CURSOR startoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < begindate
+        AND billed_date < billdate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR endoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < enddate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR getbilled IS
+         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+          pp.project_id, pv.revision_number
+         FROM reco_florida_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+
+CURSOR getemployee (thepid number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+CURSOR getvendor (pcfid number ) IS
+    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+
+CURSOR gnum IS
+   SELECT transentry_seq.NEXTVAL FROM dual;
+
+enum  per_people_f.employee_number%TYPE;
+calcunits number;
+calccost number;
+debug BOOLEAN := FALSE;
+tinum varchar2(10);
+tvalue  number;
+
+sprod number;
+eprod number;
+sover number;
+eover number;
+billed number;
+junkval number;
+
+isnegative  varchar2(1) := 'N';
+adjusteddate date := NULL;
+adjustedeow  date := NULL;
+expcomment   varchar2(240) := NULL;
+vendor  number;
+transtype varchar2(30);
+
+dfltfloridaempnum number := get_reco_variable('Default FLORIDA Precast Employee');
+BEGIN
+
+  begindate := bdate;
+  enddate := edate + .999;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+  howmany := 0;
+--
+  FOR eachone IN getproduction LOOP
+--
+     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+     INSERT INTO reco_florida_prod_billing (
+          lot_id, end_of_week, lot_date, project_num, task_number,
+          expenditure_type, qty, calccost, pcf_id, unit_price )
+     VALUES (
+          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+--
+     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+     END IF;
+     howmany := howmany + 1;
+  END LOOP;
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  FOR eachtwo IN getbilled LOOP
+-- get enum for each project line
+     OPEN getemployee( eachtwo.project_id );
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltfloridaempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+--
+     -- get vendor 8/5
+     OPEN getvendor( eachtwo.pcf_id );
+     FETCH getvendor INTO vendor;
+     CLOSE getvendor;
+     --
+     OPEN gnum;
+     FETCH gnum INTO tvalue;
+     CLOSE gnum;
+     OPEN startproduction( eachtwo.pcf_id );
+     FETCH startproduction INTO sprod;
+     CLOSE startproduction;
+     OPEN endproduction( eachtwo.pcf_id );
+     FETCH endproduction INTO eprod;
+     CLOSE endproduction;
+     OPEN startoverage( eachtwo.pcf_id );
+     FETCH startoverage INTO sover;
+     CLOSE startoverage;
+     OPEN endoverage( eachtwo.pcf_id );
+     FETCH endoverage INTO eover;
+     CLOSE endoverage;
+     OPEN pdbilled( eachtwo.pcf_id );
+     FETCH pdbilled INTO billed;
+     CLOSE pdbilled;
+
+     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+     --calcunits := ( calcunits - nvl(billed,0) );
+     calccost := calcunits * eachtwo.unit_price;
+
+     tinum := 'P'||TO_CHAR(tvalue);
+
+     IF NVL(calccost,0) < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+--
+--  4-13 determine correct lot date if previous period lots
+     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+        adjusteddate := eachtwo.ldate;
+        adjustedeow  := eachtwo.eow;
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+        transtype := 'CURRENT';
+     ELSE
+        adjusteddate := begindate + (enddate - begindate)/2;
+        adjustedeow := TRUNC(adjusteddate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjusteddate),'d'))));
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Previous period production.';
+        transtype := 'PREVIOUS';
+     END IF;
+
+     IF NVL(calccost,0) <> 0 THEN
+         INSERT INTO apps.pa_transaction_interface_all (
+              transaction_source, batch_name, expenditure_ending_date,
+              expenditure_item_date, project_number, task_number,
+              expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+              orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+              expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, org_id )
+         VALUES (
+              --'florida PRODUCTION'
+              'RECO FLORIDA Prod',tinum, adjustedeow, adjusteddate,
+              eachtwo.project_num, eachtwo.task_number, eachtwo.expenditure_type,
+              NVL(calcunits,0), calccost, 'P', tinum, enum, isnegative, expcomment,
+              'Precast Production', tinum, TO_CHAR(eachtwo.pcf_id), TO_CHAR(eachtwo.revision_number),
+                   vendor, transtype, 0 );
+    END IF;
+
+     IF debug THEN
+       Dbms_Output.Put_Line( 'Project:'||eachtwo.project_num||
+                             'Task:'||eachtwo.task_number||
+                             'Units:'||TO_CHAR(calcunits)||
+                             ' Cost:'||TO_CHAR(calccost)    );
+       Dbms_Output.Put_Line( 'Transaction '||tinum||' Value:'||TO_CHAR(calccost) );
+     END IF;
+     UPDATE reco_florida_prod_billing
+       set tnum = tinum
+      WHERE project_num = eachtwo.project_num AND task_number = eachtwo.task_number
+        AND pcf_id = eachtwo.pcf_id
+        AND tnum IS NULL;
+     INSERT INTO reco_precast_linkage ( tnum, lot_id )
+     SELECT tnum, lot_id FROM reco_florida_prod_billing
+      WHERE tnum = tinum;
+   END LOOP;
+
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+END;
+
+PROCEDURE RECO_ca_PASS_PRODUCTION ( bdate IN date,
+                                                   edate IN date,
+                                                   action IN number,
+                                                   billdate IN date DEFAULT TRUNC(SYSDATE) ) IS
+--
+-- This procedure finds production entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated lots with a billed flag of 'X' for transfer begins
+-- and the date.
+-- After the transactions have been posted, billed is set to 'Y'.'
+--  It also updates the 'quantity billed' in the requirements table.
+--  for negative transactions it sets the appropriate flag
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+-- if -2 is passed, it outputs messages and does NOT commit
+--
+-- 3/10 added calls to run concurrent printouts
+--
+begindate date;
+enddate date;
+howmany number;
+
+CURSOR getproduction IS
+     SELECT /*+ ORDERED USE_NL( L,P,V,PC,PR,PA,T ) */ l.lot_id,
+          l.lot_date,
+          TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))) end_of_week,
+          segment1 project_num,
+          t.task_number,
+          v.expenditure_type,
+          SUM(p.quantity_produced*pr.area_per_piece) qty,
+          v.unit_price,
+          v.pcf_id
+  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+        reco_production p, reco_production_requirements pr,
+        pa_projects pa, pa_tasks t
+  WHERE   l.billed_flag = 'N'
+  AND     l.lot_date <= enddate
+  AND     p.lot_id = l.lot_id
+  AND     v.pcf_id = l.pcf_id
+  AND     pc.pcf_id = v.pcf_id
+  AND     pc.revision_number = v.revision_number
+  AND     pr.pc_id = p.pc_id
+  and     pr.revision_number = pc.revision_number
+  AND     v.task_id != 1995
+  AND     v.vendor_id = cavendorid
+  AND     pa.project_id = v.project_id
+  AND     t.task_id = v.task_id
+  GROUP BY l.lot_id, l.lot_date,
+            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+
+CURSOR startproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < begindate
+          AND pcf_id = pcfid;
+
+CURSOR endproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < enddate
+          AND pcf_id = pcfid;
+
+CURSOR pdbilled( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM reco_production_v
+        WHERE lot_date BETWEEN begindate AND enddate
+          AND billed_flag = 'Y'
+          AND pcf_id = pcfid;
+
+-- corrected to give correct overage number
+CURSOR startoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < begindate
+        AND billed_date < billdate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR endoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < enddate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR getbilled IS
+         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+          pp.project_id, pv.revision_number
+         FROM reco_ca_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+
+CURSOR getemployee (thepid number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+CURSOR getvendor (pcfid number ) IS
+    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+
+CURSOR gnum IS
+   SELECT transentry_seq.NEXTVAL FROM dual;
+
+enum  per_people_f.employee_number%TYPE;
+calcunits number;
+calccost number;
+debug BOOLEAN := FALSE;
+tinum varchar2(10);
+tvalue  number;
+
+sprod number;
+eprod number;
+sover number;
+eover number;
+billed number;
+junkval number;
+
+isnegative  varchar2(1) := 'N';
+adjusteddate date := NULL;
+adjustedeow  date := NULL;
+expcomment   varchar2(240) := NULL;
+vendor  number;
+transtype varchar2(30);
+
+dfltcaempnum number := get_reco_variable('Default CA Precast Employee');
+BEGIN
+
+  begindate := bdate;
+  enddate := edate + .999;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+  howmany := 0;
+--
+  FOR eachone IN getproduction LOOP
+--
+     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+     INSERT INTO reco_ca_prod_billing (
+          lot_id, end_of_week, lot_date, project_num, task_number,
+          expenditure_type, qty, calccost, pcf_id, unit_price )
+     VALUES (
+          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+--
+     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+     END IF;
+     howmany := howmany + 1;
+  END LOOP;
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  FOR eachtwo IN getbilled LOOP
+-- get enum for each project line
+     OPEN getemployee( eachtwo.project_id );
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltcaempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+--
+     -- get vendor 8/5
+     OPEN getvendor( eachtwo.pcf_id );
+     FETCH getvendor INTO vendor;
+     CLOSE getvendor;
+     --
+     OPEN gnum;
+     FETCH gnum INTO tvalue;
+     CLOSE gnum;
+     OPEN startproduction( eachtwo.pcf_id );
+     FETCH startproduction INTO sprod;
+     CLOSE startproduction;
+     OPEN endproduction( eachtwo.pcf_id );
+     FETCH endproduction INTO eprod;
+     CLOSE endproduction;
+     OPEN startoverage( eachtwo.pcf_id );
+     FETCH startoverage INTO sover;
+     CLOSE startoverage;
+     OPEN endoverage( eachtwo.pcf_id );
+     FETCH endoverage INTO eover;
+     CLOSE endoverage;
+     OPEN pdbilled( eachtwo.pcf_id );
+     FETCH pdbilled INTO billed;
+     CLOSE pdbilled;
+
+     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+     --calcunits := ( calcunits - nvl(billed,0) );
+     calccost := calcunits * eachtwo.unit_price;
+
+     tinum := 'P'||TO_CHAR(tvalue);
+
+     IF NVL(calccost,0) < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+--
+--  4-13 determine correct lot date if previous period lots
+     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+        adjusteddate := eachtwo.ldate;
+        adjustedeow  := eachtwo.eow;
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+        transtype := 'CURRENT';
+     ELSE
+        adjusteddate := begindate + (enddate - begindate)/2;
+        adjustedeow := TRUNC(adjusteddate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjusteddate),'d'))));
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Previous period production.';
+        transtype := 'PREVIOUS';
+     END IF;
+
+     IF NVL(calccost,0) <> 0 THEN
+         INSERT INTO apps.pa_transaction_interface_all (
+              transaction_source, batch_name, expenditure_ending_date,
+              expenditure_item_date, project_number, task_number,
+              expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+              orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+              expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, org_id )
+         VALUES (
+              --'ca PRODUCTION'
+              'RECO CA Prod',tinum, adjustedeow, adjusteddate,
+              eachtwo.project_num, eachtwo.task_number, eachtwo.expenditure_type,
+              NVL(calcunits,0), calccost, 'P', tinum, enum, isnegative, expcomment,
+              'Precast Production', tinum, TO_CHAR(eachtwo.pcf_id), TO_CHAR(eachtwo.revision_number),
+                   vendor, transtype, 0 );
+    END IF;
+
+     IF debug THEN
+       Dbms_Output.Put_Line( 'Project:'||eachtwo.project_num||
+                             'Task:'||eachtwo.task_number||
+                             'Units:'||TO_CHAR(calcunits)||
+                             ' Cost:'||TO_CHAR(calccost)    );
+       Dbms_Output.Put_Line( 'Transaction '||tinum||' Value:'||TO_CHAR(calccost) );
+     END IF;
+     UPDATE reco_ca_prod_billing
+       set tnum = tinum
+      WHERE project_num = eachtwo.project_num AND task_number = eachtwo.task_number
+        AND pcf_id = eachtwo.pcf_id
+        AND tnum IS NULL;
+     INSERT INTO reco_precast_linkage ( tnum, lot_id )
+     SELECT tnum, lot_id FROM reco_ca_prod_billing
+      WHERE tnum = tinum;
+   END LOOP;
+
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+END;
+
+PROCEDURE RECO_lb_PASS_PRODUCTION ( bdate IN date,
+                                                   edate IN date,
+                                                   action IN number,
+                                                   billdate IN date DEFAULT TRUNC(SYSDATE) ) IS
+--
+-- This procedure finds production entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated lots with a billed flag of 'X' for transfer begins
+-- and the date.
+-- After the transactions have been posted, billed is set to 'Y'.'
+--  It also updates the 'quantity billed' in the requirements table.
+--  for negative transactions it sets the appropriate flag
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+-- if -2 is passed, it outputs messages and does NOT commit
+--
+-- 3/10 added calls to run concurrent printouts
+--
+begindate date;
+enddate date;
+howmany number;
+
+CURSOR getproduction IS
+     SELECT /*+ ORDERED USE_NL( L,P,V,PC,PR,PA,T ) */ l.lot_id,
+          l.lot_date,
+          TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))) end_of_week,
+          segment1 project_num,
+          t.task_number,
+          v.expenditure_type,
+          SUM(p.quantity_produced*pr.area_per_piece) qty,
+          v.unit_price,
+          v.pcf_id
+  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+        reco_production p, reco_production_requirements pr,
+        pa_projects pa, pa_tasks t
+  WHERE   l.billed_flag = 'N'
+  AND     l.lot_date <= enddate
+  AND     p.lot_id = l.lot_id
+  AND     v.pcf_id = l.pcf_id
+  AND     pc.pcf_id = v.pcf_id
+  AND     pc.revision_number = v.revision_number
+  AND     pr.pc_id = p.pc_id
+  and     pr.revision_number = pc.revision_number
+  AND     v.task_id != 1995
+  AND     v.vendor_id = lbvendorid
+  AND     pa.project_id = v.project_id
+  AND     t.task_id = v.task_id
+  GROUP BY l.lot_id, l.lot_date,
+            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+
+CURSOR startproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < begindate
+          AND pcf_id = pcfid;
+
+CURSOR endproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < enddate
+          AND pcf_id = pcfid;
+
+CURSOR pdbilled( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM reco_production_v
+        WHERE lot_date BETWEEN begindate AND enddate
+          AND billed_flag = 'Y'
+          AND pcf_id = pcfid;
+
+-- corrected to give correct overage number
+CURSOR startoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < begindate
+        AND billed_date < billdate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR endoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < enddate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR getbilled IS
+         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+          pp.project_id, pv.revision_number
+         FROM reco_lb_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+
+CURSOR getemployee (thepid number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+CURSOR getvendor (pcfid number ) IS
+    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+
+CURSOR gnum IS
+   SELECT transentry_seq.NEXTVAL FROM dual;
+
+enum  per_people_f.employee_number%TYPE;
+calcunits number;
+calccost number;
+debug BOOLEAN := FALSE;
+tinum varchar2(10);
+tvalue  number;
+
+sprod number;
+eprod number;
+sover number;
+eover number;
+billed number;
+junkval number;
+
+isnegative  varchar2(1) := 'N';
+adjusteddate date := NULL;
+adjustedeow  date := NULL;
+expcomment   varchar2(240) := NULL;
+vendor  number;
+transtype varchar2(30);
+
+dfltlbempnum number := get_reco_variable('Default LB Precast Employee');
+BEGIN
+
+  begindate := bdate;
+  enddate := edate + .999;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+  howmany := 0;
+--
+  FOR eachone IN getproduction LOOP
+--
+     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+     INSERT INTO reco_lb_prod_billing (
+          lot_id, end_of_week, lot_date, project_num, task_number,
+          expenditure_type, qty, calccost, pcf_id, unit_price )
+     VALUES (
+          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+--
+     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+     END IF;
+     howmany := howmany + 1;
+  END LOOP;
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  FOR eachtwo IN getbilled LOOP
+-- get enum for each project line
+     OPEN getemployee( eachtwo.project_id );
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltlbempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+--
+     -- get vendor 8/5
+     OPEN getvendor( eachtwo.pcf_id );
+     FETCH getvendor INTO vendor;
+     CLOSE getvendor;
+     --
+     OPEN gnum;
+     FETCH gnum INTO tvalue;
+     CLOSE gnum;
+     OPEN startproduction( eachtwo.pcf_id );
+     FETCH startproduction INTO sprod;
+     CLOSE startproduction;
+     OPEN endproduction( eachtwo.pcf_id );
+     FETCH endproduction INTO eprod;
+     CLOSE endproduction;
+     OPEN startoverage( eachtwo.pcf_id );
+     FETCH startoverage INTO sover;
+     CLOSE startoverage;
+     OPEN endoverage( eachtwo.pcf_id );
+     FETCH endoverage INTO eover;
+     CLOSE endoverage;
+     OPEN pdbilled( eachtwo.pcf_id );
+     FETCH pdbilled INTO billed;
+     CLOSE pdbilled;
+
+     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+     --calcunits := ( calcunits - nvl(billed,0) );
+     calccost := calcunits * eachtwo.unit_price;
+
+     tinum := 'P'||TO_CHAR(tvalue);
+
+     IF NVL(calccost,0) < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+--
+--  4-13 determine correct lot date if previous period lots
+     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+        adjusteddate := eachtwo.ldate;
+        adjustedeow  := eachtwo.eow;
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+        transtype := 'CURRENT';
+     ELSE
+        adjusteddate := begindate + (enddate - begindate)/2;
+        adjustedeow := TRUNC(adjusteddate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjusteddate),'d'))));
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Previous period production.';
+        transtype := 'PREVIOUS';
+     END IF;
+
+     IF NVL(calccost,0) <> 0 THEN
+         INSERT INTO apps.pa_transaction_interface_all (
+              transaction_source, batch_name, expenditure_ending_date,
+              expenditure_item_date, project_number, task_number,
+              expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+              orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+              expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, org_id )
+         VALUES (
+              --'lb PRODUCTION'
+              'RECO LB Prod',tinum, adjustedeow, adjusteddate,
+              eachtwo.project_num, eachtwo.task_number, eachtwo.expenditure_type,
+              NVL(calcunits,0), calccost, 'P', tinum, enum, isnegative, expcomment,
+              'Precast Production', tinum, TO_CHAR(eachtwo.pcf_id), TO_CHAR(eachtwo.revision_number),
+                   vendor, transtype, 0 );
+    END IF;
+
+     IF debug THEN
+       Dbms_Output.Put_Line( 'Project:'||eachtwo.project_num||
+                             'Task:'||eachtwo.task_number||
+                             'Units:'||TO_CHAR(calcunits)||
+                             ' Cost:'||TO_CHAR(calccost)    );
+       Dbms_Output.Put_Line( 'Transaction '||tinum||' Value:'||TO_CHAR(calccost) );
+     END IF;
+     UPDATE reco_lb_prod_billing
+       set tnum = tinum
+      WHERE project_num = eachtwo.project_num AND task_number = eachtwo.task_number
+        AND pcf_id = eachtwo.pcf_id
+        AND tnum IS NULL;
+     INSERT INTO reco_precast_linkage ( tnum, lot_id )
+     SELECT tnum, lot_id FROM reco_lb_prod_billing
+      WHERE tnum = tinum;
+   END LOOP;
+
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+END;
+
+PROCEDURE RECO_wm_PASS_PRODUCTION ( bdate IN date,
+                                                   edate IN date,
+                                                   action IN number,
+                                                   billdate IN date DEFAULT TRUNC(SYSDATE) ) IS
+--
+-- This procedure finds production entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated lots with a billed flag of 'X' for transfer begins
+-- and the date.
+-- After the transactions have been posted, billed is set to 'Y'.'
+--  It also updates the 'quantity billed' in the requirements table.
+--  for negative transactions it sets the appropriate flag
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+-- if -2 is passed, it outputs messages and does NOT commit
+--
+-- 3/10 added calls to run concurrent printouts
+--
+begindate date;
+enddate date;
+howmany number;
+
+CURSOR getproduction IS
+     SELECT /*+ ORDERED USE_NL( L,P,V,PC,PR,PA,T ) */ l.lot_id,
+          l.lot_date,
+          TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))) end_of_week,
+          segment1 project_num,
+          t.task_number,
+          v.expenditure_type,
+          SUM(p.quantity_produced*pr.area_per_piece) qty,
+          v.unit_price,
+          v.pcf_id
+  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+        reco_production p, reco_production_requirements pr,
+        pa_projects pa, pa_tasks t
+  WHERE   l.billed_flag = 'N'
+  AND     l.lot_date <= enddate
+  AND     p.lot_id = l.lot_id
+  AND     v.pcf_id = l.pcf_id
+  AND     pc.pcf_id = v.pcf_id
+  AND     pc.revision_number = v.revision_number
+  AND     pr.pc_id = p.pc_id
+  and     pr.revision_number = pc.revision_number
+  AND     v.task_id != 1995
+  AND     v.vendor_id = wmvendorid
+  AND     pa.project_id = v.project_id
+  AND     t.task_id = v.task_id
+  GROUP BY l.lot_id, l.lot_date,
+            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+
+CURSOR startproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < begindate
+          AND pcf_id = pcfid;
+
+CURSOR endproduction( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM  reco_production_v
+        WHERE lot_date < enddate
+          AND pcf_id = pcfid;
+
+CURSOR pdbilled( pcfid number ) IS
+       SELECT SUM(quantity_produced*area_per_piece)
+         FROM reco_production_v
+        WHERE lot_date BETWEEN begindate AND enddate
+          AND billed_flag = 'Y'
+          AND pcf_id = pcfid;
+
+-- corrected to give correct overage number
+CURSOR startoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < begindate
+        AND billed_date < billdate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR endoverage( pcfid number ) IS
+     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+                 * AVG(area_per_piece) )
+       FROM reco_production_v
+      WHERE pcf_id = pcfid AND lot_date < enddate
+      GROUP BY mark_number
+     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+
+CURSOR getbilled IS
+         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+          pp.project_id, pv.revision_number
+         FROM reco_wm_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+
+CURSOR getemployee (thepid number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+CURSOR getvendor (pcfid number ) IS
+    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+
+CURSOR gnum IS
+   SELECT transentry_seq.NEXTVAL FROM dual;
+
+enum  per_people_f.employee_number%TYPE;
+calcunits number;
+calccost number;
+debug BOOLEAN := FALSE;
+tinum varchar2(10);
+tvalue  number;
+
+sprod number;
+eprod number;
+sover number;
+eover number;
+billed number;
+junkval number;
+
+isnegative  varchar2(1) := 'N';
+adjusteddate date := NULL;
+adjustedeow  date := NULL;
+expcomment   varchar2(240) := NULL;
+vendor  number;
+transtype varchar2(30);
+
+dfltwmempnum number := get_reco_variable('Default WM Precast Employee');
+BEGIN
+
+  begindate := bdate;
+  enddate := edate + .999;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+  howmany := 0;
+--
+  FOR eachone IN getproduction LOOP
+--
+     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+     INSERT INTO reco_wm_prod_billing (
+          lot_id, end_of_week, lot_date, project_num, task_number,
+          expenditure_type, qty, calccost, pcf_id, unit_price )
+     VALUES (
+          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+--
+     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+     END IF;
+     howmany := howmany + 1;
+  END LOOP;
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  FOR eachtwo IN getbilled LOOP
+-- get enum for each project line
+     OPEN getemployee( eachtwo.project_id );
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltwmempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+--
+     -- get vendor 8/5
+     OPEN getvendor( eachtwo.pcf_id );
+     FETCH getvendor INTO vendor;
+     CLOSE getvendor;
+     --
+     OPEN gnum;
+     FETCH gnum INTO tvalue;
+     CLOSE gnum;
+     OPEN startproduction( eachtwo.pcf_id );
+     FETCH startproduction INTO sprod;
+     CLOSE startproduction;
+     OPEN endproduction( eachtwo.pcf_id );
+     FETCH endproduction INTO eprod;
+     CLOSE endproduction;
+     OPEN startoverage( eachtwo.pcf_id );
+     FETCH startoverage INTO sover;
+     CLOSE startoverage;
+     OPEN endoverage( eachtwo.pcf_id );
+     FETCH endoverage INTO eover;
+     CLOSE endoverage;
+     OPEN pdbilled( eachtwo.pcf_id );
+     FETCH pdbilled INTO billed;
+     CLOSE pdbilled;
+
+     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+     --calcunits := ( calcunits - nvl(billed,0) );
+     calccost := calcunits * eachtwo.unit_price;
+
+     tinum := 'P'||TO_CHAR(tvalue);
+
+     IF NVL(calccost,0) < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+--
+--  4-13 determine correct lot date if previous period lots
+     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+        adjusteddate := eachtwo.ldate;
+        adjustedeow  := eachtwo.eow;
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+        transtype := 'CURRENT';
+     ELSE
+        adjusteddate := begindate + (enddate - begindate)/2;
+        adjustedeow := TRUNC(adjusteddate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjusteddate),'d'))));
+        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Previous period production.';
+        transtype := 'PREVIOUS';
+     END IF;
+
+     IF NVL(calccost,0) <> 0 THEN
+         INSERT INTO apps.pa_transaction_interface_all (
+              transaction_source, batch_name, expenditure_ending_date,
+              expenditure_item_date, project_number, task_number,
+              expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+              orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+              expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, org_id )
+         VALUES (
+              --'wm PRODUCTION'
+              'RECO WM Prod',tinum, adjustedeow, adjusteddate,
+              eachtwo.project_num, eachtwo.task_number, eachtwo.expenditure_type,
+              NVL(calcunits,0), calccost, 'P', tinum, enum, isnegative, expcomment,
+              'Precast Production', tinum, TO_CHAR(eachtwo.pcf_id), TO_CHAR(eachtwo.revision_number),
+                   vendor, transtype, 0 );
+    END IF;
+
+     IF debug THEN
+       Dbms_Output.Put_Line( 'Project:'||eachtwo.project_num||
+                             'Task:'||eachtwo.task_number||
+                             'Units:'||TO_CHAR(calcunits)||
+                             ' Cost:'||TO_CHAR(calccost)    );
+       Dbms_Output.Put_Line( 'Transaction '||tinum||' Value:'||TO_CHAR(calccost) );
+     END IF;
+     UPDATE reco_wm_prod_billing
+       set tnum = tinum
+      WHERE project_num = eachtwo.project_num AND task_number = eachtwo.task_number
+        AND pcf_id = eachtwo.pcf_id
+        AND tnum IS NULL;
+     INSERT INTO reco_precast_linkage ( tnum, lot_id )
+     SELECT tnum, lot_id FROM reco_wm_prod_billing
+      WHERE tnum = tinum;
+   END LOOP;
+
+--
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+END;
+
+
+
+PROCEDURE RECO_SHIP_BILLING (    bdate IN date,
+                                                   edate IN date,
+                                                   action IN number ) IS
+--
+-- This procedure finds shipping entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated shipping entries with a billed flag of 'X'
+-- for transfer begins and the date.
+-- After the transactions have been posted, billed is set to 'Y'.  (and billed_date is
+-- changed to current date )
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+--
+begindate  date;
+enddate    date;
+howmany    number;
+
+
+CURSOR  getshipping IS
+  SELECT /*+ USE_NL( S,T,P,V,PC ) */P.segment1 project_num, T.task_number shipping_task_number, T.project_id,
+         s.shipping_expenditure_type, s.ship_comment, s.pcf_id, v.revision_number,
+         s.ship_date, s.ship_amount, s.pcf_ship_id, v.shipping_cost, v.expenditure_type,
+         'S'||LTRIM(TO_CHAR(s.pcf_ship_id)) interfacenum, v.vendor_id
+    FROM reco_pcf_shipping s, pa_tasks T, pa_projects P, reco_pcf v, reco_pcf_current pc
+   WHERE T.task_id = s.shipping_task_id
+         and p.project_id = t.project_id
+         AND ( s.ship_amount != 0 OR t.task_number like '039.03.%' )
+         AND v.pcf_id = s.pcf_id
+         AND pc.pcf_id = v.pcf_id and pc.revision_number = v.revision_number
+         AND billed_flag = 'N'
+         AND v.vendor_id not in ( wacovendorid, georgiavendorid, floridavendorid, cavendorid, lbvendorid, wmvendorid )
+     AND ship_date <= enddate;
+
+CURSOR getemployee (thepid IN number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+
+enum   per_people_f.employee_number%TYPE;
+debug BOOLEAN := FALSE;
+isnegative  varchar2(1) := 'N';
+junkval number;
+adjdate  date;
+adjeow   date;
+transtype   varchar2(30);
+
+expcomment varchar2(240);
+dfltempnum   number := get_reco_variable('Default Precast Employee');
+
+BEGIN
+
+  begindate := bdate;
+  enddate := edate;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+
+  howmany := 0;
+
+  FOR eachone IN getshipping LOOP
+     OPEN getemployee(eachone.project_id);
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+     IF eachone.ship_amount < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Trans:'||eachone.interfacenum||';'||
+            eachone.project_num||';'||eachone.shipping_task_number||
+            '('||TO_CHAR(eachone.ship_amount)||')' );
+     END IF;
+     --  5/17 determine correct date if previous period
+     IF eachone.ship_date BETWEEN begindate AND enddate THEN
+        adjdate := eachone.ship_date;
+        adjeow  := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := eachone.ship_comment;
+        transtype := 'CURRENT';
+     ELSE
+        adjdate := begindate + (enddate - begindate)/2;
+        adjeow := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := 'Previous period shipping :'||SUBSTR(eachone.ship_comment,1,150);
+        transtype := 'PREVIOUS';
+     END IF;
+--
+-- Ensure WACO passes dollars, but no other vendor type  5/19
+--
+-- now insert a units line for the precast expenditure  MUST be 0 cost!
+     INSERT INTO apps.pa_transaction_interface_all (
+          transaction_source, batch_name, expenditure_ending_date,
+          expenditure_item_date, project_number, task_number,
+          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+          expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, attribute7, org_id, system_linkage )
+     VALUES (
+          'Production Shipping', eachone.interfacenum||'a', adjeow,
+          adjdate, eachone.project_num, eachone.shipping_task_number,
+          eachone.expenditure_type, eachone.ship_amount, 0,
+          'P', eachone.interfacenum||'a', enum, isnegative, expcomment,'Precast Shipment',
+            TO_CHAR(eachone.pcf_ship_id), TO_CHAR(eachone.pcf_id), TO_CHAR(eachone.revision_number),
+            TO_CHAR(eachone.vendor_id), eachone.ship_comment, transtype, 0, 'PJ' );
+     UPDATE reco_pcf_shipping
+        set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+      WHERE pcf_ship_id = eachone.pcf_ship_id;
+     howmany := howmany + 1;
+   END LOOP;
+--  Update those marked with 0 amounts
+   UPDATE reco_pcf_shipping
+     set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+    WHERE billed_flag = 'N' AND ship_date <= enddate
+      AND ship_amount = 0;
+   IF debug THEN
+      Dbms_Output.Put_Line( 'Zero Amount lines : '||TO_CHAR(SQL%ROWCOUNT) );
+   END IF;
+--
+
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  IF debug THEN
+     Dbms_Output.Put_Line( TO_CHAR(howmany)||' Updated' );
+  END IF;
+END;
+
+
+PROCEDURE RECO_WACO_SHIP_BILLING (    bdate IN date,
+                                                   edate IN date,
+                                                   action IN number ) IS
+--
+-- This procedure finds shipping entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated shipping entries with a billed flag of 'X'
+-- for transfer begins and the date.
+-- After the transactions have been posted, billed is set to 'Y'.  (and billed_date is
+-- changed to current date )
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+--
+begindate  date;
+enddate    date;
+howmany    number;
+
+
+CURSOR  getshipping IS
+SELECT /*+ USE_NL( S,T,P,V,PC ) */P.segment1 project_num, T.task_number shipping_task_number, T.project_id,
+         s.shipping_expenditure_type, s.ship_comment, s.pcf_id, v.revision_number,
+         s.ship_date, s.ship_amount, s.pcf_ship_id, v.shipping_cost, v.expenditure_type,
+         'S'||LTRIM(TO_CHAR(s.pcf_ship_id)) interfacenum, v.vendor_id, waco_shipment_id
+    FROM reco_pcf_shipping s, pa_tasks T, pa_projects P, reco_pcf v, reco_pcf_current pc
+   WHERE T.task_id = s.shipping_task_id
+         and p.project_id = t.project_id
+         AND s.ship_amount != 0
+         AND v.pcf_id = s.pcf_id
+         AND pc.pcf_id = v.pcf_id and pc.revision_number = v.revision_number
+         AND billed_flag = 'N'
+         AND v.vendor_id = wacovendorid
+     AND ship_date <= enddate;
+
+CURSOR getemployee (thepid IN number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+
+enum   per_people_f.employee_number%TYPE;
+debug BOOLEAN := FALSE;
+isnegative  varchar2(1) := 'N';
+junkval number;
+adjdate  date;
+adjeow   date;
+transtype   varchar2(30);
+
+expcomment varchar2(240);
+
+dfltwacoempnum number := get_reco_variable('Default WACO Precast Employee');
+
+BEGIN
+
+  begindate := bdate;
+  enddate := edate;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+
+  howmany := 0;
+  --
+
+  FOR eachone IN getshipping LOOP
+     OPEN getemployee(eachone.project_id);
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltwacoempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+     IF eachone.ship_amount < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Trans:'||eachone.interfacenum||';'||
+            eachone.project_num||';'||eachone.shipping_task_number||
+            '('||TO_CHAR(eachone.ship_amount)||')' );
+     END IF;
+     --  5/17 determine correct date if previous period
+     IF eachone.ship_date BETWEEN begindate AND enddate THEN
+        adjdate := eachone.ship_date;
+        adjeow  := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := eachone.ship_comment;
+        transtype := 'CURRENT';
+     ELSE
+        adjdate := begindate + (enddate - begindate)/2;
+        adjeow := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := 'Previous period shipping :'||SUBSTR(eachone.ship_comment,1,150);
+        transtype := 'PREVIOUS';
+     END IF;
+--
+-- Ensure WACO passes dollars, but no other vendor type  5/19
+--
+     INSERT INTO apps.pa_transaction_interface_all (
+          transaction_source, batch_name, expenditure_ending_date,
+          expenditure_item_date, project_number, task_number,
+          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+          expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, attribute7, org_id, system_linkage )
+       VALUES (
+          'RECO WACO Prod Shipping', eachone.interfacenum, adjeow,
+          adjdate, eachone.project_num, eachone.shipping_task_number,
+          eachone.shipping_expenditure_type, eachone.ship_amount, eachone.ship_amount * eachone.shipping_cost,
+          'P', eachone.interfacenum, enum, isnegative, expcomment, 'Precast Shipment',
+            TO_CHAR(eachone.pcf_ship_id), TO_CHAR(eachone.pcf_id), TO_CHAR(eachone.revision_number),
+            TO_CHAR(eachone.vendor_id), eachone.ship_comment, transtype, 0, 'PJ' );
+-- now insert a units line for the precast expenditure  MUST be 0 cost!
+     INSERT INTO apps.pa_transaction_interface_all (
+          transaction_source, batch_name, expenditure_ending_date,
+          expenditure_item_date, project_number, task_number,
+          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+          expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, attribute7, org_id, system_linkage )
+     VALUES (
+          'RECO WACO Prod Shipping', eachone.interfacenum||'a', adjeow,
+          adjdate, eachone.project_num, eachone.shipping_task_number,
+          eachone.expenditure_type, eachone.ship_amount, 0,
+          'P', eachone.interfacenum||'a', enum, isnegative, expcomment,'Precast Shipment',
+            TO_CHAR(eachone.pcf_ship_id), TO_CHAR(eachone.pcf_id), TO_CHAR(eachone.revision_number),
+            TO_CHAR(eachone.vendor_id), eachone.ship_comment, transtype, 0, 'PJ' );
+     UPDATE reco_pcf_shipping
+        set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+      WHERE pcf_ship_id = eachone.pcf_ship_id;
+     howmany := howmany + 1;
+     UPDATE reco_precast_shipment
+       set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+     WHERE shipment_id = eachone.waco_shipment_id;
+   END LOOP;
+--  Update those marked with 0 amounts
+   UPDATE reco_pcf_shipping
+     set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+    WHERE billed_flag = 'N' AND ship_date <= enddate
+      AND ship_amount = 0;
+   IF debug THEN
+     Dbms_Output.Put_Line( 'Zero Amount lines : '||TO_CHAR(SQL%ROWCOUNT) );
+   END IF;
+--
+
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  IF debug THEN
+     Dbms_Output.Put_Line( TO_CHAR(howmany)||' Updated' );
+  END IF;
+END;
+
+PROCEDURE RECO_georgia_SHIP_BILLING (    bdate IN date,
+                                                   edate IN date,
+                                                   action IN number ) IS
+--
+-- This procedure finds shipping entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated shipping entries with a billed flag of 'X'
+-- for transfer begins and the date.
+-- After the transactions have been posted, billed is set to 'Y'.  (and billed_date is
+-- changed to current date )
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+--
+begindate  date;
+enddate    date;
+howmany    number;
+
+
+CURSOR  getshipping IS
+SELECT /*+ USE_NL( S,T,P,V,PC ) */P.segment1 project_num, T.task_number shipping_task_number, T.project_id,
+         s.shipping_expenditure_type, s.ship_comment, s.pcf_id, v.revision_number,
+         s.ship_date, s.ship_amount, s.pcf_ship_id, v.shipping_cost, v.expenditure_type,
+         'S'||LTRIM(TO_CHAR(s.pcf_ship_id)) interfacenum, v.vendor_id, waco_shipment_id
+    FROM reco_pcf_shipping s, pa_tasks T, pa_projects P, reco_pcf v, reco_pcf_current pc
+   WHERE T.task_id = s.shipping_task_id
+         and p.project_id = t.project_id
+         AND s.ship_amount != 0
+         AND v.pcf_id = s.pcf_id
+         AND pc.pcf_id = v.pcf_id and pc.revision_number = v.revision_number
+         AND billed_flag = 'N'
+         AND v.vendor_id = georgiavendorid
+     AND ship_date <= enddate;
+
+CURSOR getemployee (thepid IN number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+
+enum   per_people_f.employee_number%TYPE;
+debug BOOLEAN := FALSE;
+isnegative  varchar2(1) := 'N';
+junkval number;
+adjdate  date;
+adjeow   date;
+transtype   varchar2(30);
+
+expcomment varchar2(240);
+
+dfltgeorgiaempnum number := get_reco_variable('Default GEORGIA Precast Employee');
+
+BEGIN
+
+  begindate := bdate;
+  enddate := edate;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+
+  howmany := 0;
+  --
+
+  FOR eachone IN getshipping LOOP
+     OPEN getemployee(eachone.project_id);
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltgeorgiaempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+     IF eachone.ship_amount < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Trans:'||eachone.interfacenum||';'||
+            eachone.project_num||';'||eachone.shipping_task_number||
+            '('||TO_CHAR(eachone.ship_amount)||')' );
+     END IF;
+     --  5/17 determine correct date if previous period
+     IF eachone.ship_date BETWEEN begindate AND enddate THEN
+        adjdate := eachone.ship_date;
+        adjeow  := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := eachone.ship_comment;
+        transtype := 'CURRENT';
+     ELSE
+        adjdate := begindate + (enddate - begindate)/2;
+        adjeow := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := 'Previous period shipping :'||SUBSTR(eachone.ship_comment,1,150);
+        transtype := 'PREVIOUS';
+     END IF;
+--
+-- Ensure georgia passes dollars, like WACO
+--
+     INSERT INTO apps.pa_transaction_interface_all (
+          transaction_source, batch_name, expenditure_ending_date,
+          expenditure_item_date, project_number, task_number,
+          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+          expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, attribute7, org_id, system_linkage )
+       VALUES (
+          'RECO GEORGIA Prod Shipping', eachone.interfacenum, adjeow,
+          adjdate, eachone.project_num, eachone.shipping_task_number,
+          eachone.shipping_expenditure_type, eachone.ship_amount, eachone.ship_amount * eachone.shipping_cost,
+          'P', eachone.interfacenum, enum, isnegative, expcomment, 'Precast Shipment',
+            TO_CHAR(eachone.pcf_ship_id), TO_CHAR(eachone.pcf_id), TO_CHAR(eachone.revision_number),
+            TO_CHAR(eachone.vendor_id), eachone.ship_comment, transtype, 0, 'PJ' );
+-- now insert a units line for the precast expenditure  MUST be 0 cost!
+     INSERT INTO apps.pa_transaction_interface_all (
+          transaction_source, batch_name, expenditure_ending_date,
+          expenditure_item_date, project_number, task_number,
+          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+          expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, attribute7, org_id, system_linkage )
+     VALUES (
+          'RECO GEORGIA Prod Shipping', eachone.interfacenum||'a', adjeow,
+          adjdate, eachone.project_num, eachone.shipping_task_number,
+          eachone.expenditure_type, eachone.ship_amount, 0,
+          'P', eachone.interfacenum||'a', enum, isnegative, expcomment,'Precast Shipment',
+            TO_CHAR(eachone.pcf_ship_id), TO_CHAR(eachone.pcf_id), TO_CHAR(eachone.revision_number),
+            TO_CHAR(eachone.vendor_id), eachone.ship_comment, transtype, 0, 'PJ' );
+     UPDATE reco_pcf_shipping
+        set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+      WHERE pcf_ship_id = eachone.pcf_ship_id;
+     howmany := howmany + 1;
+   END LOOP;
+--  Update those marked with 0 amounts
+   UPDATE reco_pcf_shipping
+     set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+    WHERE billed_flag = 'N' AND ship_date <= enddate
+      AND ship_amount = 0;
+   IF debug THEN
+     Dbms_Output.Put_Line( 'Zero Amount lines : '||TO_CHAR(SQL%ROWCOUNT) );
+   END IF;
+--
+
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  IF debug THEN
+     Dbms_Output.Put_Line( TO_CHAR(howmany)||' Updated' );
+  END IF;
+END;
+
+PROCEDURE RECO_florida_SHIP_BILLING (    bdate IN date,
+                                                   edate IN date,
+                                                   action IN number ) IS
+--
+-- This procedure finds shipping entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated shipping entries with a billed flag of 'X'
+-- for transfer begins and the date.
+-- After the transactions have been posted, billed is set to 'Y'.  (and billed_date is
+-- changed to current date )
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+--
+begindate  date;
+enddate    date;
+howmany    number;
+
+
+CURSOR  getshipping IS
+SELECT /*+ USE_NL( S,T,P,V,PC ) */P.segment1 project_num, T.task_number shipping_task_number, T.project_id,
+         s.shipping_expenditure_type, s.ship_comment, s.pcf_id, v.revision_number,
+         s.ship_date, s.ship_amount, s.pcf_ship_id, v.shipping_cost, v.expenditure_type,
+         'S'||LTRIM(TO_CHAR(s.pcf_ship_id)) interfacenum, v.vendor_id, waco_shipment_id
+    FROM reco_pcf_shipping s, pa_tasks T, pa_projects P, reco_pcf v, reco_pcf_current pc
+   WHERE T.task_id = s.shipping_task_id
+         and p.project_id = t.project_id
+         AND s.ship_amount != 0
+         AND v.pcf_id = s.pcf_id
+         AND pc.pcf_id = v.pcf_id and pc.revision_number = v.revision_number
+         AND billed_flag = 'N'
+         AND v.vendor_id = floridavendorid
+     AND ship_date <= enddate;
+
+CURSOR getemployee (thepid IN number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+
+enum   per_people_f.employee_number%TYPE;
+debug BOOLEAN := FALSE;
+isnegative  varchar2(1) := 'N';
+junkval number;
+adjdate  date;
+adjeow   date;
+transtype   varchar2(30);
+
+expcomment varchar2(240);
+
+dfltfloridaempnum number := get_reco_variable('Default FLORIDA Precast Employee');
+
+BEGIN
+
+  begindate := bdate;
+  enddate := edate;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+
+  howmany := 0;
+  --
+
+  FOR eachone IN getshipping LOOP
+     OPEN getemployee(eachone.project_id);
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltfloridaempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+     IF eachone.ship_amount < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Trans:'||eachone.interfacenum||';'||
+            eachone.project_num||';'||eachone.shipping_task_number||
+            '('||TO_CHAR(eachone.ship_amount)||')' );
+     END IF;
+     --  5/17 determine correct date if previous period
+     IF eachone.ship_date BETWEEN begindate AND enddate THEN
+        adjdate := eachone.ship_date;
+        adjeow  := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := eachone.ship_comment;
+        transtype := 'CURRENT';
+     ELSE
+        adjdate := begindate + (enddate - begindate)/2;
+        adjeow := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := 'Previous period shipping :'||SUBSTR(eachone.ship_comment,1,150);
+        transtype := 'PREVIOUS';
+     END IF;
+--
+-- Ensure florida passes dollars, like WACO
+--
+     INSERT INTO apps.pa_transaction_interface_all (
+          transaction_source, batch_name, expenditure_ending_date,
+          expenditure_item_date, project_number, task_number,
+          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+          expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, attribute7, org_id, system_linkage )
+       VALUES (
+          'RECO FLORIDA Prod Shipping', eachone.interfacenum, adjeow,
+          adjdate, eachone.project_num, eachone.shipping_task_number,
+          eachone.shipping_expenditure_type, eachone.ship_amount, eachone.ship_amount * eachone.shipping_cost,
+          'P', eachone.interfacenum, enum, isnegative, expcomment, 'Precast Shipment',
+            TO_CHAR(eachone.pcf_ship_id), TO_CHAR(eachone.pcf_id), TO_CHAR(eachone.revision_number),
+            TO_CHAR(eachone.vendor_id), eachone.ship_comment, transtype, 0, 'PJ' );
+-- now insert a units line for the precast expenditure  MUST be 0 cost!
+     INSERT INTO apps.pa_transaction_interface_all (
+          transaction_source, batch_name, expenditure_ending_date,
+          expenditure_item_date, project_number, task_number,
+          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+          expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, attribute7, org_id, system_linkage )
+     VALUES (
+          'RECO FLORIDA Prod Shipping', eachone.interfacenum||'a', adjeow,
+          adjdate, eachone.project_num, eachone.shipping_task_number,
+          eachone.expenditure_type, eachone.ship_amount, 0,
+          'P', eachone.interfacenum||'a', enum, isnegative, expcomment,'Precast Shipment',
+            TO_CHAR(eachone.pcf_ship_id), TO_CHAR(eachone.pcf_id), TO_CHAR(eachone.revision_number),
+            TO_CHAR(eachone.vendor_id), eachone.ship_comment, transtype, 0, 'PJ' );
+     UPDATE reco_pcf_shipping
+        set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+      WHERE pcf_ship_id = eachone.pcf_ship_id;
+     howmany := howmany + 1;
+   END LOOP;
+--  Update those marked with 0 amounts
+   UPDATE reco_pcf_shipping
+     set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+    WHERE billed_flag = 'N' AND ship_date <= enddate
+      AND ship_amount = 0;
+   IF debug THEN
+     Dbms_Output.Put_Line( 'Zero Amount lines : '||TO_CHAR(SQL%ROWCOUNT) );
+   END IF;
+--
+
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  IF debug THEN
+     Dbms_Output.Put_Line( TO_CHAR(howmany)||' Updated' );
+  END IF;
+END;
+
+PROCEDURE RECO_ca_SHIP_BILLING (    bdate IN date,
+                                                   edate IN date,
+                                                   action IN number ) IS
+--
+-- This procedure finds shipping entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated shipping entries with a billed flag of 'X'
+-- for transfer begins and the date.
+-- After the transactions have been posted, billed is set to 'Y'.  (and billed_date is
+-- changed to current date )
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+--
+begindate  date;
+enddate    date;
+howmany    number;
+
+
+CURSOR  getshipping IS
+SELECT /*+ USE_NL( S,T,P,V,PC ) */P.segment1 project_num, T.task_number shipping_task_number, T.project_id,
+         s.shipping_expenditure_type, s.ship_comment, s.pcf_id, v.revision_number,
+         s.ship_date, s.ship_amount, s.pcf_ship_id, v.shipping_cost, v.expenditure_type,
+         'S'||LTRIM(TO_CHAR(s.pcf_ship_id)) interfacenum, v.vendor_id, waco_shipment_id
+    FROM reco_pcf_shipping s, pa_tasks T, pa_projects P, reco_pcf v, reco_pcf_current pc
+   WHERE T.task_id = s.shipping_task_id
+         and p.project_id = t.project_id
+         AND s.ship_amount != 0
+         AND v.pcf_id = s.pcf_id
+         AND pc.pcf_id = v.pcf_id and pc.revision_number = v.revision_number
+         AND billed_flag = 'N'
+         AND v.vendor_id = cavendorid
+     AND ship_date <= enddate;
+
+CURSOR getemployee (thepid IN number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+
+enum   per_people_f.employee_number%TYPE;
+debug BOOLEAN := FALSE;
+isnegative  varchar2(1) := 'N';
+junkval number;
+adjdate  date;
+adjeow   date;
+transtype   varchar2(30);
+
+expcomment varchar2(240);
+
+dfltcaempnum number := get_reco_variable('Default CA Precast Employee');
+
+BEGIN
+
+  begindate := bdate;
+  enddate := edate;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+
+  howmany := 0;
+  --
+
+  FOR eachone IN getshipping LOOP
+     OPEN getemployee(eachone.project_id);
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltcaempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+     IF eachone.ship_amount < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Trans:'||eachone.interfacenum||';'||
+            eachone.project_num||';'||eachone.shipping_task_number||
+            '('||TO_CHAR(eachone.ship_amount)||')' );
+     END IF;
+     --  5/17 determine correct date if previous period
+     IF eachone.ship_date BETWEEN begindate AND enddate THEN
+        adjdate := eachone.ship_date;
+        adjeow  := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := eachone.ship_comment;
+        transtype := 'CURRENT';
+     ELSE
+        adjdate := begindate + (enddate - begindate)/2;
+        adjeow := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := 'Previous period shipping :'||SUBSTR(eachone.ship_comment,1,150);
+        transtype := 'PREVIOUS';
+     END IF;
+--
+-- Ensure ca passes dollars, like WACO
+--
+     INSERT INTO apps.pa_transaction_interface_all (
+          transaction_source, batch_name, expenditure_ending_date,
+          expenditure_item_date, project_number, task_number,
+          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+          expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, attribute7, org_id, system_linkage )
+       VALUES (
+          'RECO CA Prod Shipping', eachone.interfacenum, adjeow,
+          adjdate, eachone.project_num, eachone.shipping_task_number,
+          eachone.shipping_expenditure_type, eachone.ship_amount, eachone.ship_amount * eachone.shipping_cost,
+          'P', eachone.interfacenum, enum, isnegative, expcomment, 'Precast Shipment',
+            TO_CHAR(eachone.pcf_ship_id), TO_CHAR(eachone.pcf_id), TO_CHAR(eachone.revision_number),
+            TO_CHAR(eachone.vendor_id), eachone.ship_comment, transtype, 0, 'PJ' );
+-- now insert a units line for the precast expenditure  MUST be 0 cost!
+     INSERT INTO apps.pa_transaction_interface_all (
+          transaction_source, batch_name, expenditure_ending_date,
+          expenditure_item_date, project_number, task_number,
+          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+          expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, attribute7, org_id, system_linkage )
+     VALUES (
+          'RECO CA Prod Shipping', eachone.interfacenum||'a', adjeow,
+          adjdate, eachone.project_num, eachone.shipping_task_number,
+          eachone.expenditure_type, eachone.ship_amount, 0,
+          'P', eachone.interfacenum||'a', enum, isnegative, expcomment,'Precast Shipment',
+            TO_CHAR(eachone.pcf_ship_id), TO_CHAR(eachone.pcf_id), TO_CHAR(eachone.revision_number),
+            TO_CHAR(eachone.vendor_id), eachone.ship_comment, transtype, 0, 'PJ' );
+     UPDATE reco_pcf_shipping
+        set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+      WHERE pcf_ship_id = eachone.pcf_ship_id;
+     howmany := howmany + 1;
+   END LOOP;
+--  Update those marked with 0 amounts
+   UPDATE reco_pcf_shipping
+     set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+    WHERE billed_flag = 'N' AND ship_date <= enddate
+      AND ship_amount = 0;
+   IF debug THEN
+     Dbms_Output.Put_Line( 'Zero Amount lines : '||TO_CHAR(SQL%ROWCOUNT) );
+   END IF;
+--
+
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  IF debug THEN
+     Dbms_Output.Put_Line( TO_CHAR(howmany)||' Updated' );
+  END IF;
+END;
+
+PROCEDURE RECO_lb_SHIP_BILLING (    bdate IN date,
+                                                   edate IN date,
+                                                   action IN number ) IS
+--
+-- This procedure finds shipping entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated shipping entries with a billed flag of 'X'
+-- for transfer begins and the date.
+-- After the transactions have been posted, billed is set to 'Y'.  (and billed_date is
+-- changed to current date )
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+--
+begindate  date;
+enddate    date;
+howmany    number;
+
+
+CURSOR  getshipping IS
+SELECT /*+ USE_NL( S,T,P,V,PC ) */P.segment1 project_num, T.task_number shipping_task_number, T.project_id,
+         s.shipping_expenditure_type, s.ship_comment, s.pcf_id, v.revision_number,
+         s.ship_date, s.ship_amount, s.pcf_ship_id, v.shipping_cost, v.expenditure_type,
+         'S'||LTRIM(TO_CHAR(s.pcf_ship_id)) interfacenum, v.vendor_id, waco_shipment_id
+    FROM reco_pcf_shipping s, pa_tasks T, pa_projects P, reco_pcf v, reco_pcf_current pc
+   WHERE T.task_id = s.shipping_task_id
+         and p.project_id = t.project_id
+         AND s.ship_amount != 0
+         AND v.pcf_id = s.pcf_id
+         AND pc.pcf_id = v.pcf_id and pc.revision_number = v.revision_number
+         AND billed_flag = 'N'
+         AND v.vendor_id = lbvendorid
+     AND ship_date <= enddate;
+
+CURSOR getemployee (thepid IN number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+
+enum   per_people_f.employee_number%TYPE;
+debug BOOLEAN := FALSE;
+isnegative  varchar2(1) := 'N';
+junkval number;
+adjdate  date;
+adjeow   date;
+transtype   varchar2(30);
+
+expcomment varchar2(240);
+
+dfltlbempnum number := get_reco_variable('Default LB Precast Employee');
+
+BEGIN
+
+  begindate := bdate;
+  enddate := edate;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+
+  howmany := 0;
+  --
+
+  FOR eachone IN getshipping LOOP
+     OPEN getemployee(eachone.project_id);
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltlbempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+     IF eachone.ship_amount < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Trans:'||eachone.interfacenum||';'||
+            eachone.project_num||';'||eachone.shipping_task_number||
+            '('||TO_CHAR(eachone.ship_amount)||')' );
+     END IF;
+     --  5/17 determine correct date if previous period
+     IF eachone.ship_date BETWEEN begindate AND enddate THEN
+        adjdate := eachone.ship_date;
+        adjeow  := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := eachone.ship_comment;
+        transtype := 'CURRENT';
+     ELSE
+        adjdate := begindate + (enddate - begindate)/2;
+        adjeow := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := 'Previous period shipping :'||SUBSTR(eachone.ship_comment,1,150);
+        transtype := 'PREVIOUS';
+     END IF;
+--
+-- Ensure lb passes dollars, like WACO
+--
+     INSERT INTO apps.pa_transaction_interface_all (
+          transaction_source, batch_name, expenditure_ending_date,
+          expenditure_item_date, project_number, task_number,
+          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+          expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, attribute7, org_id, system_linkage )
+       VALUES (
+          'RECO LB Prod Shipping', eachone.interfacenum, adjeow,
+          adjdate, eachone.project_num, eachone.shipping_task_number,
+          eachone.shipping_expenditure_type, eachone.ship_amount, eachone.ship_amount * eachone.shipping_cost,
+          'P', eachone.interfacenum, enum, isnegative, expcomment, 'Precast Shipment',
+            TO_CHAR(eachone.pcf_ship_id), TO_CHAR(eachone.pcf_id), TO_CHAR(eachone.revision_number),
+            TO_CHAR(eachone.vendor_id), eachone.ship_comment, transtype, 0, 'PJ' );
+-- now insert a units line for the precast expenditure  MUST be 0 cost!
+     INSERT INTO apps.pa_transaction_interface_all (
+          transaction_source, batch_name, expenditure_ending_date,
+          expenditure_item_date, project_number, task_number,
+          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+          expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, attribute7, org_id, system_linkage )
+     VALUES (
+          'RECO LB Prod Shipping', eachone.interfacenum||'a', adjeow,
+          adjdate, eachone.project_num, eachone.shipping_task_number,
+          eachone.expenditure_type, eachone.ship_amount, 0,
+          'P', eachone.interfacenum||'a', enum, isnegative, expcomment,'Precast Shipment',
+            TO_CHAR(eachone.pcf_ship_id), TO_CHAR(eachone.pcf_id), TO_CHAR(eachone.revision_number),
+            TO_CHAR(eachone.vendor_id), eachone.ship_comment, transtype, 0, 'PJ' );
+     UPDATE reco_pcf_shipping
+        set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+      WHERE pcf_ship_id = eachone.pcf_ship_id;
+     howmany := howmany + 1;
+   END LOOP;
+--  Update those marked with 0 amounts
+   UPDATE reco_pcf_shipping
+     set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+    WHERE billed_flag = 'N' AND ship_date <= enddate
+      AND ship_amount = 0;
+   IF debug THEN
+     Dbms_Output.Put_Line( 'Zero Amount lines : '||TO_CHAR(SQL%ROWCOUNT) );
+   END IF;
+--
+
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  IF debug THEN
+     Dbms_Output.Put_Line( TO_CHAR(howmany)||' Updated' );
+  END IF;
+END;
+
+PROCEDURE RECO_wm_SHIP_BILLING (    bdate IN date,
+                                                   edate IN date,
+                                                   action IN number ) IS
+--
+-- This procedure finds shipping entered between the two dates that has
+-- not been billed and sends it to the interface.
+-- It updates the associated shipping entries with a billed flag of 'X'
+-- for transfer begins and the date.
+-- After the transactions have been posted, billed is set to 'Y'.  (and billed_date is
+-- changed to current date )
+-- JRA
+--
+-- if -1 is passed in for howmany, it outputs debug messages
+--
+begindate  date;
+enddate    date;
+howmany    number;
+
+
+CURSOR  getshipping IS
+SELECT /*+ USE_NL( S,T,P,V,PC ) */P.segment1 project_num, T.task_number shipping_task_number, T.project_id,
+         s.shipping_expenditure_type, s.ship_comment, s.pcf_id, v.revision_number,
+         s.ship_date, s.ship_amount, s.pcf_ship_id, v.shipping_cost, v.expenditure_type,
+         'S'||LTRIM(TO_CHAR(s.pcf_ship_id)) interfacenum, v.vendor_id, waco_shipment_id
+    FROM reco_pcf_shipping s, pa_tasks T, pa_projects P, reco_pcf v, reco_pcf_current pc
+   WHERE T.task_id = s.shipping_task_id
+         and p.project_id = t.project_id
+         AND s.ship_amount != 0
+         AND v.pcf_id = s.pcf_id
+         AND pc.pcf_id = v.pcf_id and pc.revision_number = v.revision_number
+         AND billed_flag = 'N'
+         AND v.vendor_id = wmvendorid
+     AND ship_date <= enddate;
+
+CURSOR getemployee (thepid IN number) IS
+ SELECT employee_number
+ FROM apps.pa_proj_info_view piv, per_people_f P
+ WHERE person_id = manager_person_id
+ AND project_id = thepid
+ AND P.effective_end_date >= SYSDATE;
+
+
+enum   per_people_f.employee_number%TYPE;
+debug BOOLEAN := FALSE;
+isnegative  varchar2(1) := 'N';
+junkval number;
+adjdate  date;
+adjeow   date;
+transtype   varchar2(30);
+
+expcomment varchar2(240);
+
+dfltlbempnum number := get_reco_variable('Default WM Precast Employee');
+
+BEGIN
+
+  begindate := bdate;
+  enddate := edate;
+  howmany := action;
+  IF howmany < 0 THEN
+     debug := TRUE;
+     Dbms_Output.Enable( 200000 );
+  END IF;
+  IF begindate IS NULL THEN
+     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+  END IF;
+
+  howmany := 0;
+  --
+
+  FOR eachone IN getshipping LOOP
+     OPEN getemployee(eachone.project_id);
+     FETCH getemployee INTO enum;
+     CLOSE getemployee;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+     END IF;
+     IF enum IS NULL THEN
+        enum := dfltlbempnum;
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+     END IF;
+     IF eachone.ship_amount < 0 THEN
+        isnegative := 'Y';
+     ELSE
+        isnegative := 'N';
+     END IF;
+     IF debug THEN
+        Dbms_Output.Put_Line( 'Trans:'||eachone.interfacenum||';'||
+            eachone.project_num||';'||eachone.shipping_task_number||
+            '('||TO_CHAR(eachone.ship_amount)||')' );
+     END IF;
+     --  5/17 determine correct date if previous period
+     IF eachone.ship_date BETWEEN begindate AND enddate THEN
+        adjdate := eachone.ship_date;
+        adjeow  := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := eachone.ship_comment;
+        transtype := 'CURRENT';
+     ELSE
+        adjdate := begindate + (enddate - begindate)/2;
+        adjeow := TRUNC(adjdate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjdate),'d'))));
+        expcomment := 'Previous period shipping :'||SUBSTR(eachone.ship_comment,1,150);
+        transtype := 'PREVIOUS';
+     END IF;
+--
+-- Ensure lb passes dollars, like WACO
+--
+     INSERT INTO apps.pa_transaction_interface_all (
+          transaction_source, batch_name, expenditure_ending_date,
+          expenditure_item_date, project_number, task_number,
+          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+          expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, attribute7, org_id, system_linkage )
+       VALUES (
+          'RECO WM Prod Shipping', eachone.interfacenum, adjeow,
+          adjdate, eachone.project_num, eachone.shipping_task_number,
+          eachone.shipping_expenditure_type, eachone.ship_amount, eachone.ship_amount * eachone.shipping_cost,
+          'P', eachone.interfacenum, enum, isnegative, expcomment, 'Precast Shipment',
+            TO_CHAR(eachone.pcf_ship_id), TO_CHAR(eachone.pcf_id), TO_CHAR(eachone.revision_number),
+            TO_CHAR(eachone.vendor_id), eachone.ship_comment, transtype, 0, 'PJ' );
+-- now insert a units line for the precast expenditure  MUST be 0 cost!
+     INSERT INTO apps.pa_transaction_interface_all (
+          transaction_source, batch_name, expenditure_ending_date,
+          expenditure_item_date, project_number, task_number,
+          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+          expenditure_comment, attribute_category, attribute2, attribute3, attribute4,
+               attribute5, attribute6, attribute7, org_id, system_linkage )
+     VALUES (
+          'RECO WM Prod Shipping', eachone.interfacenum||'a', adjeow,
+          adjdate, eachone.project_num, eachone.shipping_task_number,
+          eachone.expenditure_type, eachone.ship_amount, 0,
+          'P', eachone.interfacenum||'a', enum, isnegative, expcomment,'Precast Shipment',
+            TO_CHAR(eachone.pcf_ship_id), TO_CHAR(eachone.pcf_id), TO_CHAR(eachone.revision_number),
+            TO_CHAR(eachone.vendor_id), eachone.ship_comment, transtype, 0, 'PJ' );
+     UPDATE reco_pcf_shipping
+        set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+      WHERE pcf_ship_id = eachone.pcf_ship_id;
+     howmany := howmany + 1;
+   END LOOP;
+--  Update those marked with 0 amounts
+   UPDATE reco_pcf_shipping
+     set billed_flag = 'Y', billed_date = TRUNC(SYSDATE)
+    WHERE billed_flag = 'N' AND ship_date <= enddate
+      AND ship_amount = 0;
+   IF debug THEN
+     Dbms_Output.Put_Line( 'Zero Amount lines : '||TO_CHAR(SQL%ROWCOUNT) );
+   END IF;
+--
+
+  IF action = -2 THEN
+     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+  ELSE
+     COMMIT;
+  END IF;
+  IF debug THEN
+     Dbms_Output.Put_Line( TO_CHAR(howmany)||' Updated' );
+  END IF;
+END;
+
+
+procedure mark_lots_billed( errbuf out varchar2,
+                            retcode out number  ) is
+-- this procedure marks all lots billed according to the expenditure linked
+-- the precast linkage table contains the back link to the original lots
+-- the appropriate billing table gets cleared when completed
+--
+cursor getotherbilled is
+select b.tnum
+from reco_prod_billing b, pa_expenditure_items_all p
+where p.orig_transaction_reference = b.tnum;
+
+cursor getwacobilled is
+select b.tnum
+from reco_waco_prod_billing b, pa_expenditure_items_all p
+where p.orig_transaction_reference = b.tnum;
+
+cursor getgeorgiabilled is
+select b.tnum
+from reco_georgia_prod_billing b, pa_expenditure_items_all p
+where p.orig_transaction_reference = b.tnum;
+
+cursor getfloridabilled is
+select b.tnum
+from reco_florida_prod_billing b, pa_expenditure_items_all p
+where p.orig_transaction_reference = b.tnum;
+
+cursor getcabilled is
+select b.tnum
+from reco_ca_prod_billing b, pa_expenditure_items_all p
+where p.orig_transaction_reference = b.tnum;
+
+cursor getlbbilled is
+select b.tnum
+from reco_lb_prod_billing b, pa_expenditure_items_all p
+where p.orig_transaction_reference = b.tnum;
+
+wacocnt  number :=0;
+georgiacnt number :=0;
+floridacnt number :=0;
+cacnt number :=0;
+othercnt number := 0;
+lbcnt number := 0;
+
+begin
+
+  for eachother in getotherbilled loop
+      update reco_lot_numbers
+       set billed_flag = 'Y'
+      where lot_id in ( select lot_id from reco_precast_linkage
+                         where tnum = eachother.tnum );
+      othercnt := othercnt + SQL%ROWCOUNT;
+      delete from reco_prod_billing where tnum = eachother.tnum;
+  end loop;
+
+  for eachwaco in getwacobilled loop
+      update reco_lot_numbers
+       set billed_flag = 'Y'
+      where lot_id in ( select lot_id from reco_precast_linkage
+                         where tnum = eachwaco.tnum );
+      wacocnt := wacocnt + SQL%ROWCOUNT;
+      delete from reco_waco_prod_billing where tnum = eachwaco.tnum;
+  end loop;
+
+  for eachgeorgia in getgeorgiabilled loop
+      update reco_lot_numbers
+       set billed_flag = 'Y'
+      where lot_id in ( select lot_id from reco_precast_linkage
+                         where tnum = eachgeorgia.tnum );
+      georgiacnt := georgiacnt + SQL%ROWCOUNT;
+      delete from reco_georgia_prod_billing where tnum = eachgeorgia.tnum;
+  end loop;
+
+  for eachflorida in getfloridabilled loop
+      update reco_lot_numbers
+       set billed_flag = 'Y'
+      where lot_id in ( select lot_id from reco_precast_linkage
+                         where tnum = eachflorida.tnum );
+      floridacnt := floridacnt + SQL%ROWCOUNT;
+      delete from reco_florida_prod_billing where tnum = eachflorida.tnum;
+  end loop;
+
+  for eachca in getcabilled loop
+      update reco_lot_numbers
+       set billed_flag = 'Y'
+      where lot_id in ( select lot_id from reco_precast_linkage
+                         where tnum = eachca.tnum );
+      cacnt := cacnt + SQL%ROWCOUNT;
+      delete from reco_ca_prod_billing where tnum = eachca.tnum;
+  end loop;
+
+  for eachlb in getlbbilled loop
+      update reco_lot_numbers
+       set billed_flag = 'Y'
+      where lot_id in ( select lot_id from reco_precast_linkage
+                         where tnum = eachlb.tnum );
+      lbcnt := lbcnt + SQL%ROWCOUNT;
+      delete from reco_lb_prod_billing where tnum = eachlb.tnum;
+  end loop;
+
+  FND_FILE.PUT_LINE(FND_FILE.Log,'Waco:'||to_char(wacocnt)||', georgia:'||to_char(georgiacnt)||
+    ', florida:'||to_char(floridacnt)||', ca:'||to_char(cacnt)||', lb:'||to_char(lbcnt)||', Other:'||to_char(othercnt) );
+  retcode := 0;
+  commit;
+exception
+  when others then
+        errbuf := sqlerrm;
+        FND_FILE.PUT_LINE(FND_FILE.Log,'Unhandled exception in mark_lots_billed: '||errbuf);
+        retcode := 1;
+        rollback;
+end;
+
+
+BEGIN
+  get_reco_organization('0');
+
+  wacovendor := get_reco_variable('WACO PLANT VENDOR ID');
+  OPEN determinewaco( wacovendor );
+  FETCH determinewaco INTO wacovendorid;
+  CLOSE determinewaco;
+
+  georgiavendor := get_reco_variable('GEORGIA PLANT VENDOR ID');
+  OPEN determinewaco( georgiavendor );
+  FETCH determinewaco INTO georgiavendorid;
+  CLOSE determinewaco;
+
+  floridavendor := get_reco_variable('FLORIDA PLANT VENDOR ID');
+  OPEN determinewaco( floridavendor );
+  FETCH determinewaco INTO floridavendorid;
+  CLOSE determinewaco;
+
+  cavendor := get_reco_variable('CA PLANT VENDOR ID');
+  OPEN determinewaco( cavendor );
+  FETCH determinewaco INTO cavendorid;
+  CLOSE determinewaco;
+
+  lbvendor := get_reco_variable('LB PLANT VENDOR ID');
+  OPEN determinewaco( lbvendor );
+  FETCH determinewaco INTO lbvendorid;
+  CLOSE determinewaco;
+
+  wmvendor := get_reco_variable('WM PLANT VENDOR ID');
+  OPEN determinewaco( wmvendor );
+  FETCH determinewaco INTO wmvendorid;
+  CLOSE determinewaco;
+
+END;
