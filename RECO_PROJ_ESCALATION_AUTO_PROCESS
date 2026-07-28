@@ -1,0 +1,1455 @@
+create or replace PACKAGE BODY      RECO_PROJ_ESCALATION_AUTO_PROCESS AS
+/*  $Header: RECO_PROJ_ESCALATION_AUTO_PROCESS 1.0 12-JUNE-2026 RECO Project Escalation Automation Process, Rafi Syed $
+REM ====================================================================================================================+
+REM |        GEOQUEST USA Inc.,                                                                                         |
+REM |                                                                                                                   |
+REM ====================================================================================================================+
+REM   Name: RECO_PROJ_ESCALATION_AUTO_PROCESS
+REM   Program Type: PL/SQL
+REM   Purpose: The purpose of this program is to automate the project escalation process.
+REM   History
+
+      Version 1.0:New Development
+
+REM =====================================================================================================================
+REM  Date                    Author                                   Activity
+REM =====================================================================================================================
+REM  Jun-12-2026            Rafi Syed                               Version 1.0
+REM =====================================================================================================================
+*/ 
+--Common Logging
+PROCEDURE LOG_MSG(P_MSG VARCHAR2) IS   
+
+BEGIN
+	DBMS_OUTPUT.PUT_LINE(P_MSG);
+	FND_FILE.PUT_LINE(FND_FILE.LOG,P_MSG);
+END LOG_MSG;
+
+PROCEDURE LOG_API_MESSAGES(P_MSG_COUNT NUMBER,P_MSG_DATA VARCHAR2)IS
+
+L_DATA VARCHAR2(4000);
+L_INDEX_OUT NUMBER; 
+
+BEGIN
+	FOR I IN 1 .. P_MSG_COUNT LOOP
+		APPS.PA_INTERFACE_UTILS_PUB.GET_MESSAGES
+												(
+												p_msg_data => P_MSG_DATA,
+												p_encoded => 'F',
+												p_data => L_DATA,
+												p_msg_count => P_MSG_COUNT,
+												p_msg_index => I,
+												p_msg_index_out => L_INDEX_OUT
+												);
+		LOG_MSG('API MESSAGE : '||L_DATA);
+	END LOOP;
+END LOG_API_MESSAGES;
+
+PROCEDURE ADD_ERROR(P_MSG VARCHAR2)IS 
+
+BEGIN
+	G_ERROR_COUNT := G_ERROR_COUNT + 1;
+	G_ERRORS(G_ERROR_COUNT) := SUBSTR(P_MSG,1,4000);
+	LOG_MSG('ERROR : '||P_MSG);
+END ADD_ERROR;
+
+PROCEDURE CLEAR_ERRORS IS 
+
+BEGIN
+	G_ERRORS.DELETE;
+	G_ERROR_COUNT := 0;
+	G_PROJECT_ERROR := FALSE;
+END CLEAR_ERRORS;
+
+FUNCTION GET_ERROR_TEXT RETURN VARCHAR2 IS 
+
+L_MSG VARCHAR2(32767);      
+
+BEGIN 
+
+	FOR I IN 1 .. G_ERROR_COUNT LOOP
+	L_MSG :=L_MSG|| CHR(10)|| G_ERRORS(I);
+	END LOOP;
+	
+	RETURN SUBSTR(L_MSG,1,4000);   
+	
+END GET_ERROR_TEXT; 
+
+FUNCTION PROCESS_ALREADY_COMPLETED (P_PROJECT_ID NUMBER,P_TASK_NUMBER VARCHAR2,P_STAGE VARCHAR2,P_STATUS VARCHAR2) RETURN VARCHAR2 IS
+L_CNT NUMBER;
+BEGIN
+	SELECT COUNT(*) INTO L_CNT FROM RECO_ESC_PROCESS_LOG
+	WHERE PROJECT_ID = P_PROJECT_ID
+	AND NVL(TASK_NUMBER,'#') =NVL(P_TASK_NUMBER,'#')
+	AND PROCESS_STAGE = P_STAGE
+	AND PROCESS_STATUS = P_STATUS;
+	
+	IF L_CNT > 0 THEN
+		RETURN 'Y';
+	END IF;
+	RETURN 'N';
+EXCEPTION WHEN OTHERS THEN
+	RETURN 'N';
+END PROCESS_ALREADY_COMPLETED;
+
+PROCEDURE INSERT_PROCESS_LOG(P_PROJECT_ID NUMBER,P_TASK_NUMBER VARCHAR2,P_STAGE VARCHAR2,P_STATUS VARCHAR2,P_ERROR_MESSAGE VARCHAR2 DEFAULT NULL) IS
+PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+	INSERT INTO RECO_ESC_PROCESS_LOG
+	(LOG_ID,PROJECT_ID,TASK_NUMBER,PROCESS_STAGE,PROCESS_STATUS,ERROR_MESSAGE,CREATION_DATE) VALUES
+	(RECO_ESC_PROCESS_LOG_S.NEXTVAL,P_PROJECT_ID,P_TASK_NUMBER,P_STAGE,P_STATUS,P_ERROR_MESSAGE,SYSDATE);  
+	COMMIT;
+EXCEPTION WHEN OTHERS THEN  
+	ROLLBACK;
+	LOG_MSG('INSERT_PROCESS_LOG : '||SQLERRM);
+END INSERT_PROCESS_LOG;
+
+PROCEDURE VALIDATE_TASK_HIERARCHY(P_PROJECT_ID IN NUMBER,P_TASK_NUMBER IN VARCHAR2,P_SUB_TASK IN VARCHAR2,P_SUB_SUB_TASK IN VARCHAR2,X_CHILD_STATUS OUT NUMBER,X_SUB_STATUS OUT NUMBER,X_SUB_SUB_STATUS OUT NUMBER)IS    
+
+BEGIN
+	X_CHILD_STATUS := 0;
+	X_SUB_STATUS := 0;
+	X_SUB_SUB_STATUS := 0;        
+	
+	-- Child Task 
+	SELECT COUNT(*)INTO X_CHILD_STATUS
+	FROM PA_TASKS
+	WHERE PROJECT_ID = P_PROJECT_ID
+	AND TASK_NUMBER = P_TASK_NUMBER;
+	
+	IF X_CHILD_STATUS = 0 THEN
+		X_CHILD_STATUS := 2; 
+		-- Sub Sub Task 
+		SELECT COUNT(*)INTO X_SUB_SUB_STATUS
+		FROM PA_TASKS
+		WHERE PROJECT_ID = P_PROJECT_ID
+		AND TASK_NUMBER = P_SUB_SUB_TASK;
+		
+		IF X_SUB_SUB_STATUS = 0 THEN
+			X_SUB_SUB_STATUS := 2; 
+			-- Sub Task 
+			SELECT COUNT(*)
+			INTO X_SUB_STATUS
+			FROM PA_TASKS
+			WHERE PROJECT_ID = P_PROJECT_ID
+			AND TASK_NUMBER = P_SUB_TASK;
+			
+			IF X_SUB_STATUS = 0 THEN
+				X_SUB_STATUS := 2;
+			END IF;
+		END IF;
+	END IF;     
+	
+EXCEPTION WHEN OTHERS THEN
+	ADD_ERROR('VALIDATE_TASK_HIERARCHY : '|| SQLERRM);
+END VALIDATE_TASK_HIERARCHY;
+
+PROCEDURE CREATE_PROJECT_TASK(P_PROJECT_ID IN NUMBER,P_PARENT_TASK_ID IN NUMBER,P_TASK_NUMBER IN VARCHAR2,P_TASK_NAME IN VARCHAR2,X_SUCCESS OUT VARCHAR2)IS
+L_API_VERSION_NUMBER NUMBER := 1;
+L_COMMIT VARCHAR2(1) := 'F';
+L_INIT_MSG_LIST VARCHAR2(1) := 'T';
+L_MSG_COUNT NUMBER;
+L_MSG_DATA VARCHAR2(4000);
+L_RETURN_STATUS VARCHAR2(1);
+L_PROJECT_ID_OUT NUMBER;
+L_PROJECT_NUM_OUT VARCHAR2(30);
+L_TASK_ID NUMBER;
+BEGIN
+	APPS.PA_PROJECT_PUB.ADD_TASK
+								(
+								p_api_version_number => L_API_VERSION_NUMBER,
+								p_commit => L_COMMIT,
+								p_init_msg_list => L_INIT_MSG_LIST,
+								p_msg_count => L_MSG_COUNT,
+								p_msg_data => L_MSG_DATA,
+								p_return_status => L_RETURN_STATUS,
+								p_pm_product_code => 'RECO_CONTRACTS',
+								p_pa_project_id => P_PROJECT_ID,
+								p_pm_task_reference => P_TASK_NUMBER,
+								p_pa_task_number => P_TASK_NUMBER,
+								p_task_name => P_TASK_NAME,
+								p_long_task_name => P_TASK_NAME,
+								p_task_description => P_TASK_NAME,
+								p_billable_flag => 'Y',
+								p_chargeable_flag => 'Y',
+								p_pa_parent_task_id => P_PARENT_TASK_ID,
+								p_structure_type => 'FINANCIAL',
+								p_structure_updates_flag => 'Y',
+								p_pa_project_id_out => L_PROJECT_ID_OUT,
+								p_pa_project_number_out => L_PROJECT_NUM_OUT,
+								p_task_id => L_TASK_ID
+								);
+	IF L_RETURN_STATUS <> 'S' THEN
+		LOG_API_MESSAGES(L_MSG_COUNT,L_MSG_DATA);
+		ADD_ERROR('Task Creation Failed : '|| P_TASK_NUMBER);
+		X_SUCCESS := 'N';
+	ELSE
+		LOG_MSG('Task Created : '|| P_TASK_NUMBER);
+		X_SUCCESS := 'Y';
+	END IF;
+END CREATE_PROJECT_TASK;
+
+PROCEDURE SET_PROJECT_CONTEXT(P_USER_ID NUMBER,P_RESPONSIBILITY_ID NUMBER)IS
+L_MSG_COUNT NUMBER;
+L_MSG_DATA VARCHAR2(2000);
+L_RETURN_STATUS VARCHAR2(1);
+BEGIN
+	apps.set_profile(P_USER_ID,P_RESPONSIBILITY_ID,275,NULL);
+	apps.pa_interface_utils_pub.set_global_info(p_api_version_number => 1.0,p_responsibility_id => P_RESPONSIBILITY_ID,p_user_id => P_USER_ID,p_msg_count => L_MSG_COUNT,p_msg_data => L_MSG_DATA,p_return_status => L_RETURN_STATUS);
+	IF L_RETURN_STATUS <> 'S' THEN
+		ADD_ERROR('Invalid Access : ' || L_MSG_DATA);
+		G_PROJECT_ERROR := TRUE;
+		RAISE_APPLICATION_ERROR(-20001,'Context Initialization Failed');
+	END IF;
+EXCEPTION WHEN OTHERS THEN
+ADD_ERROR('SET_PROJECT_CONTEXT : ' || SQLERRM);
+G_PROJECT_ERROR := TRUE;
+END SET_PROJECT_CONTEXT;
+
+PROCEDURE UPDATE_TASK_STATUS(P_RECO_PROJECT_ID NUMBER,P_TASK_NUMBER VARCHAR2,P_STATUS VARCHAR2,P_ERROR_MESSAGE VARCHAR2 DEFAULT NULL)IS
+BEGIN
+--	UPDATE reco_contract_escalation_setup@contractstest
+--	SET status = P_STATUS,
+--	error_message = P_ERROR_MESSAGE
+--	WHERE project_id = P_RECO_PROJECT_ID
+--	AND task_number = P_TASK_NUMBER;
+	INSERT_PROCESS_LOG(P_PROJECT_ID => P_RECO_PROJECT_ID,P_TASK_NUMBER => P_TASK_NUMBER,P_STAGE => 'TASK',P_STATUS => P_STATUS,P_ERROR_MESSAGE => P_ERROR_MESSAGE);
+--	COMMIT;
+EXCEPTION WHEN OTHERS THEN
+	ADD_ERROR('UPDATE_TASK_STATUS : '|| SQLERRM);
+END UPDATE_TASK_STATUS;
+
+PROCEDURE PROCESS_TASKS(P_PROJECT_NUM IN VARCHAR2) IS  
+l_project_id            NUMBER; 
+l_responsibility_id	    NUMBER;
+l_user_id		        NUMBER;  
+l_responsibility_name   VARCHAR2(150); 
+start_date   DATE;
+end_date   DATE;  
+CURSOR getprojects IS
+SELECT a.project_id, a.segment1, a.start_date, a.completion_date
+	, (SELECT user_id FROM fnd_user f, pa_project_players_v pp
+	   WHERE pp.project_id = a.project_id
+	   AND pp.role='Job Cost Administrator'
+	   AND pp.end_date_active is null
+	   AND f.employee_id = pp.person_id ) jcadmin
+	,b.reco_project_id
+FROM apps.pa_projects a,reco_projects b
+WHERE a.project_status_code = 'Signed' AND segment1 LIKE P_PROJECT_NUM
+AND a.project_id=b.project_id ; 
+
+--get new task details to be added
+CURSOR gettasks (p_project_id NUMBER) IS
+SELECT a.* ,
+ CASE
+    WHEN REGEXP_COUNT(task_number, '\.') >= 3
+    THEN REGEXP_SUBSTR(task_number, '^[^.]+\.[^.]+\.[^.]+')
+  END AS sub_sub_task,
+
+  CASE
+    WHEN REGEXP_COUNT(task_number, '\.') >= 2
+    THEN REGEXP_SUBSTR(task_number, '^[^.]+\.[^.]+')
+  END AS sub_task
+FROM reco_contract_escalation_setup@contractstest a WHERE a.project_id=p_project_id 
+AND CURRENT_ESCALATION_FLAG='Y'
+AND APPROVAL_STATUS='APPROVED'
+AND STATUS='APPROVED'
+AND FREEZE_FLAG='N';  
+
+projrow getprojects%ROWTYPE;  
+taskrow gettasks%ROWTYPE;
+G_PM_PRODUCT_CODE   VARCHAR2(25) := 'RECO_CONTRACTS';  
+
+l_c_t_cnt NUMBER;
+l_ss_t_cnt NUMBER;
+l_s_t_cnt NUMBER;
+l_ss_task_id NUMBER;
+l_parent_task_id NUMBER;
+l_create_status VARCHAR2(1);
+BEGIN
+	LOG_MSG('PROCESS_TASKS STARTED');	
+	get_reco_organization('0');
+	
+	FOR projrow IN getprojects LOOP
+		 CLEAR_ERRORS;
+		l_user_id := projrow.jcadmin;  
+		
+		SELECT user_id, responsibility_id
+		INTO  l_user_id, l_responsibility_id
+		FROM apps.pa_user_resp_v
+		WHERE user_id = l_user_id
+		AND responsibility_name = 'Project Super User';
+		
+		SET_PROJECT_CONTEXT(l_user_id,l_responsibility_id);
+		
+		IF G_PROJECT_ERROR THEN
+			CONTINUE;
+		END IF;
+		        
+		l_project_id := projrow.project_id;
+		start_date := projrow.start_date;
+		end_date := projrow.completion_date;  
+		LOG_MSG('Project:'||projrow.segment1||'-'||projrow.project_id);  
+		
+		FOR taskrow IN gettasks(projrow.reco_project_id) LOOP 
+		
+			l_c_t_cnt :=0;
+			l_ss_t_cnt :=0;
+			l_s_t_cnt :=0;
+			l_ss_task_id := NULL;
+			l_parent_task_id := NULL;
+								
+			-- Task exists validation
+			VALIDATE_TASK_HIERARCHY
+									(
+										P_PROJECT_ID => projrow.project_id,
+										P_TASK_NUMBER => taskrow.task_number,
+										P_SUB_TASK => taskrow.sub_task,
+										P_SUB_SUB_TASK => taskrow.sub_sub_task,
+										X_CHILD_STATUS => l_c_t_cnt,
+										X_SUB_STATUS => l_s_t_cnt,
+										X_SUB_SUB_STATUS => l_ss_t_cnt
+									);			
+            LOG_MSG('l_c_t_cnt: '||l_c_t_cnt||' - '||'l_ss_t_cnt: '||l_ss_t_cnt||' - '||'l_s_t_cnt: '||l_s_t_cnt); 
+            
+			IF l_s_t_cnt=2 THEN    
+			    LOG_MSG('Main Sub task NOT Exists so error the record'); 
+			    ADD_ERROR('Main Sub Task Missing : '|| taskrow.task_number);
+				UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.task_number,'ERROR','Main Sub Task NOT exists'); 
+				CONTINUE;    
+				
+			ELSIF l_ss_t_cnt=2 THEN   
+				LOG_MSG('create sub sub task - '||taskrow.sub_sub_task );
+				--Creation Process
+				--Get sub task id (Parent ID)
+				SELECT task_id
+				INTO l_parent_task_id
+				FROM apps.pa_tasks
+				WHERE project_id = projrow.project_id
+				AND task_number = taskrow.sub_task;  
+				
+                LOG_MSG('l_parent_task_id - '||l_parent_task_id );
+
+				CREATE_PROJECT_TASK
+									(
+										P_PROJECT_ID => l_project_id,
+										P_PARENT_TASK_ID => l_parent_task_id,
+										P_TASK_NUMBER => taskrow.sub_sub_task,
+										P_TASK_NAME => taskrow.task_name,
+										X_SUCCESS => l_create_status
+									);  
+				IF l_create_status = 'Y' THEN
+					LOG_MSG('Created Sub Sub Task : '|| taskrow.sub_sub_task);
+				ELSE
+					UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.task_number,'ERROR','Sub Sub Task Creation Failed');
+					CONTINUE;
+				END IF;
+				
+				LOG_MSG('create child task - '||taskrow.task_number); 
+				--Creation Process
+				--Get sub sub task id (Parent ID)
+				SELECT task_id
+				INTO l_ss_task_id
+				FROM apps.pa_tasks
+				WHERE project_id = projrow.project_id
+				AND task_number = taskrow.sub_sub_task;  
+				
+				LOG_MSG('l_ss_task_id - '||l_ss_task_id);  
+
+				CREATE_PROJECT_TASK
+									(
+									P_PROJECT_ID => l_project_id,
+									P_PARENT_TASK_ID => l_ss_task_id,
+									P_TASK_NUMBER => taskrow.task_number,
+									P_TASK_NAME => taskrow.task_name,
+									X_SUCCESS => l_create_status
+									);  
+	            
+	            IF l_create_status = 'Y' THEN
+	            	LOG_MSG('Created Child Task: '||taskrow.task_number);
+		            UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.task_number,'TASK_CREATED');
+		        ELSE 
+		            UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.task_number,'ERROR','Child Task Creation Failed');
+	            END IF;
+				
+			ELSIF l_c_t_cnt=2 THEN 
+			
+				LOG_MSG('create child task - '||taskrow.task_number ); 
+				
+				--Creation Process
+				--Get sub sub task id (Parent ID)
+				SELECT task_id
+				INTO l_ss_task_id
+				FROM apps.pa_tasks
+				WHERE project_id = projrow.project_id
+				AND task_number = taskrow.sub_sub_task;  
+				
+				LOG_MSG('l_ss_task_id - '||l_ss_task_id);   
+				
+				CREATE_PROJECT_TASK
+									(
+									P_PROJECT_ID => l_project_id,
+									P_PARENT_TASK_ID => l_ss_task_id,
+									P_TASK_NUMBER => taskrow.task_number,
+									P_TASK_NAME => taskrow.task_name,
+									X_SUCCESS => l_create_status
+									);  
+	             
+	            IF l_create_status = 'Y' THEN 
+	            	LOG_MSG('Created Child Task: '||taskrow.task_number);
+		            UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.task_number,'TASK_CREATED');
+		        ELSE 
+		            UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.task_number,'ERROR','Child Task Creation Failed');
+	            END IF;
+	        ELSE
+				LOG_MSG('Task Already Exists : '|| taskrow.task_number);
+				UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.task_number,'TASK_EXISTS');
+			END IF;
+				
+		END LOOP; -- tasks	
+		
+		IF G_ERROR_COUNT > 0 THEN
+			LOG_MSG('PROJECT ERROR SUMMARY');
+			LOG_MSG(GET_ERROR_TEXT);
+		END IF;
+		
+		IF G_ERROR_COUNT = 0 THEN
+			LOG_MSG('PROJECT TASK PROCESS COMPLETED SUCCESSFULLY');
+		END IF;
+		
+	END LOOP;--projects
+	
+	LOG_MSG('PROCESS_TASKS COMPLETED');
+	
+EXCEPTION WHEN OTHERS THEN 
+	LOG_MSG('PROCESS_TASKS Exception: '||SQLERRM); 
+END PROCESS_TASKS;  
+
+PROCEDURE VALIDATE_BUDGET(P_PROJECT_ID IN NUMBER,
+X_BUDGET_VERSION_ID OUT NUMBER,X_FIN_PLAN_TYPE_ID OUT NUMBER,X_VERSION_TYPE OUT VARCHAR2,X_VERSION_NUMBER OUT NUMBER)IS  
+
+L_WORK_BUDGET_ID NUMBER;
+L_BASE_BUDGET_ID NUMBER; 
+L_WORK_LABOR_QTY NUMBER;
+L_WORK_RAW_COST NUMBER;
+L_WORK_REVENUE NUMBER; 
+L_BASE_LABOR_QTY NUMBER;
+L_BASE_RAW_COST NUMBER;
+L_BASE_REVENUE NUMBER; 
+L_DRAFT_FUNDING_CNT NUMBER := 0;
+L_FIN_PLAN_TYPE_ID NUMBER;
+L_VERSION_TYPE VARCHAR2(30);
+L_VERSION_NUMBER NUMBER;
+
+BEGIN 
+	LOG_MSG('VALIDATE_BUDGET STARTED : '|| P_PROJECT_ID);
+	-- Current Working Budget  
+	BEGIN 
+		SELECT budget_version_id,NVL(labor_quantity,0),NVL(raw_cost,0),NVL(revenue,0),fin_plan_type_id,version_type,version_number
+		INTO L_WORK_BUDGET_ID,L_WORK_LABOR_QTY,L_WORK_RAW_COST,L_WORK_REVENUE,L_FIN_PLAN_TYPE_ID,L_VERSION_TYPE,L_VERSION_NUMBER
+		FROM pa_budget_versions
+		WHERE project_id = P_PROJECT_ID
+		AND budget_status_code = 'W'
+		AND current_working_flag = 'Y';
+		
+	EXCEPTION WHEN NO_DATA_FOUND THEN 
+		ADD_ERROR('Working Budget Not Found');
+		G_PROJECT_ERROR := TRUE;
+	END;                     
+	X_BUDGET_VERSION_ID := L_WORK_BUDGET_ID;
+	X_FIN_PLAN_TYPE_ID := L_FIN_PLAN_TYPE_ID;
+	X_VERSION_TYPE := L_VERSION_TYPE;
+	X_VERSION_NUMBER := L_VERSION_NUMBER;
+	-- Current Baselined Budget 
+	BEGIN 
+		SELECT budget_version_id,NVL(labor_quantity,0),NVL(raw_cost,0),NVL(revenue,0)
+		INTO L_BASE_BUDGET_ID,L_BASE_LABOR_QTY,L_BASE_RAW_COST,L_BASE_REVENUE
+		FROM pa_budget_versions
+		WHERE project_id = P_PROJECT_ID
+		AND budget_status_code = 'B'
+		AND current_flag = 'Y';    
+		
+	EXCEPTION WHEN NO_DATA_FOUND THEN 
+		ADD_ERROR('Baselined Budget Not Found'); 
+		G_PROJECT_ERROR := TRUE; 
+	END; 
+	-- Compare  
+	IF L_WORK_LABOR_QTY <> L_BASE_LABOR_QTY OR L_WORK_RAW_COST <> L_BASE_RAW_COST OR L_WORK_REVENUE <> L_BASE_REVENUE THEN 
+		ADD_ERROR('Working Budget differs from Baselined Budget');
+		G_PROJECT_ERROR := TRUE; 
+	END IF;  
+	LOG_MSG('VALIDATE_BUDGET COMPLETED');
+	
+END VALIDATE_BUDGET;   
+
+PROCEDURE UPDATE_BUDGET_STATUS(P_RECO_PROJECT_ID NUMBER,P_TASK_NUMBER VARCHAR2,P_STATUS VARCHAR2,P_ERROR_MESSAGE VARCHAR2 DEFAULT NULL) IS
+BEGIN
+	INSERT_PROCESS_LOG(P_PROJECT_ID => P_RECO_PROJECT_ID,P_TASK_NUMBER => P_TASK_NUMBER,P_STAGE => 'BUDGET',P_STATUS => P_STATUS,P_ERROR_MESSAGE => P_ERROR_MESSAGE);  
+EXCEPTION WHEN OTHERS THEN
+	ADD_ERROR('UPDATE_BUDGET_STATUS : ' || SQLERRM);
+END UPDATE_BUDGET_STATUS;
+
+PROCEDURE UNLOCK_BUDGET(P_BUDGET_VERSION_ID IN NUMBER,P_USER_ID IN NUMBER)IS   
+
+L_LOCKED_BY_PERSON_ID NUMBER;
+L_RECORD_VERSION_NUMBER NUMBER; 
+g_return_status         VARCHAR2(1);
+g_msg_count             NUMBER;
+g_msg_data              VARCHAR2(2000);
+L_EMPLOYEE_ID NUMBER;
+
+BEGIN 
+
+	SELECT locked_by_person_id INTO L_LOCKED_BY_PERSON_ID
+	FROM pa_budget_versions
+	WHERE budget_version_id = P_BUDGET_VERSION_ID;
+
+	IF L_LOCKED_BY_PERSON_ID IS NOT NULL THEN  
+	
+		LOG_MSG('Budget locked by : '|| L_LOCKED_BY_PERSON_ID);
+	
+		L_RECORD_VERSION_NUMBER :=apps.pa_fin_plan_utils.retrieve_record_version_number(P_BUDGET_VERSION_ID);
+		
+		LOG_MSG('Record Version Number : '|| L_RECORD_VERSION_NUMBER);
+		BEGIN
+			SELECT employee_id INTO L_EMPLOYEE_ID FROM fnd_user WHERE user_id = P_USER_ID;
+			LOG_MSG('USER_ID = '||P_USER_ID);
+			LOG_MSG('EMPLOYEE_ID = '||L_EMPLOYEE_ID);
+		EXCEPTION WHEN OTHERS THEN
+		LOG_MSG('EMPLOYEE NOT FOUND');
+		END;
+		
+		apps.pa_fin_plan_pvt.lock_unlock_version
+												(
+												p_budget_version_id => P_BUDGET_VERSION_ID,
+												p_record_version_number => L_RECORD_VERSION_NUMBER,
+												p_action => 'U',
+												p_user_id => P_USER_ID,
+												p_person_id => L_EMPLOYEE_ID,
+												p_unlock_locked_ver_flag => 'Y',
+												x_return_status => g_return_status,
+												x_msg_count => g_msg_count,
+												x_msg_data => g_msg_data
+												);
+		IF g_return_status <> 'S' THEN
+			LOG_API_MESSAGES(g_msg_count,g_msg_data);
+			ADD_ERROR('Unlock Budget API Error : '|| g_msg_data);
+			G_PROJECT_ERROR := TRUE;
+		ELSE
+			LOG_MSG('Budget Unlocked Successfully');
+		END IF;
+	ELSE
+		LOG_MSG('Budget Already Unlocked');
+	END IF;     
+	
+EXCEPTION WHEN OTHERS THEN
+	ADD_ERROR('UNLOCK_BUDGET : '|| SQLERRM);
+	G_PROJECT_ERROR := TRUE;
+END UNLOCK_BUDGET;
+
+FUNCTION GET_EXPENDITURE_TYPE(P_COMPONENT VARCHAR2,P_UOM VARCHAR2) RETURN VARCHAR2 IS   
+
+L_EXP_TYPE VARCHAR2(100);
+
+BEGIN   
+
+	IF P_COMPONENT = 'PRECAST' THEN
+		SELECT DECODE(P_UOM,'SF','PRECAST ESCALATION - SF','LF','PRECAST ESCALATION - LF','SM','PRECAST ESCALATION - SM','LS','PRECAST ESCALATION - LS') INTO L_EXP_TYPE FROM DUAL;
+	ELSIF P_COMPONENT = 'STEEL' THEN
+		SELECT DECODE(P_UOM,'SF','STEEL ESCALATION - SF','LF','STEEL ESCALATION - LF','SM','STEEL ESCALATION - SM','LS','STEEL ESCALATION - LS') INTO L_EXP_TYPE FROM DUAL;
+	ELSIF P_COMPONENT = 'FREIGHT' THEN
+		SELECT DECODE(P_UOM,'SF','ESCALATION (SF)','LF','ESCALATION (LF)','SM','ESCALATION (SM)','LS','ESCALATION (LS)') INTO L_EXP_TYPE FROM DUAL;
+	END IF;     
+	
+	RETURN L_EXP_TYPE;
+	
+END GET_EXPENDITURE_TYPE;
+
+PROCEDURE UPDATE_TASK_BILL_RATE(P_TASK_ID IN NUMBER,P_EXPENDITURE_TYPE IN VARCHAR2,P_BILL_RATE IN NUMBER)IS
+
+L_RATE_ID NUMBER;
+L_EXISTING_RATE NUMBER;
+L_ROUNDING NUMBER;
+L_NEW_RATE NUMBER;   
+
+BEGIN
+	LOG_MSG('UPDATE_TASK_BILL_RATE STARTED');
+	IF P_BILL_RATE IS NULL THEN
+		LOG_MSG('Bill Rate is NULL - Skipping');
+		RETURN;
+	END IF;
+	-- Get Rate Precision from Top Task
+	BEGIN
+		SELECT DECODE(t2.attribute1,'Unit Price',2,'Lump Sum',5,3)INTO L_ROUNDING
+		FROM pa_tasks t1,
+		pa_tasks t2
+		WHERE t1.task_id = P_TASK_ID
+		AND t2.task_id = t1.top_task_id;
+	EXCEPTION WHEN OTHERS THEN
+		L_ROUNDING := 3;
+	END;
+		
+	L_NEW_RATE := ROUND(P_BILL_RATE,L_ROUNDING);
+	LOG_MSG('Task ID : '||P_TASK_ID);
+	LOG_MSG('Exp Type : '||P_EXPENDITURE_TYPE);
+	LOG_MSG('Bill Rate : '||L_NEW_RATE);
+	
+	BEGIN
+		SELECT nl_bill_rate_override_id,bill_rate INTO L_RATE_ID,L_EXISTING_RATE
+		FROM apps.pa_nl_bill_rate_overrides
+		WHERE task_id = P_TASK_ID
+		AND expenditure_type = P_EXPENDITURE_TYPE
+		AND TRUNC(SYSDATE)
+		BETWEEN TRUNC(start_date_active)
+		AND TRUNC(NVL(end_date_active,SYSDATE));
+		
+		IF L_EXISTING_RATE = L_NEW_RATE THEN
+			LOG_MSG('Bill Rate Already Exists');
+			RETURN;
+		END IF;
+		LOG_MSG('Existing Rate Different - End Dating');
+		
+		UPDATE apps.pa_nl_bill_rate_overrides
+		SET end_date_active = TRUNC(SYSDATE)-1,
+		last_update_date = SYSDATE,
+		last_updated_by = FND_GLOBAL.USER_ID
+		WHERE nl_bill_rate_override_id = L_RATE_ID;   
+		
+	EXCEPTION WHEN NO_DATA_FOUND THEN
+		NULL;
+	END;  
+	
+	INSERT INTO apps.pa_nl_bill_rate_overrides
+										(
+										nl_bill_rate_override_id,
+										expenditure_type,
+										task_id,
+										start_date_active,
+										bill_rate,
+										rate_currency_code,
+										rate_disc_reason_code,
+										record_version_number,
+										creation_date,
+										created_by,
+										last_update_date,
+										last_updated_by,
+										last_update_login
+										)
+										VALUES
+										(
+										apps.pa_nl_bill_rate_overrides_s.NEXTVAL,
+										P_EXPENDITURE_TYPE,
+										P_TASK_ID,
+										TRUNC(SYSDATE),
+										L_NEW_RATE,
+										'USD',
+										'ESCALATION',
+										1,
+										SYSDATE,
+										FND_GLOBAL.USER_ID,
+										SYSDATE,
+										FND_GLOBAL.USER_ID,
+										FND_GLOBAL.LOGIN_ID
+										);
+	LOG_MSG('New Bill Rate Inserted');
+EXCEPTION WHEN OTHERS THEN
+	ADD_ERROR('UPDATE_TASK_BILL_RATE : '||SQLERRM);
+END UPDATE_TASK_BILL_RATE;  
+
+PROCEDURE ADD_ESCALATION_BUDGET_LINE
+									(
+									P_PROJECT_ID IN NUMBER,
+									P_BUDGET_VERSION_ID IN NUMBER,
+									P_PROJECT_NUMBER IN VARCHAR2,
+									P_TASK_NUMBER IN VARCHAR2,
+									P_COMPONENT IN VARCHAR2,
+									P_COST_AMOUNT IN NUMBER,
+									P_REVENUE_AMOUNT IN NUMBER,
+									P_QUANTITY IN NUMBER,
+									P_BILL_RATE IN NUMBER,
+									P_FIN_PLAN_TYPE_ID IN NUMBER,
+									P_VERSION_TYPE IN VARCHAR2,
+									P_VERSION_NUMBER IN NUMBER,
+									X_SUCCESS OUT VARCHAR2
+									) IS
+L_UOM VARCHAR2(30);
+L_EXP_TYPE VARCHAR2(100);
+L_RESOURCE_MEM_ID NUMBER;
+L_DIR_TASK_ID NUMBER;
+L_EXISTS VARCHAR2(1);
+L_COST NUMBER;
+L_REVENUE_ESC NUMBER;  
+L_QUANTITY NUMBER;
+G_RETURN_STATUS VARCHAR2(1);
+G_MSG_COUNT NUMBER;
+G_MSG_DATA VARCHAR2(2000);
+
+BEGIN
+	LOG_MSG('ADD_ESCALATION_BUDGET_LINE : '||P_TASK_NUMBER);
+		X_SUCCESS := 'N';
+			--UOM Validation
+			BEGIN 
+				SELECT a.uom INTO L_UOM
+				FROM reco.reco_contract_tasks a,
+				reco_contracts b
+				WHERE a.reco_project_id = b.reco_project_id
+				AND a.task_number = SUBSTR(P_TASK_NUMBER,1,3)
+				AND b.project_number = P_PROJECT_NUMBER;
+			EXCEPTION WHEN OTHERS THEN
+				ADD_ERROR('UOM Validation Error : '|| SQLERRM);
+			END; 
+			
+			--Expenditure Type
+			L_EXP_TYPE :=GET_EXPENDITURE_TYPE(P_COMPONENT,L_UOM);
+			LOG_MSG('l_exp_type: '||l_exp_type);
+			
+			--Resoure member validation
+			BEGIN
+				l_resource_mem_id := NULL;
+				SELECT resource_list_member_id
+				INTO l_resource_mem_id
+				FROM apps.pa_resource_list_members lm, apps.pa_resource_lists rl
+				WHERE rl.NAME = 'REVENUE CATEGORY'
+				AND lm.resource_list_id = rl.resource_list_id
+				AND lm.expenditure_type = l_exp_type; 
+				
+				LOG_MSG('l_resource_mem_id: '||l_resource_mem_id);
+
+			EXCEPTION WHEN others THEN
+--				l_error_tmsg:= l_error_tmsg ||' Exception in resource id: '||SQLERRM; 
+--				LOG_MSG(l_error_tmsg);
+				ADD_ERROR(' Resource Member Validation error: '||SQLERRM); 
+			END ;
+            
+			--Task Validation
+			BEGIN
+				SELECT task_id
+				INTO l_dir_task_id
+				FROM pa_tasks
+				WHERE project_id = P_PROJECT_ID
+				AND task_number = P_TASK_NUMBER;
+			EXCEPTION WHEN OTHERS THEN 
+--				l_error_tmsg:= l_error_tmsg ||' Exception in Task id: '||SQLERRM; 
+--				LOG_MSG(l_error_tmsg);
+				ADD_ERROR(' Task Validation Error: '||SQLERRM);
+			END;  
+               LOG_MSG('l_dir_task_id: '||l_dir_task_id);
+            
+            --Budget line already exists or not
+            BEGIN
+                SELECT 'Y' INTO l_exists
+                FROM apps.pa_budget_lines_v
+                WHERE budget_version_id = P_BUDGET_VERSION_ID
+                AND task_id = l_dir_task_id
+                AND resource_name = l_exp_type;
+            EXCEPTION
+                WHEN no_data_found THEN
+                    l_exists := 'N';
+            END; 
+            
+            LOG_MSG('Budget Line Exists: '||l_exists);
+            
+			IF L_EXISTS = 'Y' THEN
+				LOG_MSG('Budget Line Already Exists. Task = '|| P_TASK_NUMBER); 
+				X_SUCCESS := 'Y';
+				RETURN;
+			END IF;
+            
+            L_COST :=NVL(P_COST_AMOUNT,0)* P_BILL_RATE;
+			L_REVENUE_ESC :=P_REVENUE_AMOUNT* P_BILL_RATE;
+			L_QUANTITY := P_QUANTITY; 
+			
+			LOG_MSG('Cost : '||L_COST);
+			LOG_MSG('Quantity : '||L_QUANTITY);
+			LOG_MSG('Revenue : '||L_REVENUE_ESC);
+			
+			BEGIN
+				apps.pa_budget_pub.add_budget_line
+												(
+												p_api_version_number => 1,
+												p_commit => 'F',
+												p_init_msg_list => 'T',
+												p_msg_count => G_MSG_COUNT,
+												p_msg_data => G_MSG_DATA,
+												p_return_status => G_RETURN_STATUS,
+												p_pm_product_code => 'RECO_ESC',
+												p_pa_project_id => P_PROJECT_ID,
+												p_pa_task_id => L_DIR_TASK_ID,
+												p_resource_list_member_id => L_RESOURCE_MEM_ID,
+												p_raw_cost => L_COST,
+												p_quantity => L_QUANTITY,
+												p_revenue => L_REVENUE_ESC,
+												p_fin_plan_type_id => P_FIN_PLAN_TYPE_ID,
+												p_version_type => P_VERSION_TYPE,
+												p_version_number => P_VERSION_NUMBER
+												);
+				IF G_RETURN_STATUS <> 'S' THEN
+					LOG_API_MESSAGES(G_MSG_COUNT,G_MSG_DATA);
+					ADD_ERROR('Add Budget Line API Error : '|| G_MSG_DATA);
+				ELSE
+					LOG_MSG('Budget Line Created Successfully');
+					UPDATE_TASK_BILL_RATE(P_TASK_ID => L_DIR_TASK_ID,P_EXPENDITURE_TYPE => L_EXP_TYPE,P_BILL_RATE => P_BILL_RATE);
+					LOG_MSG('Bill Rate Updated Successfully');
+					X_SUCCESS := 'Y';
+				END IF;
+				        
+			EXCEPTION WHEN OTHERS THEN
+				ADD_ERROR('Add Budget Line Exception : '|| SQLERRM);
+			END;
+			
+END ADD_ESCALATION_BUDGET_LINE;
+
+PROCEDURE PROCESS_BUDGET(P_PROJECT_NUM IN VARCHAR2) IS 
+
+L_BUDGET_VERSION_ID NUMBER;
+L_USER_ID NUMBER;
+L_RESPONSIBILITY_ID NUMBER;
+L_FIN_PLAN_TYPE_ID NUMBER;
+L_VERSION_TYPE VARCHAR2(30);
+L_VERSION_NUMBER NUMBER;
+L_BUDGET_SUCCESS VARCHAR2(1);
+
+CURSOR GETPROJECTS IS
+SELECT a.project_id,a.segment1 project_number,b.reco_project_id,a.start_date,a.completion_date,
+	(
+	SELECT user_id
+	FROM fnd_user f,
+	pa_project_players_v pp
+	WHERE pp.project_id = a.project_id
+	AND pp.role='Job Cost Administrator'
+	AND pp.end_date_active IS NULL
+	AND f.employee_id = pp.person_id
+	) jcadmin
+FROM apps.pa_projects a,
+reco_projects b
+WHERE a.project_status_code='Signed'
+AND a.project_id=b.project_id
+AND a.segment1 LIKE P_PROJECT_NUM;  
+
+--get new task details to be added
+CURSOR gettasks (p_project_id NUMBER) IS
+SELECT *
+FROM reco_contract_escalation_setup@contractstest a WHERE a.project_id=p_project_id and a.freeze_flag='N'  
+AND CURRENT_ESCALATION_FLAG='Y'
+AND APPROVAL_STATUS='APPROVED'
+AND STATUS='APPROVED' ;
+
+BEGIN
+	LOG_MSG('PROCESS_BUDGET STARTED');
+	FOR PROJROW IN GETPROJECTS LOOP  
+	
+		CLEAR_ERRORS;
+		l_user_id := projrow.jcadmin;  
+		
+		SELECT user_id, responsibility_id
+		INTO  l_user_id, l_responsibility_id
+		FROM apps.pa_user_resp_v
+		WHERE user_id = l_user_id
+		AND responsibility_name = 'Project Super User';
+		
+		SET_PROJECT_CONTEXT(l_user_id,l_responsibility_id);
+		
+		IF G_PROJECT_ERROR THEN
+			CONTINUE;
+		END IF;
+		 
+		LOG_MSG('Project : '|| PROJROW.project_number);     
+		
+		VALIDATE_BUDGET(P_PROJECT_ID => PROJROW.PROJECT_ID,X_BUDGET_VERSION_ID => L_BUDGET_VERSION_ID,X_FIN_PLAN_TYPE_ID =>L_FIN_PLAN_TYPE_ID,X_VERSION_TYPE => L_VERSION_TYPE,X_VERSION_NUMBER => L_VERSION_NUMBER);
+		IF G_PROJECT_ERROR THEN
+			LOG_MSG('Budget Validation Failed');
+			CONTINUE;
+		END IF; 
+		
+		LOG_MSG('Budget Validation Successful'); 
+		LOG_MSG('USER_ID = '||L_USER_ID);
+		LOG_MSG('RESPONSIBILITY_ID = '||L_RESPONSIBILITY_ID);
+		   
+		
+		-- Unlock Budget 
+		UNLOCK_BUDGET(P_BUDGET_VERSION_ID => L_BUDGET_VERSION_ID,P_USER_ID => L_USER_ID);
+		
+		IF G_PROJECT_ERROR THEN
+			LOG_MSG('Budget Unlock Failed');
+			CONTINUE;
+		END IF;
+		
+		FOR TASKROW IN GETTASKS(PROJROW.RECO_PROJECT_ID) LOOP 
+			
+			ADD_ESCALATION_BUDGET_LINE
+			(
+			P_PROJECT_ID => PROJROW.PROJECT_ID,
+			P_BUDGET_VERSION_ID => L_BUDGET_VERSION_ID,
+			P_PROJECT_NUMBER => PROJROW.project_number,
+			P_TASK_NUMBER => TASKROW.TASK_NUMBER,
+			P_COMPONENT => TASKROW.COMPONENT,
+			P_COST_AMOUNT => TASKROW.COST_AMOUNT,
+			P_REVENUE_AMOUNT => TASKROW.REVENUE_AMOUNT,
+			P_QUANTITY => TASKROW.QUANTITY,
+			P_BILL_RATE => TASKROW.BILL_RATE,
+			P_FIN_PLAN_TYPE_ID => L_FIN_PLAN_TYPE_ID,
+			P_VERSION_TYPE => L_VERSION_TYPE,
+			P_VERSION_NUMBER => L_VERSION_NUMBER,
+			X_SUCCESS => L_BUDGET_SUCCESS
+			);   
+			
+			LOG_MSG('ADD_ESCALATION_BUDGET_LINE L_BUDGET_SUCCESS:'||L_BUDGET_SUCCESS);
+			
+			IF L_BUDGET_SUCCESS = 'Y' THEN
+				UPDATE_BUDGET_STATUS(PROJROW.RECO_PROJECT_ID,TASKROW.TASK_NUMBER,'BUDGET_CREATED');
+			ELSE 
+				UPDATE_BUDGET_STATUS(PROJROW.RECO_PROJECT_ID,TASKROW.TASK_NUMBER,'BUDGET_ERROR',GET_ERROR_TEXT);
+			END IF;
+		END LOOP;
+		
+		LOG_MSG('Budget Ready For Processing');  
+		
+		IF G_ERROR_COUNT > 0 THEN
+			LOG_MSG('PROJECT BUDGET ERROR SUMMARY');
+			LOG_MSG(GET_ERROR_TEXT);
+		END IF;  
+		
+		IF G_ERROR_COUNT = 0 THEN
+			LOG_MSG('PROJECT BUDGET PROCESS COMPLETED SUCCESSFULLY');
+		END IF;
+		
+	END LOOP;
+	LOG_MSG('PROCESS_BUDGET COMPLETED');  
+	
+END PROCESS_BUDGET; 
+
+PROCEDURE VALIDATE_FUNDING(P_PROJECT_ID IN NUMBER,P_TOP_TASK_ID IN NUMBER,X_AGREEMENT_ID OUT NUMBER,X_CURRENT_AMOUNT OUT NUMBER) IS 
+
+BEGIN
+		LOG_MSG('VALIDATE_FUNDING STARTED');
+			
+		--Get agreement ID based on Project ID
+		SELECT agreement_id INTO X_AGREEMENT_ID
+		FROM ( SELECT DISTINCT ppf.agreement_id FROM pa_projects_all ppa, pa_project_fundings ppf WHERE ppa.project_id = ppf.project_id AND ppa.project_id = P_PROJECT_ID ) 
+		WHERE ROWNUM = 1;
+		
+		SELECT amount INTO X_CURRENT_AMOUNT
+		FROM apps.pa_agreements_all
+		WHERE agreement_id = X_AGREEMENT_ID;
+
+		LOG_MSG('Agreement Id : '||X_AGREEMENT_ID);
+		LOG_MSG('Current Agreement Amount : ' || X_CURRENT_AMOUNT);
+
+		LOG_MSG('VALIDATE_FUNDING COMPLETED');
+		
+EXCEPTION WHEN NO_DATA_FOUND THEN
+	ADD_ERROR('Agreement Not Found');
+	G_PROJECT_ERROR := TRUE;
+WHEN OTHERS THEN
+	ADD_ERROR('VALIDATE_FUNDING : '|| SQLERRM);
+	G_PROJECT_ERROR := TRUE;
+END VALIDATE_FUNDING;
+
+PROCEDURE UPDATE_AGREEMENT_AMOUNT(P_AGREEMENT_ID IN NUMBER,P_CURRENT_AMOUNT IN NUMBER,P_ADDITIONAL_FUNDING IN NUMBER)IS 
+
+L_NEW_AMOUNT NUMBER;
+L_MSG_COUNT NUMBER;
+L_MSG_DATA VARCHAR2(4000);
+L_RETURN_STATUS VARCHAR2(1);
+L_AGREEMENT_IN_REC APPS.PA_AGREEMENT_PUB.AGREEMENT_REC_IN_TYPE;
+L_AGREEMENT_OUT_REC APPS.PA_AGREEMENT_PUB.AGREEMENT_REC_OUT_TYPE;
+L_FUNDING_IN_TBL APPS.PA_AGREEMENT_PUB.FUNDING_IN_TBL_TYPE;
+L_FUNDING_OUT_TBL APPS.PA_AGREEMENT_PUB.FUNDING_OUT_TBL_TYPE;
+
+BEGIN
+	L_NEW_AMOUNT :=P_CURRENT_AMOUNT + P_ADDITIONAL_FUNDING; 
+	LOG_MSG('Agreement Id : ' || P_AGREEMENT_ID);
+	LOG_MSG('Current Amount : ' || P_CURRENT_AMOUNT);
+	LOG_MSG('Additional Funding : ' || P_ADDITIONAL_FUNDING);
+	LOG_MSG('New Agreement Amount : '|| L_NEW_AMOUNT);
+	
+	L_AGREEMENT_IN_REC.AGREEMENT_ID := P_AGREEMENT_ID;
+	L_AGREEMENT_IN_REC.AMOUNT := L_NEW_AMOUNT; 
+	
+		APPS.PA_AGREEMENT_PUB.UPDATE_AGREEMENT
+											(
+											p_api_version_number => 1.0,
+											p_commit => 'F',
+											p_init_msg_list => 'T',
+											p_msg_count => L_MSG_COUNT,
+											p_msg_data => L_MSG_DATA,
+											p_return_status => L_RETURN_STATUS,
+											p_pm_product_code => 'PA',
+											p_agreement_in_rec => L_AGREEMENT_IN_REC,
+											p_agreement_out_rec => L_AGREEMENT_OUT_REC,
+											p_funding_in_tbl => L_FUNDING_IN_TBL,
+											p_funding_out_tbl => L_FUNDING_OUT_TBL,
+											p_submit_approval => 'N'
+											);
+		IF L_RETURN_STATUS <> 'S' THEN
+			LOG_API_MESSAGES(L_MSG_COUNT,L_MSG_DATA);
+			ADD_ERROR('Agreement Update Failed : '|| L_MSG_DATA);
+		ELSE
+			LOG_MSG('Agreement Updated Successfully');
+		END IF;
+
+END UPDATE_AGREEMENT_AMOUNT; 
+
+FUNCTION FUNDING_EXISTS(P_PROJECT_ID NUMBER,P_TOP_TASK_ID NUMBER,P_AMOUNT NUMBER) RETURN VARCHAR2 IS
+L_CNT NUMBER;
+BEGIN
+	SELECT COUNT(*) INTO L_CNT 
+	FROM PA_PROJECT_FUNDINGS
+	WHERE PROJECT_ID = P_PROJECT_ID
+	AND TASK_ID = P_TOP_TASK_ID
+	AND ALLOCATED_AMOUNT = P_AMOUNT;
+	
+	IF L_CNT > 0 THEN
+		RETURN 'Y';
+	END IF;
+	RETURN 'N';
+END FUNDING_EXISTS;
+
+PROCEDURE ADD_PROJECT_FUNDING(P_PROJECT_ID IN NUMBER,P_TOP_TASK_ID IN NUMBER,P_AGREEMENT_ID IN NUMBER,P_ADDITIONAL_FUNDING IN NUMBER,X_SUCCESS OUT VARCHAR2)IS 
+
+L_MSG_COUNT NUMBER;
+L_MSG_DATA VARCHAR2(4000);
+L_RETURN_STATUS VARCHAR2(1);
+L_FUNDING_ID NUMBER := APPS.PA_INTERFACE_UTILS_PUB.G_PA_MISS_NUM;
+L_FUNDING_ID_OUT NUMBER; 
+
+BEGIN
+	LOG_MSG('ADD_PROJECT_FUNDING STARTED'); 
+	
+	X_SUCCESS := 'N';
+	
+	APPS.PA_AGREEMENT_PUB.ADD_FUNDING
+									(
+									p_api_version_number => 1.0,
+									p_commit => 'F',
+									p_init_msg_list => 'T',
+									p_msg_count => L_MSG_COUNT,
+									p_msg_data => L_MSG_DATA,
+									p_return_status => L_RETURN_STATUS,
+									p_pm_product_code => 'PA',
+									p_pm_funding_reference =>'AF_'|| P_AGREEMENT_ID|| '_'|| TO_CHAR(SYSDATE,'YYYYMMDDHH24MISS'),
+									p_funding_id => L_FUNDING_ID,
+									p_pa_project_id => P_PROJECT_ID,
+									p_pa_task_id => P_TOP_TASK_ID,
+									p_agreement_id => P_AGREEMENT_ID,
+									p_allocated_amount => P_ADDITIONAL_FUNDING,
+									p_date_allocated => SYSDATE,
+									p_desc_flex_name => NULL,
+									p_attribute_category => NULL,
+									p_attribute1 => NULL,
+									p_attribute2 => NULL,
+									p_attribute3 => NULL,
+									p_attribute4 => NULL,
+									p_attribute5 => NULL,
+									p_attribute6 => NULL,
+									p_attribute7 => NULL,
+									p_attribute8 => NULL,
+									p_attribute9 => NULL,
+									p_attribute10 => NULL,
+									p_funding_id_out => L_FUNDING_ID_OUT,
+									p_funding_category => 'ADDITIONAL'
+									);    
+									
+	IF L_RETURN_STATUS <> 'S' THEN
+		LOG_API_MESSAGES(L_MSG_COUNT,L_MSG_DATA);
+		ADD_ERROR('Add Funding API Error : '|| L_MSG_DATA);
+	ELSE
+		LOG_MSG('Funding Created : '|| L_FUNDING_ID_OUT); 
+		X_SUCCESS := 'Y';
+	END IF;         
+	
+EXCEPTION WHEN OTHERS THEN
+	ADD_ERROR('ADD_PROJECT_FUNDING : '|| SQLERRM); 
+END ADD_PROJECT_FUNDING;                  
+
+PROCEDURE UPDATE_FUNDING_STATUS(P_RECO_PROJECT_ID NUMBER,P_TOP_TASK VARCHAR2,P_STATUS VARCHAR2)IS
+
+BEGIN
+--	UPDATE reco_contract_escalation_setup@contractstest
+--	SET status = P_STATUS
+--	WHERE project_id = P_RECO_PROJECT_ID
+--	AND task_number LIKE P_TOP_TASK || '%';  
+	 
+	INSERT_PROCESS_LOG(P_PROJECT_ID => P_RECO_PROJECT_ID,P_TASK_NUMBER => P_TOP_TASK,P_STAGE => 'FUNDING',P_STATUS => P_STATUS,P_ERROR_MESSAGE => NULL);
+--	COMMIT;
+EXCEPTION WHEN OTHERS THEN
+	ADD_ERROR('UPDATE_FUNDING_STATUS : '|| SQLERRM);
+END UPDATE_FUNDING_STATUS;
+
+PROCEDURE PROCESS_FUNDING(P_PROJECT_NUM IN VARCHAR2) IS 
+ 
+L_AGREEMENT_ID NUMBER;
+L_CURRENT_AMOUNT NUMBER; 
+L_TOP_TASK_ID NUMBER;
+L_USER_ID NUMBER;
+L_RESPONSIBILITY_ID NUMBER;
+L_FUNDING_SUCCESS VARCHAR2(1);
+
+CURSOR GETPROJECTS IS
+SELECT a.project_id,a.segment1 project_number,b.reco_project_id,a.start_date,a.completion_date,
+	(
+	SELECT user_id
+	FROM fnd_user f,
+	pa_project_players_v pp
+	WHERE pp.project_id = a.project_id
+	AND pp.role='Job Cost Administrator'
+	AND pp.end_date_active IS NULL
+	AND f.employee_id = pp.person_id
+	) jcadmin
+FROM apps.pa_projects a,
+reco_projects b
+WHERE a.project_status_code='Signed'
+AND a.project_id=b.project_id
+AND a.segment1 LIKE P_PROJECT_NUM;
+
+CURSOR GET_FUNDING_TASKS(P_RECO_PROJECT_ID NUMBER)IS
+SELECT SUBSTR(task_number,1,3) TOP_TASK,SUM(NVL(revenue_amount,0)* bill_rate) ADDITIONAL_FUNDING 
+FROM reco_contract_escalation_setup@contractstest c
+WHERE project_id = P_RECO_PROJECT_ID
+AND freeze_flag = 'N' 
+AND CURRENT_ESCALATION_FLAG='Y'
+AND APPROVAL_STATUS='APPROVED'
+AND STATUS='APPROVED'
+AND EXISTS
+(
+SELECT 1
+FROM reco_esc_process_log l
+WHERE l.project_id = c.project_id
+AND l.task_number = c.task_number
+AND l.process_stage = 'BUDGET'
+AND l.process_status = 'BUDGET_CREATED'
+)
+GROUP BY SUBSTR(task_number,1,3);
+
+FUNDROW GET_FUNDING_TASKS%ROWTYPE;
+PROJROW GETPROJECTS%ROWTYPE;
+
+BEGIN
+	LOG_MSG('PROCESS_FUNDING STARTED'); 
+	
+	FOR PROJROW IN GETPROJECTS LOOP
+	
+		CLEAR_ERRORS;
+		
+		L_USER_ID := PROJROW.JCADMIN; 
+		
+		SELECT user_id,responsibility_id INTO L_USER_ID,L_RESPONSIBILITY_ID
+		FROM apps.pa_user_resp_v
+		WHERE user_id = L_USER_ID
+		AND responsibility_name = 'Project Super User';   
+		
+		SET_PROJECT_CONTEXT(L_USER_ID,L_RESPONSIBILITY_ID);
+		
+		IF G_PROJECT_ERROR THEN 
+			CONTINUE;
+		END IF;
+		
+		LOG_MSG('Project : '||PROJROW.PROJECT_NUMBER);  
+		
+		FOR FUNDROW IN GET_FUNDING_TASKS(PROJROW.RECO_PROJECT_ID) LOOP
+			CLEAR_ERRORS;
+--			
+			IF PROCESS_ALREADY_COMPLETED(PROJROW.RECO_PROJECT_ID,FUNDROW.TOP_TASK,'FUNDING','FUNDED') = 'Y'	THEN
+				LOG_MSG('Funding already processed for Top Task '|| FUNDROW.TOP_TASK);
+				CONTINUE;
+			END IF;
+			-- GET TOP TASK ID
+			SELECT task_id INTO L_TOP_TASK_ID
+			FROM pa_tasks
+			WHERE project_id = PROJROW.PROJECT_ID
+			AND task_number = FUNDROW.TOP_TASK;  
+			
+			LOG_MSG('Top Task : '||FUNDROW.TOP_TASK);    
+			
+			LOG_MSG('Additional Funding : '|| FUNDROW.ADDITIONAL_FUNDING);  
+			
+			-- VALIDATE FUNDING
+			VALIDATE_FUNDING(P_PROJECT_ID => PROJROW.PROJECT_ID,P_TOP_TASK_ID => L_TOP_TASK_ID,X_AGREEMENT_ID => L_AGREEMENT_ID,X_CURRENT_AMOUNT => L_CURRENT_AMOUNT);
+			IF G_PROJECT_ERROR THEN
+				CONTINUE;
+			END IF;  
+			
+			-- AGREEMENT CALCULATION 
+			SAVEPOINT FUNDING_SP;
+			UPDATE_AGREEMENT_AMOUNT(P_AGREEMENT_ID => L_AGREEMENT_ID,P_CURRENT_AMOUNT => L_CURRENT_AMOUNT,P_ADDITIONAL_FUNDING => FUNDROW.ADDITIONAL_FUNDING);
+			IF G_ERROR_COUNT > 0 THEN
+				CONTINUE;
+			END IF;
+			
+			L_CURRENT_AMOUNT := L_CURRENT_AMOUNT + FUNDROW.ADDITIONAL_FUNDING;
+			
+			ADD_PROJECT_FUNDING(P_PROJECT_ID => PROJROW.PROJECT_ID,P_TOP_TASK_ID => L_TOP_TASK_ID,P_AGREEMENT_ID => L_AGREEMENT_ID,P_ADDITIONAL_FUNDING => FUNDROW.ADDITIONAL_FUNDING,X_SUCCESS => L_FUNDING_SUCCESS);
+			
+			IF L_FUNDING_SUCCESS = 'Y' THEN
+				UPDATE_FUNDING_STATUS(P_RECO_PROJECT_ID => PROJROW.RECO_PROJECT_ID,P_TOP_TASK => FUNDROW.TOP_TASK,P_STATUS => 'FUNDED');
+			ELSE
+				ROLLBACK TO FUNDING_SP;
+				UPDATE_FUNDING_STATUS(P_RECO_PROJECT_ID => PROJROW.RECO_PROJECT_ID,P_TOP_TASK => FUNDROW.TOP_TASK,P_STATUS => 'FUNDING_ERROR');
+			END IF;
+			
+		END LOOP;
+		
+		IF G_ERROR_COUNT > 0 THEN
+			LOG_MSG('PROJECT FUNDING ERROR SUMMARY');
+			LOG_MSG(GET_ERROR_TEXT);
+		END IF;
+		IF G_ERROR_COUNT = 0 THEN
+			LOG_MSG('PROJECT FUNDING PROCESS COMPLETED SUCCESSFULLY');
+		END IF; 
+		
+	END LOOP;
+	
+	LOG_MSG('PROCESS_FUNDING COMPLETED'); 
+	
+END PROCESS_FUNDING;      
+
+PROCEDURE GET_WORKING_BUDGET(P_PROJECT_ID IN NUMBER,X_BUDGET_VERSION_ID OUT NUMBER,X_FIN_PLAN_TYPE_ID OUT NUMBER,X_VERSION_TYPE OUT VARCHAR2,X_VERSION_NUMBER OUT NUMBER) IS  
+
+BEGIN
+	SELECT budget_version_id,fin_plan_type_id,version_type,version_number
+	INTO X_BUDGET_VERSION_ID,X_FIN_PLAN_TYPE_ID,X_VERSION_TYPE,X_VERSION_NUMBER
+	FROM pa_budget_versions
+	WHERE project_id = P_PROJECT_ID
+	AND budget_status_code = 'W'
+	AND current_working_flag = 'Y'; 
+	
+EXCEPTION WHEN NO_DATA_FOUND THEN
+	ADD_ERROR('Working Budget Not Found');
+	G_PROJECT_ERROR := TRUE;
+WHEN TOO_MANY_ROWS THEN
+	ADD_ERROR('Multiple Working Budgets Found');
+	G_PROJECT_ERROR := TRUE;
+END GET_WORKING_BUDGET;    
+
+PROCEDURE PREPARE_BUDGET_FOR_BASELINE(P_BUDGET_VERSION_ID IN NUMBER) IS 
+
+L_NEW_VERSION_NAME VARCHAR2(100); 
+
+BEGIN
+	L_NEW_VERSION_NAME :='ESCALATION UPDATE - '|| TO_CHAR(SYSDATE,'MM/DD/YYYY');
+	UPDATE apps.pa_budget_versions
+	SET version_name = L_NEW_VERSION_NAME,
+	description = L_NEW_VERSION_NAME
+	WHERE budget_version_id = P_BUDGET_VERSION_ID;
+	
+	UPDATE apps.pa_budget_versions
+	SET burdened_cost = raw_cost
+	WHERE budget_version_id = P_BUDGET_VERSION_ID
+	AND raw_cost <> burdened_cost;
+	
+	UPDATE apps.pa_budget_lines
+	SET burdened_cost = raw_cost
+	WHERE budget_version_id = P_BUDGET_VERSION_ID
+	AND raw_cost <> burdened_cost
+	AND pm_product_code = 'RECO_ESC';
+	
+	LOG_MSG('Budget Version Updated : '||L_NEW_VERSION_NAME);
+
+EXCEPTION WHEN OTHERS THEN
+	ADD_ERROR('PREPARE_BUDGET_FOR_BASELINE : '||SQLERRM);
+	G_PROJECT_ERROR := TRUE;
+END PREPARE_BUDGET_FOR_BASELINE;
+
+PROCEDURE BASELINE_PROJECT_BUDGET(P_PROJECT_ID IN NUMBER,P_FIN_PLAN_TYPE_ID IN NUMBER,X_SUCCESS OUT VARCHAR2)IS
+
+G_API_VERSION_NUMBER NUMBER := 1.0;
+G_COMMIT VARCHAR2(1) := 'F';
+G_INIT_MSG_LIST VARCHAR2(1) := 'T';
+G_MSG_COUNT NUMBER;
+G_MSG_DATA VARCHAR2(2000);
+G_RETURN_STATUS VARCHAR2(1);
+G_WORKFLOW_STARTED VARCHAR2(1); 
+
+BEGIN
+	X_SUCCESS := 'N';
+	LOG_MSG('BASELINE_PROJECT_BUDGET STARTED');
+	APPS.PA_BUDGET_PUB.BASELINE_BUDGET
+									(
+									p_api_version_number => G_API_VERSION_NUMBER,
+									p_commit => G_COMMIT,
+									p_init_msg_list => G_INIT_MSG_LIST,
+									p_msg_count => G_MSG_COUNT,
+									p_msg_data => G_MSG_DATA,
+									p_return_status => G_RETURN_STATUS,
+									p_workflow_started => G_WORKFLOW_STARTED,
+									p_pm_product_code => 'RECO_ESC',
+									p_pa_project_id => P_PROJECT_ID,
+									p_pm_project_reference => '',
+									p_budget_type_code => '',
+									p_mark_as_original => '',
+									p_fin_plan_type_id => P_FIN_PLAN_TYPE_ID,
+									p_fin_plan_type_name => '',
+									p_version_type => 'ALL'
+									);
+	LOG_MSG('Return Status : '||G_RETURN_STATUS);
+	LOG_MSG('Workflow Started : '||G_WORKFLOW_STARTED);
+	LOG_MSG('Message Data : '||G_MSG_DATA);
+	LOG_MSG('Message Count : '||G_MSG_COUNT);
+	
+	IF G_RETURN_STATUS <> 'S' THEN
+		LOG_API_MESSAGES(G_MSG_COUNT,G_MSG_DATA);
+		ADD_ERROR('Baseline Budget API Error : '||G_MSG_DATA);
+	ELSE
+		LOG_MSG('Budget Baselined Successfully');
+		X_SUCCESS := 'Y';
+	END IF;        
+	
+EXCEPTION WHEN OTHERS THEN
+	ADD_ERROR('BASELINE_PROJECT_BUDGET : '||SQLERRM);  
+	
+END BASELINE_PROJECT_BUDGET;
+
+PROCEDURE UPDATE_BASELINE_STATUS(P_RECO_PROJECT_ID NUMBER,P_STATUS VARCHAR2) IS  
+
+BEGIN
+--	UPDATE reco_contract_escalation_setup@contractstest
+--	SET status = P_STATUS
+--	WHERE project_id = P_RECO_PROJECT_ID
+--	AND status = 'FUNDED'; 
+	INSERT_PROCESS_LOG(P_PROJECT_ID => P_RECO_PROJECT_ID,P_TASK_NUMBER => NULL,P_STAGE => 'BASELINE',P_STATUS => P_STATUS,P_ERROR_MESSAGE => NULL);
+	
+EXCEPTION WHEN OTHERS THEN
+	ADD_ERROR('UPDATE_BASELINE_STATUS : '||SQLERRM);
+END UPDATE_BASELINE_STATUS;
+
+PROCEDURE FREEZE_ESCALATION(P_RECO_PROJECT_ID NUMBER) IS
+
+BEGIN              
+
+	UPDATE reco_contract_escalation_setup@contractstest
+	SET freeze_flag = 'Y',applied_by = FND_GLOBAL.USER_ID,applied_date = SYSDATE,error_message = NULL
+	WHERE project_id = P_RECO_PROJECT_ID
+	AND freeze_flag = 'N'
+	AND CURRENT_ESCALATION_FLAG = 'Y'
+	AND APPROVAL_STATUS = 'APPROVED'
+	AND STATUS = 'APPROVED';
+	
+	LOG_MSG('Freeze Flag Updated');
+EXCEPTION WHEN OTHERS THEN
+	ADD_ERROR('FREEZE_ESCALATION : ' || SQLERRM);
+END FREEZE_ESCALATION;
+
+PROCEDURE UPDATE_ESCALATION_ERROR(P_RECO_PROJECT_ID NUMBER,P_ERROR_MESSAGE VARCHAR2) IS
+BEGIN
+	UPDATE reco_contract_escalation_setup@contractstest
+	SET error_message = SUBSTR(P_ERROR_MESSAGE,1,4000)
+	WHERE project_id = P_RECO_PROJECT_ID
+	AND current_escalation_flag = 'Y'
+	AND approval_status = 'APPROVED'
+	AND status = 'APPROVED'
+	AND freeze_flag = 'N';
+
+EXCEPTION WHEN OTHERS THEN
+	ADD_ERROR('UPDATE_ESCALATION_ERROR : ' || SQLERRM);
+END UPDATE_ESCALATION_ERROR;
+
+PROCEDURE PROCESS_BASELINE(P_PROJECT_NUM IN VARCHAR2) IS 
+
+L_BASELINE_SUCCESS VARCHAR2(1);
+L_USER_ID NUMBER;
+L_RESPONSIBILITY_ID NUMBER;
+L_BUDGET_VERSION_ID NUMBER;
+L_FIN_PLAN_TYPE_ID NUMBER;
+L_VERSION_TYPE VARCHAR2(30);
+L_VERSION_NUMBER NUMBER; 
+
+CURSOR GETPROJECTS IS
+SELECT a.project_id,a.segment1 project_number,b.reco_project_id,a.start_date,a.completion_date,
+		(
+		SELECT user_id
+		FROM fnd_user f,
+		pa_project_players_v pp
+		WHERE pp.project_id = a.project_id
+		AND pp.role='Job Cost Administrator'
+		AND pp.end_date_active IS NULL
+		AND f.employee_id = pp.person_id
+		) jcadmin
+FROM apps.pa_projects a,
+reco_projects b
+WHERE a.project_status_code='Signed'
+AND a.project_id=b.project_id
+AND a.segment1 LIKE P_PROJECT_NUM; 
+
+BEGIN
+	LOG_MSG('PROCESS_BASELINE STARTED');  
+	
+	FOR PROJROW IN GETPROJECTS LOOP
+	
+		CLEAR_ERRORS;
+		L_USER_ID := PROJROW.JCADMIN; 
+		
+		SELECT user_id,responsibility_id INTO L_USER_ID,L_RESPONSIBILITY_ID
+		FROM apps.pa_user_resp_v
+		WHERE user_id = L_USER_ID
+		AND responsibility_name = 'Project Super User';   
+		
+		SET_PROJECT_CONTEXT(L_USER_ID,L_RESPONSIBILITY_ID);
+		
+		IF PROCESS_ALREADY_COMPLETED(PROJROW.RECO_PROJECT_ID,NULL,'BASELINE','BASELINED') = 'Y' THEN
+			LOG_MSG('Project already baselined');
+			CONTINUE;
+		END IF;
+		
+		IF G_PROJECT_ERROR THEN 
+			CONTINUE;
+		END IF; 
+		
+		GET_WORKING_BUDGET(P_PROJECT_ID => PROJROW.PROJECT_ID,X_BUDGET_VERSION_ID => L_BUDGET_VERSION_ID,X_FIN_PLAN_TYPE_ID => L_FIN_PLAN_TYPE_ID,X_VERSION_TYPE => L_VERSION_TYPE,X_VERSION_NUMBER => L_VERSION_NUMBER);
+		
+		IF G_PROJECT_ERROR THEN
+			CONTINUE;
+		END IF;
+		
+		PREPARE_BUDGET_FOR_BASELINE(P_BUDGET_VERSION_ID => L_BUDGET_VERSION_ID);  
+		
+		IF G_PROJECT_ERROR THEN
+			CONTINUE;
+		END IF;
+		
+		BASELINE_PROJECT_BUDGET(P_PROJECT_ID => PROJROW.PROJECT_ID,P_FIN_PLAN_TYPE_ID => L_FIN_PLAN_TYPE_ID,X_SUCCESS => L_BASELINE_SUCCESS);
+		
+		IF L_BASELINE_SUCCESS = 'Y' THEN
+			UPDATE_BASELINE_STATUS(PROJROW.RECO_PROJECT_ID,'BASELINED');
+			FREEZE_ESCALATION(PROJROW.RECO_PROJECT_ID);
+		ELSE
+			UPDATE_BASELINE_STATUS(PROJROW.RECO_PROJECT_ID,'BASELINE_ERROR');
+			UPDATE_ESCALATION_ERROR(PROJROW.RECO_PROJECT_ID,GET_ERROR_TEXT);
+		END IF;
+		
+	END LOOP;
+	LOG_MSG('PROCESS_BASELINE COMPLETED');
+END PROCESS_BASELINE;  
+
+PROCEDURE PROCESS_PROJECT_ESCALATION(P_PROJECT_NUM IN VARCHAR2) IS
+BEGIN
+	CLEAR_ERRORS;
+	LOG_MSG('================================');
+	LOG_MSG('ESCALATION PROCESS START');
+	LOG_MSG('================================');
+	
+	PROCESS_TASKS(P_PROJECT_NUM);
+	
+	IF NOT G_PROJECT_ERROR THEN
+		PROCESS_BUDGET(P_PROJECT_NUM);
+	END IF;
+	
+	IF NOT G_PROJECT_ERROR THEN
+		PROCESS_FUNDING(P_PROJECT_NUM);
+	END IF;
+	
+	IF NOT G_PROJECT_ERROR THEN
+		PROCESS_BASELINE(P_PROJECT_NUM);
+	END IF; 
+	
+	IF NOT G_PROJECT_ERROR THEN
+		COMMIT;
+	END IF;
+	
+	LOG_MSG('ESCALATION PROCESS COMPLETE');  
+	
+EXCEPTION WHEN OTHERS THEN
+	ROLLBACK;
+	ADD_ERROR('PROCESS_PROJECT_ESCALATION Error : '|| SQLERRM);  
+END PROCESS_PROJECT_ESCALATION;
+
+END RECO_PROJ_ESCALATION_AUTO_PROCESS;
