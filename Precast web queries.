@@ -1,0 +1,7196 @@
+-- 1. Current PCF revision
+SELECT *
+FROM reco_pcf_current
+WHERE pcf_id = 191252;
+
+191252	5	26-06-12	7472	25-08-21	8512	12945892
+
+
+-- 2. Current Oracle production total
+SELECT
+    SUM(area_total) oracle_area
+FROM reco_production_v
+WHERE pcf_id = 191252;
+
+14007.28
+
+
+-- 3. Current PA/Billing total
+SELECT
+    SUM(quantity) billed_area
+FROM reco_precast_expenditures
+WHERE pcf_id = 191252;
+
+14066.98
+
+
+-- 4. Oracle production by lot
+SELECT
+    lot_number,
+    lot_date,
+    SUM(quantity_produced) qty,
+    SUM(area_total) area
+FROM reco_production_v
+WHERE pcf_id = 191252
+GROUP BY lot_number,
+         lot_date
+ORDER BY lot_date;
+
+
+09/19/2025	25-09-19	2	22.24
+09/22/2025	25-09-22	20	469.08
+RJ-1257564	25-09-22	-1	-13.78
+09/23/2025	25-09-23	17	390.7
+09/24/2025	25-09-24	21	423.51
+09/25/2025	25-09-25	21	452.41
+09-26-2025	25-09-26	20	433.73
+09/29/2025	25-09-29	21	443.61
+09/30/2025	25-09-30	21	434.61
+10/01/2025	25-10-01	20	407.41
+10/02/2025	25-10-02	20	383.21
+10/03/2025	25-10-03	18	346.25
+10/06/2025	25-10-06	8	159.25
+10/07/2025	25-10-07	29	534.64
+10/08/2025	25-10-08	27	526.28
+10/09/2025	25-10-09	30	595.2
+10/10/2025	25-10-10	41	963.57
+10/14/2025	25-10-14	40	845.15
+RJ-1262554	25-10-14	-1	-18.45
+RJ-1262556	25-10-14	-1	-13.78
+10/15/2025	25-10-15	28	626.66
+10/17/2025	25-10-16	40	770.45
+10/17/2025A	25-10-17	36	787.3
+10/20/2025	25-10-20	10	213.18
+10/21/2025	25-10-21	4	102.6
+10/22/2025	25-10-22	2	39.1
+10/23/2025	25-10-23	10	150.96
+10/24/2025	25-10-24	9	150.96
+10/27/2025	25-10-27	2	24.2
+10/28/2025	25-10-28	2	24.2
+10/29/2025	25-10-29	2	24.2
+RJ-1265888	25-10-29	-1	-24.2
+10/30/2025	25-10-30	2	24.2
+10/31/2025	25-10-31	3	36.3
+11/04/2025	25-11-03	2	24.2
+11/04/2025A	25-11-04	1	12.1
+11/07/2025	25-11-07	1	1.64
+11/10/2025	25-11-10	1	12.1
+RJ-1277528	26-01-07	-4	-96.8
+01/08/2026	26-01-08	2	48.4
+01/09/2026	26-01-09	2	48.4
+01/15/2026	26-01-15	2	48.4
+RJ-1280682	26-01-20	-2	-48.4
+02/06/2026	26-02-06	2	48.4
+RJ-1284948	26-02-10	-2	-48.4
+02/11/2026	26-02-11	2	48.4
+02/12/2026	26-02-12	2	48.4
+RJ-1285782	26-02-13	-2	-48.4
+RJ-1286051	26-02-16	-2	-48.4
+02/26/2026	26-02-26	2	27.56
+03/02/2026	26-03-02	1	14.86
+RJ-1288772	26-03-02	-2	-27.56
+03/04/2026	26-03-04	1	12.1
+RJ-1289233	26-03-04	-1	-14.86
+03/06/2026	26-03-06	2	48.4
+RJ-1289658	26-03-06	-1	-12.1
+03/09/2026	26-03-09	1	24.2
+03/11/2026	26-03-11	2	48.4
+RJ-1290536	26-03-11	-1	-24.2
+RJ-1291119	26-03-13	-2	-48.4
+03/19/2026	26-03-19	2	48.4
+RJ-1292726	26-03-23	-1	-24.2
+03/31/2026	26-03-31	1	25.5
+04/02/2026	26-04-02	1	25.5
+RJ-1294731	26-04-02	-1	-25.5
+RJ-1295571	26-04-08	-1	-25.5
+RJ-1295572	26-04-08	-1	-24.2
+04-09-2026	26-04-09	2	60
+RJ-1296102	26-04-13	-2	-60
+04/17/2026	26-04-17	2	54
+RJ-1297612	26-04-21	-2	-54
+RJ-1297639	26-04-21	-1	-24.2
+T-1303228	26-05-28	71	1686.8
+T-1303231	26-05-28	92	2252.3
+T-1303305	26-05-28	6	121
+05/30/2026	26-05-30	1	21.29
+T-1307771	26-06-26	-49	-883.3
+
+
+
+-- 5. Oracle lots
+SELECT
+    lot_id,
+    lot_number,
+    lot_date,
+    lot_type,
+    billed_flag,
+    billed_date,
+    precast_lot_id
+FROM reco_lot_numbers
+WHERE pcf_id = 191252
+ORDER BY lot_date;
+
+
+1074221	09/19/2025	25-09-19	Normal	Y	25-09-22	1257380
+1074225	RJ-1257564	25-09-22	Reject	Y	25-09-22	1257564
+1074377	09/22/2025	25-09-22	Normal	Y	25-09-23	1257685
+1074489	09/23/2025	25-09-23	Normal	Y	25-09-24	1257930
+1074553	09/24/2025	25-09-24	Normal	Y	25-09-26	1258241
+1074568	09/25/2025	25-09-25	Normal	Y	25-09-26	1258593
+1074853	09-26-2025	25-09-26	Normal	Y	25-09-30	1259180
+1075046	09/29/2025	25-09-29	Normal	Y	25-09-30	1259288
+1075060	09/30/2025	25-09-30	Normal	Y	25-09-30	1259424
+1075474	10/01/2025	25-10-01	Normal	Y	25-10-03	1259826
+1075798	10/02/2025	25-10-02	Normal	Y	25-10-06	1260192
+1076531	10/03/2025	25-10-03	Normal	Y	25-10-13	1260557
+1076262	10/06/2025	25-10-06	Normal	Y	25-10-09	1260696
+1076272	10/07/2025	25-10-07	Normal	Y	25-10-09	1261012
+1076286	10/08/2025	25-10-08	Normal	Y	25-10-09	1261307
+1076542	10/09/2025	25-10-09	Normal	Y	25-10-13	1261667
+1076561	10/10/2025	25-10-10	Normal	Y	25-10-13	1262021
+1077168	10/14/2025	25-10-14	Normal	Y	25-10-15	1262544
+1076903	RJ-1262554	25-10-14	Reject	Y	25-10-14	1262554
+1076904	RJ-1262556	25-10-14	Reject	Y	25-10-14	1262556
+1077696	10/15/2025	25-10-15	Normal	Y	25-10-17	1262890
+1077894	10/17/2025	25-10-16	Normal	Y	25-10-20	1263381
+1101422	10/17/2025A	25-10-17	Normal	N		1263522
+1078139	10/20/2025	25-10-20	Normal	Y	25-10-22	1263935
+1078249	10/21/2025	25-10-21	Normal	Y	25-10-23	1264338
+1078305	10/22/2025	25-10-22	Normal	Y	25-10-23	1264641
+1078895	10/23/2025	25-10-23	Normal	Y	25-10-28	1265050
+1078885	10/24/2025	25-10-24	Normal	Y	25-10-28	1265352
+1078988	10/27/2025	25-10-27	Normal	Y	25-10-29	1265620
+1079229	10/28/2025	25-10-28	Normal	Y	25-10-31	1265994
+1079244	10/29/2025	25-10-29	Normal	Y	25-10-31	1266124
+1078993	RJ-1265888	25-10-29	Reject	Y	25-10-29	1265888
+1079453	10/30/2025	25-10-30	Normal	Y	25-11-04	1266402
+1079466	10/31/2025	25-10-31	Normal	Y	25-11-04	1266526
+1079658	11/04/2025	25-11-03	Normal	Y	25-11-05	1266952
+1101423	11/04/2025A	25-11-04	Normal	N		1267207
+1080250	11/07/2025	25-11-07	Normal	Y	25-11-12	1267882
+1080697	11/10/2025	25-11-10	Normal	Y	25-11-14	1268379
+1084937	RJ-1277528	26-01-07	Reject	Y	26-01-07	1277528
+1085487	01/08/2026	26-01-08	Normal	Y	26-01-13	1278609
+1085642	01/09/2026	26-01-09	Normal	Y	26-01-13	1278856
+1086212	01/15/2026	26-01-15	Normal	Y	26-01-22	1280684
+1086086	RJ-1280682	26-01-20	Reject	Y	26-01-20	1280682
+1087891	02/06/2026	26-02-06	Normal	X	26-02-10	1284949
+1087886	RJ-1284948	26-02-10	Reject	X	26-02-10	1284948
+1088191	02/11/2026	26-02-11	Normal	X	26-02-13	1285783
+1088517	02/12/2026	26-02-12	Normal	Y	26-02-17	1286053
+1088186	RJ-1285782	26-02-13	Reject	X	26-02-13	1285782
+1088254	RJ-1286051	26-02-16	Reject	Y	26-02-16	1286051
+1089677	02/26/2026	26-02-26	Normal	X	26-03-02	1288773
+1089870	03/02/2026	26-03-02	Normal	Y	26-03-05	1289238
+1089648	RJ-1288772	26-03-02	Reject	X	26-03-02	1288772
+1089777	RJ-1289233	26-03-04	Reject	Y	26-03-04	1289233
+1090197	03/04/2026	26-03-04	Normal	Y	26-03-09	1289765
+1089942	RJ-1289658	26-03-06	Reject	Y	26-03-06	1289658
+1090440	03/06/2026	26-03-06	Normal	X	26-03-10	1290273
+1090725	03/09/2026	26-03-09	Normal	X	26-03-13	1290544
+1090732	03/11/2026	26-03-11	Normal	X	26-03-13	1291116
+1090518	RJ-1290536	26-03-11	Reject	X	26-03-11	1290536
+1090741	RJ-1291119	26-03-13	Reject	X	26-03-13	1291119
+1091666	03/19/2026	26-03-19	Normal	Y	26-03-24	1292735
+1091459	RJ-1292726	26-03-23	Reject	Y	26-03-23	1292726
+1092507	03/31/2026	26-03-31	Normal	X	26-04-02	1294784
+1092487	RJ-1294731	26-04-02	Reject	X	26-04-02	1294731
+1092822	04/02/2026	26-04-02	Normal	X	26-04-08	1295444
+1092828	RJ-1295571	26-04-08	Reject	X	26-04-08	1295571
+1092829	RJ-1295572	26-04-08	Reject	X	26-04-08	1295572
+1093190	04-09-2026	26-04-09	Normal	Y	26-04-14	1296224
+1092999	RJ-1296102	26-04-13	Reject	Y	26-04-13	1296102
+1093847	04/17/2026	26-04-17	Normal	Y	26-04-21	1297621
+1093831	RJ-1297612	26-04-21	Reject	Y	26-04-21	1297612
+1093850	RJ-1297639	26-04-21	Reject	Y	26-04-21	1297639
+1096484	T-1303228	26-05-28	Transfer	Y	26-05-28	1303229
+1096486	T-1303231	26-05-28	Transfer	Y	26-05-28	1303232
+1096559	T-1303305	26-05-28	Transfer	Y	26-05-28	1303306
+1096974	05/30/2026	26-05-30	Normal	Y	26-06-04	1304329
+1098658	T-1307771	26-06-26	Transfer	X	26-06-26	1307771
+
+
+
+-- 6. Billing history
+SELECT
+    expenditure_item_date,
+    tnum,
+    quantity,
+    denom_raw_cost
+FROM reco_precast_expenditures
+WHERE pcf_id = 191252
+ORDER BY expenditure_item_date;
+
+25-09-22	P772800	8.46	79.95
+25-09-23	P772990	469.08	4432.81
+25-09-24	P773420	390.7	3692.12
+25-09-26	P773742	875.92	8277.44
+25-09-30	P774204	1311.95	12397.93
+25-10-03	P774660	407.41	3850.02
+25-10-06	P774979	383.21	3621.33
+25-10-09	P775456	1220.17	11530.61
+25-10-13	P775993	1905.02	18002.44
+25-10-14	P776165	-32.23	-304.57
+25-10-15	P776351	845.15	7986.67
+25-10-17	P776857	626.66	5921.94
+25-10-20	P777028	770.45	7280.75
+25-10-22	P777457	213.18	2014.55
+25-10-23	P777612	141.7	1339.07
+25-10-25	P778320	277.72	2624.45
+25-10-25	P778465	24.2	228.69
+25-11-03	P778775	48.4	457.38
+25-11-04	P779046	60.5	571.73
+25-11-05	P779226	24.2	228.69
+25-11-12	P780298	1.64	15.5
+25-11-14	P780596	12.1	114.35
+26-01-07	P786267	-96.8	-914.76
+26-01-13	P787067	96.8	914.76
+26-01-20	P787614	-48.4	-457.38
+26-01-22	P787848	48.4	457.38
+26-02-16	P790351	-48.4	-457.38
+26-02-17	P790424	48.4	457.38
+26-03-04	P792227	-14.86	-140.43
+26-03-05	P792392	14.86	140.43
+26-03-06	P792590	-12.1	-114.35
+26-03-09	P792933	12.1	114.35
+26-03-23	P794568	-24.2	-228.69
+26-03-24	P794661	48.4	457.38
+26-04-13	P796436	-60	-567
+26-04-14	P796693	60	567
+26-04-21	P797585	-24.2	-228.69
+26-05-28	P801504	4060.1	38367.95
+26-06-04	P802321	21.29	217.37
+
+
+
+WITH current_revision AS
+(
+    SELECT revision_number
+    FROM reco_pcf_current
+    WHERE pcf_id = 191252
+),
+requirements AS
+(
+    SELECT
+        r.mark_number,
+        r.quantity_required,
+        r.quantity_billed,
+        r.area_per_piece
+    FROM reco_production_requirements r
+    JOIN current_revision c
+      ON c.revision_number = r.revision_number
+    WHERE r.pcf_id = 191252
+),
+production AS
+(
+    SELECT
+        mark_number,
+        SUM(NVL(quantity_produced, 0)) AS produced_qty,
+        SUM(NVL(area_total, 0))        AS produced_area
+    FROM reco_production_v
+    WHERE pcf_id = 191252
+    GROUP BY mark_number
+)
+SELECT
+    r.mark_number,
+    r.quantity_required,
+    NVL(p.produced_qty, 0) AS produced_qty,
+    r.quantity_required - NVL(p.produced_qty, 0) AS missing_qty,
+    r.area_per_piece,
+    ROUND(
+        (r.quantity_required - NVL(p.produced_qty, 0))
+        * r.area_per_piece,
+        2
+    ) AS missing_area
+FROM requirements r
+LEFT JOIN production p
+  ON p.mark_number = r.mark_number
+WHERE NVL(p.produced_qty, 0) < r.quantity_required
+ORDER BY missing_area DESC, r.mark_number;
+
+no row
+
+
+
+SELECT
+    mark_number,
+    quantity_required,
+    area_per_piece,
+    revision_number
+FROM reco_production_requirements
+WHERE pcf_id = 191252
+  AND area_per_piece = 24.2
+ORDER BY mark_number, revision_number;
+
+1	140	24.2	0
+1	140	24.2	1
+1	140	24.2	2
+1	50	24.2	3
+1	50	24.2	4
+1	50	24.2	5
+2	82	24.2	0
+2	82	24.2	1
+2	82	24.2	2
+2	97	24.2	3
+2	97	24.2	4
+2	97	24.2	5
+3	13	24.2	0
+3	13	24.2	1
+3	13	24.2	2
+3	17	24.2	3
+3	17	24.2	4
+3	17	24.2	5
+4	1	24.2	0
+4	1	24.2	1
+4	1	24.2	2
+4	0	24.2	3
+4	0	24.2	4
+4	0	24.2	5
+25	17	24.2	0
+25	17	24.2	1
+25	17	24.2	2
+25	17	24.2	3
+25	17	24.2	4
+25	17	24.2	5
+34	7	24.2	0
+34	7	24.2	1
+34	7	24.2	2
+34	11	24.2	3
+34	11	24.2	4
+34	11	24.2	5
+41	1	24.2	0
+41	1	24.2	1
+41	1	24.2	2
+41	1	24.2	3
+41	1	24.2	4
+41	1	24.2	5
+42	2	24.2	0
+42	2	24.2	1
+42	2	24.2	2
+42	2	24.2	3
+42	2	24.2	4
+42	2	24.2	5
+43	2	24.2	0
+43	2	24.2	1
+43	2	24.2	2
+43	2	24.2	3
+43	2	24.2	4
+43	2	24.2	5
+
+
+
+SELECT
+    lot_id,
+    lot_number,
+    lot_date,
+    lot_type,
+    production_id,
+    mark_number,
+    quantity_produced,
+    area_per_piece,
+    area_total,
+    billed_flag,
+    billed_date
+FROM reco_production_v
+WHERE pcf_id = 191252
+  AND area_per_piece = 24.2
+ORDER BY mark_number, lot_date, lot_id;
+
+1076531	10/03/2025	25-10-03	Normal	13032556	1	10	24.2	242	Y	25-10-13
+1076272	10/07/2025	25-10-07	Normal	13032554	1	10	24.2	242	Y	25-10-09
+1076286	10/08/2025	25-10-08	Normal	13032555	1	10	24.2	242	Y	25-10-09
+1076542	10/09/2025	25-10-09	Normal	13032557	1	14	24.2	338.8	Y	25-10-13
+1076561	10/10/2025	25-10-10	Normal	13032558	1	26	24.2	629.2	Y	25-10-13
+1077168	10/14/2025	25-10-14	Normal	13032559	1	19	24.2	459.8	Y	25-10-15
+1077696	10/15/2025	25-10-15	Normal	13032560	1	13	24.2	314.6	Y	25-10-17
+1077894	10/17/2025	25-10-16	Normal	13032561	1	17	24.2	411.4	Y	25-10-20
+1101422	10/17/2025A	25-10-17	Normal	13064593	1	17	24.2	411.4	N	
+1078139	10/20/2025	25-10-20	Normal	13032562	1	3	24.2	72.6	Y	25-10-22
+1078895	10/23/2025	25-10-23	Normal	13032563	1	1	24.2	24.2	Y	25-10-28
+1091666	03/19/2026	26-03-19	Normal	13032564	1	1	24.2	24.2	Y	26-03-24
+1093850	RJ-1297639	26-04-21	Reject	13032565	1	-1	24.2	-24.2	Y	26-04-21
+1098658	T-1307771	26-06-26	Transfer	13037481	1	-24	24.2	-580.8	X	26-06-26
+1074489	09/23/2025	25-09-23	Normal	13032566	2	2	24.2	48.4	Y	25-09-24
+1074553	09/24/2025	25-09-24	Normal	13032567	2	9	24.2	217.8	Y	25-09-26
+1074568	09/25/2025	25-09-25	Normal	13032568	2	10	24.2	242	Y	25-09-26
+1074853	09-26-2025	25-09-26	Normal	13032569	2	10	24.2	242	Y	25-09-30
+1075046	09/29/2025	25-09-29	Normal	13032570	2	11	24.2	266.2	Y	25-09-30
+1075060	09/30/2025	25-09-30	Normal	13032571	2	11	24.2	266.2	Y	25-09-30
+1075474	10/01/2025	25-10-01	Normal	13032572	2	11	24.2	266.2	Y	25-10-03
+1075798	10/02/2025	25-10-02	Normal	13032573	2	10	24.2	242	Y	25-10-06
+1076531	10/03/2025	25-10-03	Normal	13032576	2	1	24.2	24.2	Y	25-10-13
+1076262	10/06/2025	25-10-06	Normal	13032574	2	5	24.2	121	Y	25-10-09
+1076272	10/07/2025	25-10-07	Normal	13032575	2	1	24.2	24.2	Y	25-10-09
+1076542	10/09/2025	25-10-09	Normal	13032577	2	1	24.2	24.2	Y	25-10-13
+1078885	10/24/2025	25-10-24	Normal	13032578	2	1	24.2	24.2	Y	25-10-28
+1078993	RJ-1265888	25-10-29	Reject	13032579	2	-1	24.2	-24.2	Y	25-10-29
+1087891	02/06/2026	26-02-06	Normal	13032581	2	2	24.2	48.4	X	26-02-10
+1087886	RJ-1284948	26-02-10	Reject	13032580	2	-2	24.2	-48.4	X	26-02-10
+1088191	02/11/2026	26-02-11	Normal	13032583	2	2	24.2	48.4	X	26-02-13
+1088517	02/12/2026	26-02-12	Normal	13032585	2	2	24.2	48.4	Y	26-02-17
+1088186	RJ-1285782	26-02-13	Reject	13032582	2	-2	24.2	-48.4	X	26-02-13
+1088254	RJ-1286051	26-02-16	Reject	13032584	2	-2	24.2	-48.4	Y	26-02-16
+1091666	03/19/2026	26-03-19	Normal	13032587	2	1	24.2	24.2	Y	26-03-24
+1091459	RJ-1292726	26-03-23	Reject	13032586	2	-1	24.2	-24.2	Y	26-03-23
+1096484	T-1303228	26-05-28	Transfer	13032588	2	15	24.2	363	Y	26-05-28
+1074377	09/22/2025	25-09-22	Normal	13032589	3	6	24.2	145.2	Y	25-09-23
+1074489	09/23/2025	25-09-23	Normal	13032590	3	6	24.2	145.2	Y	25-09-24
+1078305	10/22/2025	25-10-22	Normal	13032591	3	1	24.2	24.2	Y	25-10-23
+1090732	03/11/2026	26-03-11	Normal	13032592	3	2	24.2	48.4	X	26-03-13
+1090741	RJ-1291119	26-03-13	Reject	13032593	3	-2	24.2	-48.4	X	26-03-13
+1096484	T-1303228	26-05-28	Transfer	13032594	3	3	24.2	72.6	Y	26-05-28
+1096559	T-1303305	26-05-28	Transfer	13032595	3	1	24.2	24.2	Y	26-05-28
+1074377	09/22/2025	25-09-22	Normal	13032596	4	1	24.2	24.2	Y	25-09-23
+1076286	10/08/2025	25-10-08	Normal	13032663	25	3	24.2	72.6	Y	25-10-09
+1076561	10/10/2025	25-10-10	Normal	13032664	25	5	24.2	121	Y	25-10-13
+1101422	10/17/2025A	25-10-17	Normal	13064597	25	3	24.2	72.6	N	
+1078139	10/20/2025	25-10-20	Normal	13032665	25	3	24.2	72.6	Y	25-10-22
+1078249	10/21/2025	25-10-21	Normal	13032666	25	2	24.2	48.4	Y	25-10-23
+1078885	10/24/2025	25-10-24	Normal	13032667	25	1	24.2	24.2	Y	25-10-28
+1074377	09/22/2025	25-09-22	Normal	13032697	34	6	24.2	145.2	Y	25-09-23
+1078249	10/21/2025	25-10-21	Normal	13032698	34	1	24.2	24.2	Y	25-10-23
+1084937	RJ-1277528	26-01-07	Reject	13032699	34	-4	24.2	-96.8	Y	26-01-07
+1085487	01/08/2026	26-01-08	Normal	13032700	34	2	24.2	48.4	Y	26-01-13
+1085642	01/09/2026	26-01-09	Normal	13032701	34	2	24.2	48.4	Y	26-01-13
+1086212	01/15/2026	26-01-15	Normal	13032703	34	2	24.2	48.4	Y	26-01-22
+1086086	RJ-1280682	26-01-20	Reject	13032702	34	-2	24.2	-48.4	Y	26-01-20
+1090440	03/06/2026	26-03-06	Normal	13032704	34	2	24.2	48.4	X	26-03-10
+1090725	03/09/2026	26-03-09	Normal	13032706	34	1	24.2	24.2	X	26-03-13
+1090518	RJ-1290536	26-03-11	Reject	13032705	34	-1	24.2	-24.2	X	26-03-11
+1092829	RJ-1295572	26-04-08	Reject	13032707	34	-1	24.2	-24.2	X	26-04-08
+1096559	T-1303305	26-05-28	Transfer	13032708	34	3	24.2	72.6	Y	26-05-28
+1075474	10/01/2025	25-10-01	Normal	13032726	41	1	24.2	24.2	Y	25-10-03
+1075046	09/29/2025	25-09-29	Normal	13032727	42	1	24.2	24.2	Y	25-09-30
+1075060	09/30/2025	25-09-30	Normal	13032728	42	1	24.2	24.2	Y	25-09-30
+1074553	09/24/2025	25-09-24	Normal	13032729	43	1	24.2	24.2	Y	25-09-26
+1074568	09/25/2025	25-09-25	Normal	13032730	43	1	24.2	24.2	Y	25-09-26
+
+
+
+SELECT
+    rl.lot_id,
+    rl.lot_number,
+    rl.lot_date,
+    rl.lot_type,
+    rl.billed_flag,
+    rpr.mark_number,
+    rp.production_id,
+    rp.quantity_produced,
+    rpr.area_per_piece,
+    rp.quantity_produced * rpr.area_per_piece AS area
+FROM reco_lot_numbers rl
+JOIN reco_production rp
+  ON rp.lot_id = rl.lot_id
+JOIN reco_production_requirements rpr
+  ON rpr.pc_id = rp.pc_id
+WHERE rl.pcf_id = 191252
+  AND rl.lot_id IN (1101422, 1101423)
+ORDER BY rl.lot_number, rpr.mark_number;
+
+
+1101422	10/17/2025A	25-10-17	Normal	N	1	13064593	17	24.2	411.4
+1101422	10/17/2025A	25-10-17	Normal	N	8	13064594	7	12.1	84.7
+1101422	10/17/2025A	25-10-17	Normal	N	11	13064595	1	8.8	8.8
+1101422	10/17/2025A	25-10-17	Normal	N	14	13064592	2	14.9	29.8
+1101422	10/17/2025A	25-10-17	Normal	N	25	13064597	3	24.2	72.6
+1101422	10/17/2025A	25-10-17	Normal	N	30	13064596	6	30	180
+1101423	11/04/2025A	25-11-04	Normal	N	8	13064598	1	12.1	12.1
+
+
+SELECT
+    rl.lot_number,
+    rl.lot_date,
+    rl.lot_type,
+    rl.precast_lot_id,
+    rpr.mark_number,
+    rp.quantity_produced,
+    rpr.area_per_piece,
+    rp.quantity_produced * rpr.area_per_piece AS area
+FROM reco_lot_numbers rl
+JOIN reco_production rp
+  ON rp.lot_id = rl.lot_id
+JOIN reco_production_requirements rpr
+  ON rpr.pc_id = rp.pc_id
+WHERE rl.pcf_id = 191252
+  AND rl.lot_number IN
+      (
+          'RJ-1265888',
+          'RJ-1290536',
+          'RJ-1292726',
+          'RJ-1295572',
+          'RJ-1297639'
+      )
+ORDER BY rl.lot_date, rl.lot_number, rpr.mark_number;
+
+RJ-1265888	25-10-29	Reject	1265888	2	-1	24.2	-24.2
+RJ-1265888	25-10-29	Reject	1265888	2	-1	24.2	-24.2
+RJ-1265888	25-10-29	Reject	1265888	2	-1	24.2	-24.2
+RJ-1265888	25-10-29	Reject	1265888	2	-1	24.2	-24.2
+RJ-1290536	26-03-11	Reject	1290536	34	-1	24.2	-24.2
+RJ-1290536	26-03-11	Reject	1290536	34	-1	24.2	-24.2
+RJ-1290536	26-03-11	Reject	1290536	34	-1	24.2	-24.2
+RJ-1290536	26-03-11	Reject	1290536	34	-1	24.2	-24.2
+RJ-1292726	26-03-23	Reject	1292726	2	-1	24.2	-24.2
+RJ-1292726	26-03-23	Reject	1292726	2	-1	24.2	-24.2
+RJ-1292726	26-03-23	Reject	1292726	2	-1	24.2	-24.2
+RJ-1292726	26-03-23	Reject	1292726	2	-1	24.2	-24.2
+RJ-1295572	26-04-08	Reject	1295572	34	-1	24.2	-24.2
+RJ-1295572	26-04-08	Reject	1295572	34	-1	24.2	-24.2
+RJ-1295572	26-04-08	Reject	1295572	34	-1	24.2	-24.2
+RJ-1295572	26-04-08	Reject	1295572	34	-1	24.2	-24.2
+RJ-1297639	26-04-21	Reject	1297639	1	-1	24.2	-24.2
+RJ-1297639	26-04-21	Reject	1297639	1	-1	24.2	-24.2
+RJ-1297639	26-04-21	Reject	1297639	1	-1	24.2	-24.2
+RJ-1297639	26-04-21	Reject	1297639	1	-1	24.2	-24.2
+
+
+SELECT
+    h.header_id,
+    h.lot_number,
+    h.transaction_date,
+    h.transaction_status,
+    h.ebs_status,
+    t.transaction_id,
+    t.mark_number,
+    t.quantity,
+    t.qty_standard,
+    t.qty_paid_over,
+    t.qty_overage
+FROM prec_trans_header@recowebprod h
+JOIN prec_transactions@recowebprod t
+  ON t.header_id = h.header_id
+WHERE h.header_id IN
+      (
+          1265888,
+          1290536,
+          1292726,
+          1295572,
+          1297639
+      )
+ORDER BY h.header_id, t.mark_number;
+
+1265888	RJ-1265888	25-10-29	S	S	3582681	2	-1	0	0	-1
+1290536	RJ-1290536	26-03-11	S	S	3640484	34	-1	0	0	-1
+1292726	RJ-1292726	26-03-23	S	S	3645580	2	-1	-1	0	0
+1295572	RJ-1295572	26-04-08	S	S	3652993	34	-1	0	0	-1
+1297639	RJ-1297639	26-04-21	S	S	3658529	1	-1	0	0	-1
+
+
+SELECT
+    p.pcf_id,
+    p.revision_number,
+    p.project_id,
+    pa.segment1 AS project_number,
+    p.task_id,
+    t.task_number,
+    p.expenditure_type,
+    p.vendor_id,
+    p.unit_price
+FROM reco_pcf p
+JOIN pa_projects_all pa
+  ON pa.project_id = p.project_id
+JOIN pa_tasks t
+  ON t.task_id = p.task_id
+WHERE p.pcf_id = 191252
+ORDER BY p.revision_number;
+
+191252	0	1790598	22553	14405604	015.01.01.16	PRECAST PANELS  - SF	1514	9.45
+191252	1	1790598	22553	14405604	015.01.01.16	PRECAST PANELS  - SF	1141832	9.45
+191252	2	1790598	22553	14405604	015.01.01.16	PRECAST PANELS  - SF	1141832	9.45
+191252	3	1790598	22553	14405604	015.01.01.16	PRECAST PANELS  - SF	1141832	9.45
+191252	4	1790598	22553	14405604	015.01.01.16	PRECAST PANELS  - SF	1141832	10.21
+191252	5	1790598	22553	14405604	015.01.01.16	PRECAST PANELS  - SF	1141832	10.21
+
+
+SELECT
+    task_number,
+    SUM(quantity) AS billed_area,
+    SUM(denom_raw_cost) AS billed_cost
+FROM reco_precast_expenditures
+WHERE pcf_id = 191252
+GROUP BY task_number
+ORDER BY task_number;
+
+015.01.01.16	14066.98	132949.17
+
+
+SELECT
+    task_id,
+    SUM(quantity_produced) AS qty,
+    SUM(area_total) AS area
+FROM reco_production_v
+WHERE pcf_id = 191252
+GROUP BY task_id
+ORDER BY task_id;
+
+14405604	649	14007.28
+
+
+
+SELECT
+    rl.lot_id,
+    rl.lot_number,
+    rl.lot_date,
+    rl.billed_flag,
+    rl.billed_date,
+    rl.precast_lot_id,
+    l.tnum
+FROM reco_lot_numbers rl
+LEFT JOIN reco_precast_linkage l
+  ON l.lot_id = rl.lot_id
+WHERE rl.pcf_id = 191252
+  AND rl.lot_id IN (1101422, 1101423)
+ORDER BY rl.lot_id;
+
+1101422	10/17/2025A	25-10-17	N		1263522	
+1101423	11/04/2025A	25-11-04	N		1267207	
+
+SELECT
+    h.header_id,
+    h.lot_number,
+    h.transaction_date,
+    h.transaction_type,
+    h.transaction_status,
+    h.ebs_status,
+    t.mark_number,
+    t.quantity,
+    t.qty_standard,
+    t.qty_paid_over,
+    t.qty_overage
+FROM prec_trans_header@recowebprod h
+JOIN prec_transactions@recowebprod t
+  ON t.header_id = h.header_id
+WHERE h.header_id IN (1263522,1267207)
+ORDER BY h.header_id, t.mark_number;
+
+1263522	10/17/2025A	25-10-17	L	S	S	1	17	17	0	0
+1263522	10/17/2025A	25-10-17	L	S	S	8	7	7	0	0
+1263522	10/17/2025A	25-10-17	L	S	S	11	1	1	0	0
+1263522	10/17/2025A	25-10-17	L	S	S	14	2	2	0	0
+1263522	10/17/2025A	25-10-17	L	S	S	25	3	3	0	0
+1263522	10/17/2025A	25-10-17	L	S	S	30	6	6	0	0
+1267207	11/04/2025A	25-11-04	L	S	S	8	1	1	0	0
+
+
+SELECT
+    b.batch_id,
+    b.batch_type,
+    b.batch_status,
+    bh.header_id,
+    bh.lot_number,
+    bh.lot_date,
+    bh.transaction_type,
+    bt.mark_number,
+    bt.quantity,
+    bt.qty_standard,
+    bt.qty_paid_over,
+    bt.qty_overage
+FROM prec_batches@recowebprod b
+JOIN prec_batch_headers@recowebprod bh
+  ON bh.batch_id = b.batch_id
+JOIN prec_batch_transactions@recowebprod bt
+  ON bt.batch_id = bh.batch_id
+ AND bt.header_id = bh.header_id
+WHERE bh.header_id IN (1263522,1267207)
+ORDER BY bh.header_id, bt.mark_number;
+
+355770	OP	A	1263522	10/17/2025A	25-10-17	L	1	17	17	0	0
+355770	OP	A	1263522	10/17/2025A	25-10-17	L	8	7	7	0	0
+355770	OP	A	1263522	10/17/2025A	25-10-17	L	11	1	1	0	0
+355770	OP	A	1263522	10/17/2025A	25-10-17	L	14	2	2	0	0
+355770	OP	A	1263522	10/17/2025A	25-10-17	L	25	3	3	0	0
+355770	OP	A	1263522	10/17/2025A	25-10-17	L	30	6	6	0	0
+358101	OP	A	1267207	11/04/2025A	25-11-04	L	8	1	1	0	0
+
+
+
+WITH current_revision AS
+(
+    SELECT revision_number
+    FROM reco_pcf_current
+    WHERE pcf_id = 191252
+)
+SELECT
+    SUM(quantity_required) AS required_qty,
+    ROUND(SUM(quantity_required * area_per_piece), 2) AS required_area
+FROM reco_production_requirements r
+JOIN current_revision c
+  ON c.revision_number = r.revision_number
+WHERE r.pcf_id = 191252;
+
+518	11531.48
+
+WITH current_revision AS
+(
+    SELECT revision_number
+    FROM reco_pcf_current
+    WHERE pcf_id = 191252
+),
+requirements AS
+(
+    SELECT
+        r.mark_number,
+        r.quantity_required,
+        r.area_per_piece
+    FROM reco_production_requirements r
+    JOIN current_revision c
+      ON c.revision_number = r.revision_number
+    WHERE r.pcf_id = 191252
+),
+production AS
+(
+    SELECT
+        mark_number,
+        SUM(NVL(quantity_produced, 0)) AS produced_qty
+    FROM reco_production_v
+    WHERE pcf_id = 191252
+    GROUP BY mark_number
+)
+SELECT
+    r.mark_number,
+    r.quantity_required,
+    NVL(p.produced_qty, 0) AS produced_qty,
+    NVL(p.produced_qty, 0) - r.quantity_required AS over_qty,
+    r.area_per_piece,
+    ROUND(
+        (NVL(p.produced_qty, 0) - r.quantity_required)
+        * r.area_per_piece,
+        2
+    ) AS over_area
+FROM requirements r
+LEFT JOIN production p
+  ON p.mark_number = r.mark_number
+WHERE NVL(p.produced_qty, 0) > r.quantity_required
+ORDER BY over_area DESC, r.mark_number;
+
+1	50	116	66	24.2	1597.2
+8	0	48	48	12.1	580.8
+30	23	25	2	30	60
+31	0	1	1	29.96	29.96
+32	0	1	1	29.96	29.96
+27	0	1	1	26.96	26.96
+4	0	1	1	24.2	24.2
+33	0	1	1	18.45	18.45
+16	0	1	1	17.9	17.9
+17	0	1	1	17.86	17.86
+18	0	1	1	17.86	17.86
+21	0	1	1	15.9	15.9
+9	0	1	1	12.1	12.1
+22	0	1	1	11	11
+10	0	1	1	7.45	7.45
+39	0	2	2	3.28	6.56
+40	0	1	1	1.64	1.64
+
+WITH current_revision AS
+(
+    SELECT revision_number
+    FROM reco_pcf_current
+    WHERE pcf_id = 191252
+),
+requirements AS
+(
+    SELECT
+        r.mark_number,
+        r.quantity_required,
+        r.area_per_piece
+    FROM reco_production_requirements r
+    JOIN current_revision c
+      ON c.revision_number = r.revision_number
+    WHERE r.pcf_id = 191252
+),
+production AS
+(
+    SELECT
+        mark_number,
+        SUM(NVL(quantity_produced, 0)) AS produced_qty
+    FROM reco_production_v
+    WHERE pcf_id = 191252
+    GROUP BY mark_number
+)
+SELECT
+    ROUND(
+        SUM(
+            GREATEST(
+                NVL(p.produced_qty, 0) - r.quantity_required,
+                0
+            ) * r.area_per_piece
+        ),
+        2
+    ) AS overage_area
+FROM requirements r
+LEFT JOIN production p
+  ON p.mark_number = r.mark_number;
+  
+  2475.8
+  
+  
+  WITH current_revision AS
+(
+    SELECT revision_number
+    FROM reco_pcf_current
+    WHERE pcf_id = 191252
+),
+requirements AS
+(
+    SELECT
+        r.mark_number,
+        r.quantity_required,
+        r.area_per_piece
+    FROM reco_production_requirements r
+    JOIN current_revision c
+      ON c.revision_number = r.revision_number
+    WHERE r.pcf_id = 191252
+),
+production AS
+(
+    SELECT
+        mark_number,
+        SUM(NVL(quantity_produced, 0)) AS produced_qty
+    FROM reco_production_v
+    WHERE pcf_id = 191252
+    GROUP BY mark_number
+)
+SELECT
+    ROUND(SUM(NVL(p.produced_qty,0) * r.area_per_piece),2)
+        AS oracle_production,
+
+    ROUND(
+        SUM(
+            GREATEST(
+                NVL(p.produced_qty,0) - r.quantity_required,
+                0
+            ) * r.area_per_piece
+        ),
+        2
+    ) AS overage,
+
+    ROUND(
+        SUM(
+            LEAST(
+                NVL(p.produced_qty,0),
+                r.quantity_required
+            ) * r.area_per_piece
+        ),
+        2
+    ) AS expected_billable
+FROM requirements r
+LEFT JOIN production p
+  ON p.mark_number = r.mark_number;
+  
+  14007.28	2475.8	11531.48
+  
+  SELECT
+    revision_number,
+    mark_number,
+    quantity_required,
+    quantity_billed,
+    quantity_required - NVL(quantity_billed,0) AS remaining_to_bill,
+    area_per_piece,
+    ROUND(
+        (quantity_required - NVL(quantity_billed,0))
+        * area_per_piece,
+        2
+    ) AS remaining_area
+FROM reco_production_requirements
+WHERE pcf_id = 191252
+  AND revision_number = 5
+  AND quantity_required - NVL(quantity_billed,0) <> 0
+ORDER BY remaining_area DESC, mark_number;
+
+
+5	2	97	0	97	24.2	2347.4
+5	61	72	0	72	30	2160
+5	62	71	0	71	17.9	1270.9
+5	1	50	0	50	24.2	1210
+5	30	23	0	23	30	690
+5	26	20	0	20	27	540
+5	3	17	0	17	24.2	411.4
+5	25	17	0	17	24.2	411.4
+5	15	21	0	21	17.9	375.9
+5	23	17	0	17	20.9	355.3
+5	14	22	0	22	14.9	327.8
+5	34	11	0	11	24.2	266.2
+5	12	15	0	15	12.1	181.5
+5	11	20	0	20	8.8	176
+5	35	8	0	8	12.1	96.8
+5	60	2	0	2	36.3	72.6
+5	44	2	0	2	24.21	48.42
+5	42	2	0	2	24.2	48.4
+5	43	2	0	2	24.2	48.4
+5	57	1	0	1	29.96	29.96
+5	37	2	0	2	13.78	27.56
+5	55	1	0	1	27	27
+5	29	1	0	1	26.47	26.47
+5	28	1	0	1	25.5	25.5
+5	45	1	0	1	24.21	24.21
+5	41	1	0	1	24.2	24.2
+5	7	1	0	1	23.76	23.76
+5	59	1	0	1	21.29	21.29
+5	5	1	0	1	20.29	20.29
+5	24	1	0	1	19.4	19.4
+5	58	1	0	1	18.45	18.45
+5	54	1	0	1	17.9	17.9
+5	56	1	0	1	16.6	16.6
+5	19	1	0	1	16.4	16.4
+5	46	1	0	1	14.91	14.91
+5	47	1	0	1	14.91	14.91
+5	52	1	0	1	14.9	14.9
+5	53	1	0	1	14.86	14.86
+5	6	1	0	1	14.07	14.07
+5	48	1	0	1	12.1	12.1
+5	49	1	0	1	12.1	12.1
+5	36	1	0	1	11.88	11.88
+5	13	1	0	1	10.6	10.6
+5	20	1	0	1	10.38	10.38
+5	38	1	0	1	8.46	8.46
+5	50	1	0	1	7.45	7.45
+5	51	1	0	1	7.45	7.45
+
+SELECT
+    revision_number,
+    pc_id,
+    mark_number,
+    quantity_required,
+    quantity_billed,
+    area_per_piece,
+    creation_date,
+    last_update_date
+FROM reco_production_requirements
+WHERE pcf_id = 191252
+  AND mark_number = 4
+ORDER BY revision_number;
+
+0	5413236	4	1	0	24.2	25-08-21	25-08-21
+1	5414044	4	1	0	24.2	25-08-21	25-08-21
+2	5416639	4	1	0	24.2	25-08-21	25-08-25
+3	5575235	4	0	0	24.2	25-08-21	26-05-19
+4	5579029	4	0	0	24.2	25-08-21	26-06-01
+5	5582751	4	0	0	24.2	25-08-21	26-06-12
+
+
+SELECT
+    lot_id,
+    lot_number,
+    lot_date,
+    lot_type,
+    production_id,
+    mark_number,
+    quantity_produced,
+    area_per_piece,
+    area_total,
+    billed_flag,
+    billed_date
+FROM reco_production_v
+WHERE pcf_id = 191252
+  AND mark_number = 4
+ORDER BY lot_date;
+
+1074377	09/22/2025	25-09-22	Normal	13032596	4	1	24.2	24.2	Y	25-09-23
+
+
+
+SELECT
+    h.header_id,
+    h.lot_number,
+    h.transaction_date,
+    h.transaction_type,
+    h.transaction_status,
+    h.ebs_status,
+    t.transaction_id,
+    t.mark_number,
+    t.quantity,
+    t.qty_standard,
+    t.qty_paid_over,
+    t.qty_overage,
+    p.area_per_piece
+FROM prec_trans_header@recowebprod h
+JOIN prec_transactions@recowebprod t
+  ON t.header_id = h.header_id
+LEFT JOIN prec_pcf_panels@recowebprod p
+  ON p.pcf_id = t.pcf_id
+ AND p.mark_number = t.mark_number
+WHERE h.primary_pcf_id = 191252
+  AND t.mark_number = 4
+ORDER BY h.transaction_date, h.header_id;
+
+
+1257685	09/22/2025	25-09-22	L	S	S	3561495	4	1	1	0	0	24.2
+1293339		26-03-30	S	S	S	3647107	4	0	0	0	0	24.2
+1302197	RA-2-3	26-05-19	V	B	P	3671184	4	0	-1	1	0	24.2
+
+
+SELECT
+    revision,
+    COUNT(*) AS transaction_count,
+    ROUND(SUM(quantity), 2) AS quantity,
+    ROUND(SUM(denom_raw_cost), 2) AS raw_cost
+FROM reco_precast_expenditures
+WHERE pcf_id = 191252
+GROUP BY revision
+ORDER BY revision;
+
+2	37	9985.59	94363.85
+3	1	4060.1	38367.95
+4	1	21.29	217.37
+
+SELECT
+    expenditure_item_date,
+    quantity,
+    denom_raw_cost,
+    transaction_source,
+    orig_transaction_reference,
+    attribute2 AS tnum,
+    attribute3 AS pcf_id,
+    attribute4 AS revision,
+    attribute5 AS vendor_id,
+    attribute6 AS transaction_type,
+    expenditure_type
+FROM pa_expenditure_items_all
+WHERE project_id = 1790598
+  AND task_id = 14405604
+  AND attribute3 = '191252'
+ORDER BY expenditure_item_date,
+         creation_date;
+         
+25-09-22	8.46	79.95	RECO FLORIDA Prod	P772800	P772800	191252	2	1141832	CURRENT	PRECAST PANELS  - SF
+25-09-23	469.08	4432.81	RECO FLORIDA Prod	P772990	P772990	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-09-24	390.7	3692.12	RECO FLORIDA Prod	P773420	P773420	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-09-26	875.92	8277.44	RECO FLORIDA Prod	P773742	P773742	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-09-30	1311.95	12397.93	RECO FLORIDA Prod	P774204	P774204	191252	2	1141832	CURRENT	PRECAST PANELS  - SF
+25-10-03	407.41	3850.02	RECO FLORIDA Prod	P774660	P774660	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-10-06	383.21	3621.33	RECO FLORIDA Prod	P774979	P774979	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-10-09	1220.17	11530.61	RECO FLORIDA Prod	P775456	P775456	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-10-13	1905.02	18002.44	RECO FLORIDA Prod	P775993	P775993	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-10-14	-32.23	-304.57	RECO FLORIDA Prod	P776165	P776165	191252	2	1141832	CURRENT	PRECAST PANELS  - SF
+25-10-15	845.15	7986.67	RECO FLORIDA Prod	P776351	P776351	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-10-17	626.66	5921.94	RECO FLORIDA Prod	P776857	P776857	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-10-20	770.45	7280.75	RECO FLORIDA Prod	P777028	P777028	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-10-22	213.18	2014.55	RECO FLORIDA Prod	P777457	P777457	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-10-23	141.7	1339.07	RECO FLORIDA Prod	P777612	P777612	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-10-25	277.72	2624.45	RECO FLORIDA Prod	P778320	P778320	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-10-25	24.2	228.69	RECO FLORIDA Prod	P778465	P778465	191252	2	1141832	CURRENT	PRECAST PANELS  - SF
+25-11-03	48.4	457.38	RECO FLORIDA Prod	P778775	P778775	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-11-04	60.5	571.73	RECO FLORIDA Prod	P779046	P779046	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-11-05	24.2	228.69	RECO FLORIDA Prod	P779226	P779226	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-11-12	1.64	15.5	RECO FLORIDA Prod	P780298	P780298	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+25-11-14	12.1	114.35	RECO FLORIDA Prod	P780596	P780596	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+26-01-07	-96.8	-914.76	RECO FLORIDA Prod	P786267	P786267	191252	2	1141832	CURRENT	PRECAST PANELS  - SF
+26-01-13	96.8	914.76	RECO FLORIDA Prod	P787067	P787067	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+26-01-20	-48.4	-457.38	RECO FLORIDA Prod	P787614	P787614	191252	2	1141832	CURRENT	PRECAST PANELS  - SF
+26-01-22	48.4	457.38	RECO FLORIDA Prod	P787848	P787848	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+26-02-16	-48.4	-457.38	RECO FLORIDA Prod	P790351	P790351	191252	2	1141832	CURRENT	PRECAST PANELS  - SF
+26-02-17	48.4	457.38	RECO FLORIDA Prod	P790424	P790424	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+26-03-04	-14.86	-140.43	RECO FLORIDA Prod	P792227	P792227	191252	2	1141832	CURRENT	PRECAST PANELS  - SF
+26-03-05	14.86	140.43	RECO FLORIDA Prod	P792392	P792392	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+26-03-06	-12.1	-114.35	RECO FLORIDA Prod	P792590	P792590	191252	2	1141832	CURRENT	PRECAST PANELS  - SF
+26-03-09	12.1	114.35	RECO FLORIDA Prod	P792933	P792933	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+26-03-23	-24.2	-228.69	RECO FLORIDA Prod	P794568	P794568	191252	2	1141832	CURRENT	PRECAST PANELS  - SF
+26-03-24	48.4	457.38	RECO FLORIDA Prod	P794661	P794661	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+26-04-13	-60	-567	RECO FLORIDA Prod	P796436	P796436	191252	2	1141832	CURRENT	PRECAST PANELS  - SF
+26-04-14	60	567	RECO FLORIDA Prod	P796693	P796693	191252	2	1141832	PREVIOUS	PRECAST PANELS  - SF
+26-04-21	-24.2	-228.69	RECO FLORIDA Prod	P797585	P797585	191252	2	1141832	CURRENT	PRECAST PANELS  - SF
+26-05-28	4060.1	38367.95	RECO FLORIDA Prod	P801504	P801504	191252	3	1141832	CURRENT	PRECAST PANELS  - SF
+26-06-04	21.29	217.37	RECO FLORIDA Prod	P802321	P802321	191252	4	1141832	PREVIOUS	PRECAST PANELS  - SF
+
+
+
+SELECT
+    rl.lot_number,
+    rl.lot_date,
+    rl.lot_type,
+    rl.billed_flag,
+    rl.billed_date,
+    rl.precast_lot_id,
+    rpr.mark_number,
+    rp.quantity_produced,
+    rpr.area_per_piece,
+    rp.quantity_produced * rpr.area_per_piece AS area
+FROM reco_lot_numbers rl
+JOIN reco_production rp
+  ON rp.lot_id = rl.lot_id
+JOIN reco_production_requirements rpr
+  ON rpr.pc_id = rp.pc_id
+WHERE rl.pcf_id = 191252
+  AND rl.lot_number = 'T-1307771'
+ORDER BY rpr.mark_number;
+
+T-1307771	26-06-26	Transfer	X	26-06-26	1307771	1	-24	24.2	-580.8
+T-1307771	26-06-26	Transfer	X	26-06-26	1307771	8	-25	12.1	-302.5
+
+
+
+SELECT
+    h.header_id,
+    h.related_header_id,
+    h.primary_pcf_id,
+    h.lot_number,
+    h.transaction_date,
+    h.transaction_type,
+    t.transaction_id,
+    t.related_transaction_id,
+    t.mark_number,
+    t.quantity,
+    t.qty_standard,
+    t.qty_paid_over,
+    t.qty_overage
+FROM prec_trans_header@recowebprod h
+JOIN prec_transactions@recowebprod t
+  ON t.header_id = h.header_id
+WHERE h.header_id = 1307771
+   OR h.related_header_id = 1307771
+ORDER BY h.header_id, t.mark_number;
+
+1307771		191252	T-1307771	26-06-26	T	3689104	3689105	1	-24	0	-24	0
+1307771		191252	T-1307771	26-06-26	T	3689106	3689107	8	-25	0	-25	0
+1307772	1307771	184437	T-1307771	26-06-26	T	3689105	3689104	1	24	24	0	0
+1307772	1307771	184437	T-1307771	26-06-26	T	3689107	3689106	4	25	25	0	0
+
+SELECT
+    h.header_id,
+    h.lot_number,
+    h.transaction_date,
+    h.transaction_type,
+    t.mark_number,
+    t.quantity,
+    t.qty_standard,
+    t.qty_paid_over,
+    t.qty_overage,
+    p.area_per_piece,
+    NVL(t.qty_standard,0)   * p.area_per_piece AS standard_area,
+    NVL(t.qty_paid_over,0)  * p.area_per_piece AS paid_over_area,
+    NVL(t.qty_overage,0)    * p.area_per_piece AS unpaid_over_area
+FROM prec_trans_header@recowebprod h
+JOIN prec_transactions@recowebprod t
+  ON t.header_id = h.header_id
+LEFT JOIN prec_pcf_panels@recowebprod p
+  ON p.pcf_id = t.pcf_id
+ AND p.mark_number = t.mark_number
+WHERE h.primary_pcf_id = 191252
+  AND t.mark_number = 4
+ORDER BY h.transaction_date,
+         h.header_id;
+         
+1257685	09/22/2025	25-09-22	L	4	1	1	0	0	24.2	24.2	0	0
+1293339		26-03-30	S	4	0	0	0	0	24.2	0	0	0
+1302197	RA-2-3	26-05-19	V	4	0	-1	1	0	24.2	-24.2	24.2	0
+
+
+SELECT
+    t.mark_number,
+    SUM(NVL(t.qty_standard,0))  AS net_standard_qty,
+    SUM(NVL(t.qty_paid_over,0)) AS net_paid_over_qty,
+    SUM(NVL(t.qty_overage,0))   AS net_unpaid_over_qty,
+    MAX(p.area_per_piece)       AS area_per_piece,
+    SUM(NVL(t.qty_standard,0))
+        * MAX(p.area_per_piece) AS standard_area,
+    SUM(NVL(t.qty_paid_over,0))
+        * MAX(p.area_per_piece) AS paid_over_area,
+    SUM(NVL(t.qty_overage,0))
+        * MAX(p.area_per_piece) AS unpaid_over_area
+FROM prec_trans_header@recowebprod h
+JOIN prec_transactions@recowebprod t
+  ON t.header_id = h.header_id
+LEFT JOIN prec_pcf_panels@recowebprod p
+  ON p.pcf_id = t.pcf_id
+ AND p.mark_number = t.mark_number
+WHERE h.primary_pcf_id = 191252
+  AND t.mark_number = 4
+GROUP BY t.mark_number;
+
+4	0	1	0	24.2	0	24.2	0
+
+
+SELECT
+    b.batch_id,
+    b.batch_type,
+    b.batch_status,
+    bh.header_id,
+    bh.pcf_id,
+    bh.revision_number,
+    bh.lot_number,
+    bh.lot_date,
+    bh.transaction_type,
+    bt.transaction_id,
+    bt.mark_number,
+    bt.quantity,
+    bt.qty_standard,
+    bt.qty_paid_over,
+    bt.qty_overage
+FROM prec_batches@recowebprod b
+JOIN prec_batch_headers@recowebprod bh
+  ON bh.batch_id = b.batch_id
+JOIN prec_batch_transactions@recowebprod bt
+  ON bt.batch_id = bh.batch_id
+ AND bt.header_id = bh.header_id
+WHERE bh.header_id = 1302197
+   OR (
+        bh.pcf_id = 191252
+        AND bh.lot_number = 'RA-2-3'
+      )
+ORDER BY bt.mark_number;
+
+no row
+
+
+SELECT
+    l.tnum,
+    rl.lot_id,
+    rl.lot_number,
+    rl.lot_date,
+    rpr.mark_number,
+    rp.quantity_produced,
+    rpr.area_per_piece,
+    rp.quantity_produced * rpr.area_per_piece AS area
+FROM reco_precast_linkage l
+JOIN reco_lot_numbers rl
+  ON rl.lot_id = l.lot_id
+JOIN reco_production rp
+  ON rp.lot_id = rl.lot_id
+JOIN reco_production_requirements rpr
+  ON rpr.pc_id = rp.pc_id
+WHERE rl.pcf_id = 191252
+  AND rl.lot_number = '09/22/2025'
+ORDER BY rpr.mark_number;
+
+
+P772990	1074377	09/22/2025	25-09-22	3	6	24.2	145.2
+P772990	1074377	09/22/2025	25-09-22	3	6	24.2	145.2
+P772990	1074377	09/22/2025	25-09-22	3	6	24.2	145.2
+P772990	1074377	09/22/2025	25-09-22	3	6	24.2	145.2
+P772990	1074377	09/22/2025	25-09-22	4	1	24.2	24.2
+P772990	1074377	09/22/2025	25-09-22	4	1	24.2	24.2
+P772990	1074377	09/22/2025	25-09-22	4	1	24.2	24.2
+P772990	1074377	09/22/2025	25-09-22	4	1	24.2	24.2
+P772990	1074377	09/22/2025	25-09-22	16	1	17.9	17.9
+P772990	1074377	09/22/2025	25-09-22	16	1	17.9	17.9
+P772990	1074377	09/22/2025	25-09-22	16	1	17.9	17.9
+P772990	1074377	09/22/2025	25-09-22	16	1	17.9	17.9
+P772990	1074377	09/22/2025	25-09-22	23	2	20.9	41.8
+P772990	1074377	09/22/2025	25-09-22	23	2	20.9	41.8
+P772990	1074377	09/22/2025	25-09-22	23	2	20.9	41.8
+P772990	1074377	09/22/2025	25-09-22	23	2	20.9	41.8
+P772990	1074377	09/22/2025	25-09-22	26	2	27	54
+P772990	1074377	09/22/2025	25-09-22	26	2	27	54
+P772990	1074377	09/22/2025	25-09-22	26	2	27	54
+P772990	1074377	09/22/2025	25-09-22	26	2	27	54
+P772990	1074377	09/22/2025	25-09-22	34	6	24.2	145.2
+P772990	1074377	09/22/2025	25-09-22	34	6	24.2	145.2
+P772990	1074377	09/22/2025	25-09-22	34	6	24.2	145.2
+P772990	1074377	09/22/2025	25-09-22	34	6	24.2	145.2
+P772990	1074377	09/22/2025	25-09-22	37	1	13.78	13.78
+P772990	1074377	09/22/2025	25-09-22	37	1	13.78	13.78
+P772990	1074377	09/22/2025	25-09-22	37	1	13.78	13.78
+P772990	1074377	09/22/2025	25-09-22	37	1	13.78	13.78
+P772990	1074377	09/22/2025	25-09-22	55	1	27	27
+P772990	1074377	09/22/2025	25-09-22	55	1	27	27
+P772990	1074377	09/22/2025	25-09-22	55	1	27	27
+P772990	1074377	09/22/2025	25-09-22	55	1	27	27
+
+
+
+
+
+
+
+SELECT
+    b.batch_id,
+    b.batch_type,
+    b.batch_status,
+    b.creation_date,
+    b.status_date,
+    p.pcf_id,
+    p.revision_number
+FROM prec_batches@recowebprod b
+JOIN prec_batch_pcf@recowebprod p
+  ON p.batch_id = b.batch_id
+WHERE p.pcf_id = 191252
+ORDER BY
+    p.revision_number,
+    b.batch_id;
+    
+346340	IN	A	25-08-21	25-08-22	191252	0
+346370	IR	A	25-08-21	25-08-22	191252	1
+346797	IR	A	25-08-25	25-08-25	191252	2
+900819	IR	A	26-05-19	26-05-19	191252	3
+902084	IR	A	26-06-01	26-06-02	191252	4
+903363	IR	A	26-06-12	26-06-12	191252	5
+
+
+
+SELECT
+    b.batch_id,
+    b.batch_type,
+    b.batch_status,
+    b.creation_date,
+    b.status_date,
+    p.pcf_id,
+    p.revision_number,
+    p.project_number,
+    p.task_number,
+    p.product_code
+FROM prec_batches@recowebprod b
+JOIN prec_batch_pcf@recowebprod p
+  ON p.batch_id = b.batch_id
+WHERE p.pcf_id = 191252
+  AND p.revision_number = 3
+ORDER BY b.batch_id;
+
+900819	IR	A	26-05-19	26-05-19	191252	3	22553	015.01.01.16	SQR
+
+
+SELECT
+    h.header_id,
+    h.lot_number,
+    h.transaction_date,
+    h.transaction_type,
+    h.transaction_status,
+    h.ebs_status,
+    t.transaction_id,
+    t.mark_number,
+    t.quantity,
+    t.qty_standard,
+    t.qty_paid_over,
+    t.qty_overage
+FROM prec_trans_header@recowebprod h
+JOIN prec_transactions@recowebprod t
+  ON t.header_id = h.header_id
+WHERE h.header_id = 1302197
+ORDER BY t.mark_number;
+
+1302197	RA-2-3	26-05-19	V	B	P	3671183	1	0	-90	90	0
+1302197	RA-2-3	26-05-19	V	B	P	3671184	4	0	-1	1	0
+1302197	RA-2-3	26-05-19	V	B	P	3671185	8	0	-73	73	0
+1302197	RA-2-3	26-05-19	V	B	P	3671186	9	0	-1	1	0
+1302197	RA-2-3	26-05-19	V	B	P	3671187	10	0	-1	1	0
+1302197	RA-2-3	26-05-19	V	B	P	3671188	16	0	-1	1	0
+1302197	RA-2-3	26-05-19	V	B	P	3671189	17	0	-1	1	0
+1302197	RA-2-3	26-05-19	V	B	P	3671190	18	0	-1	1	0
+1302197	RA-2-3	26-05-19	V	B	P	3671191	21	0	-1	1	0
+1302197	RA-2-3	26-05-19	V	B	P	3671192	22	0	-1	1	0
+1302197	RA-2-3	26-05-19	V	B	P	3671193	27	0	-1	1	0
+1302197	RA-2-3	26-05-19	V	B	P	3671194	30	0	-2	2	0
+1302197	RA-2-3	26-05-19	V	B	P	3671195	31	0	-1	1	0
+1302197	RA-2-3	26-05-19	V	B	P	3671196	32	0	-1	1	0
+1302197	RA-2-3	26-05-19	V	B	P	3671197	33	0	-1	1	0
+1302197	RA-2-3	26-05-19	V	B	P	3671198	34	0	1	0	-1
+1302197	RA-2-3	26-05-19	V	B	P	3671199	39	0	-2	2	0
+1302197	RA-2-3	26-05-19	V	B	P	3671200	40	0	-1	1	0
+
+
+
+SELECT
+    expenditure_item_id,
+    expenditure_item_date,
+    quantity,
+    denom_raw_cost,
+    transaction_source,
+    orig_transaction_reference,
+    attribute2 AS tnum,
+    attribute3 AS pcf_id,
+    attribute4 AS revision,
+    attribute5 AS vendor_id,
+    attribute6 AS transaction_type,
+    creation_date
+FROM pa_expenditure_items_all
+WHERE project_id = 1790598
+  AND task_id = 14405604
+  AND attribute3 = '191252'
+  AND attribute4 = '3'
+ORDER BY creation_date;
+
+7200060	26-05-28	4060.1	38367.95	RECO FLORIDA Prod	P801504	P801504	191252	3	1141832	CURRENT	26-05-29
+
+SELECT
+    t.mark_number,
+    MAX(p.area_per_piece) AS area_per_piece,
+
+    SUM(NVL(t.qty_standard,0)) AS net_standard_qty,
+    SUM(NVL(t.qty_paid_over,0)) AS net_paid_over_qty,
+    SUM(NVL(t.qty_overage,0)) AS net_unpaid_over_qty,
+
+    ROUND(
+        SUM(NVL(t.qty_standard,0))
+        * MAX(p.area_per_piece),
+        2
+    ) AS standard_area,
+
+    ROUND(
+        SUM(NVL(t.qty_paid_over,0))
+        * MAX(p.area_per_piece),
+        2
+    ) AS paid_over_area,
+
+    ROUND(
+        SUM(NVL(t.qty_overage,0))
+        * MAX(p.area_per_piece),
+        2
+    ) AS unpaid_over_area
+
+FROM prec_trans_header@recowebprod h
+JOIN prec_transactions@recowebprod t
+  ON t.header_id = h.header_id
+LEFT JOIN prec_pcf_panels@recowebprod p
+  ON p.pcf_id = t.pcf_id
+ AND p.mark_number = t.mark_number
+WHERE h.primary_pcf_id = 191252
+GROUP BY t.mark_number
+HAVING SUM(NVL(t.qty_paid_over,0)) <> 0
+    OR SUM(NVL(t.qty_overage,0)) <> 0
+ORDER BY t.mark_number;
+
+1	24.2	50	66	0	1210	1597.2	0
+4	24.2	0	1	0	0	24.2	0
+8	12.1	0	48	0	0	580.8	0
+9	12.1	0	1	0	0	12.1	0
+10	7.45	0	1	0	0	7.45	0
+16	17.9	0	1	0	0	17.9	0
+17	17.86	0	1	0	0	17.86	0
+18	17.86	0	1	0	0	17.86	0
+21	15.9	0	1	0	0	15.9	0
+22	11	0	1	0	0	11	0
+27	26.96	0	1	0	0	26.96	0
+30	30	23	2	0	690	60	0
+31	29.96	0	1	0	0	29.96	0
+32	29.96	0	1	0	0	29.96	0
+33	18.45	0	1	0	0	18.45	0
+39	3.28	0	2	0	0	6.56	0
+40	1.64	0	1	0	0	1.64	0
+
+
+SELECT
+    ROUND(
+        SUM(NVL(t.qty_paid_over,0) * NVL(p.area_per_piece,0)),
+        2
+    ) AS total_paid_over_area,
+    ROUND(
+        SUM(NVL(t.qty_overage,0) * NVL(p.area_per_piece,0)),
+        2
+    ) AS total_unpaid_over_area
+FROM prec_trans_header@recowebprod h
+JOIN prec_transactions@recowebprod t
+  ON t.header_id = h.header_id
+LEFT JOIN prec_pcf_panels@recowebprod p
+  ON p.pcf_id = t.pcf_id
+ AND p.mark_number = t.mark_number
+WHERE h.primary_pcf_id = 191252;
+
+2475.8	0
+
+
+SELECT
+    expenditure_item_id,
+    expenditure_item_date,
+    quantity,
+    denom_raw_cost,
+    transaction_source,
+    orig_transaction_reference,
+    attribute2 AS tnum,
+    attribute3 AS pcf_id,
+    attribute4 AS revision,
+    attribute6 AS transaction_type,
+    creation_date
+FROM pa_expenditure_items_all
+WHERE project_id = 1790598
+  AND task_id = 14405604
+  AND expenditure_item_date BETWEEN DATE '2026-05-19'
+                                AND DATE '2026-06-05'
+ORDER BY expenditure_item_date,
+         creation_date;
+         
+7195412	26-05-19	-2766.7	-26145.32	RECO FLORIDA Prod Revision Adj	191252-3	191252	2	3		26-05-20
+7200060	26-05-28	4060.1	38367.95	RECO FLORIDA Prod	P801504	P801504	191252	3	CURRENT	26-05-29
+7203485	26-06-04	21.29	217.37	RECO FLORIDA Prod	P802321	P802321	191252	4	PREVIOUS	26-06-05
+
+
+SELECT *
+FROM prec_batch_pcf@recowebprod
+WHERE batch_id = 900819
+  AND pcf_id = 191252;
+  
+900819	191252	3	1790598	22553	1141832	800432	25-08-21	26-05-19	015.01.01.16	SQR	SF	PRECAST PANELS  - SF	015.01.02.16	FREIGHT PRECAST SF (EX)		9.45	0.97		RW9-2	4000			11531.48	P	NORAI	NORAI	26-05-19	26-05-19  
+
+
+
+
+
+
+
+
+
+WITH rev2 AS
+(
+    SELECT
+        mark_number,
+        quantity_required,
+        area_per_piece
+    FROM reco_production_requirements
+    WHERE pcf_id = 191252
+      AND revision_number = 2
+),
+rev3 AS
+(
+    SELECT
+        mark_number,
+        quantity_required,
+        area_per_piece
+    FROM reco_production_requirements
+    WHERE pcf_id = 191252
+      AND revision_number = 3
+)
+SELECT
+    COALESCE(r2.mark_number, r3.mark_number) AS mark_number,
+    NVL(r2.quantity_required,0) AS rev2_required,
+    NVL(r3.quantity_required,0) AS rev3_required,
+    NVL(r3.quantity_required,0)
+        - NVL(r2.quantity_required,0) AS qty_change,
+    NVL(r3.area_per_piece,r2.area_per_piece) AS area_per_piece,
+    ROUND(
+        (
+            NVL(r3.quantity_required,0)
+            - NVL(r2.quantity_required,0)
+        )
+        * NVL(r3.area_per_piece,r2.area_per_piece),
+        2
+    ) AS area_change
+FROM rev2 r2
+FULL OUTER JOIN rev3 r3
+  ON r3.mark_number = r2.mark_number
+WHERE NVL(r2.quantity_required,0)
+   <> NVL(r3.quantity_required,0)
+ORDER BY mark_number;
+
+
+1	140	50	-90	24.2	-2178
+2	82	97	15	24.2	363
+3	13	17	4	24.2	96.8
+4	1	0	-1	24.2	-24.2
+8	73	0	-73	12.1	-883.3
+9	1	0	-1	12.1	-12.1
+10	1	0	-1	7.45	-7.45
+16	1	0	-1	17.9	-17.9
+17	1	0	-1	17.86	-17.86
+18	1	0	-1	17.86	-17.86
+21	1	0	-1	15.9	-15.9
+22	1	0	-1	11	-11
+27	1	0	-1	26.96	-26.96
+30	25	23	-2	30	-60
+31	1	0	-1	29.96	-29.96
+32	1	0	-1	29.96	-29.96
+33	1	0	-1	18.45	-18.45
+34	7	11	4	24.2	96.8
+35	6	8	2	12.1	24.2
+39	2	0	-2	3.28	-6.56
+40	1	0	-1	1.64	-1.64
+59	0	1	1	21.29	21.29
+60	0	2	2	36.3	72.6
+61	0	72	72	30	2160
+62	0	71	71	17.9	1270.9
+
+
+
+SELECT
+    revision_number,
+    SUM(quantity_required) AS required_qty,
+    ROUND(
+        SUM(quantity_required * area_per_piece),
+        2
+    ) AS required_area
+FROM reco_production_requirements
+WHERE pcf_id = 191252
+  AND revision_number IN (2,3)
+GROUP BY revision_number
+ORDER BY revision_number;
+
+2	527	10784.99
+3	518	11531.48
+
+
+SELECT
+    t.mark_number,
+    t.qty_standard,
+    t.qty_paid_over,
+    t.qty_overage,
+    p.area_per_piece,
+    ROUND(t.qty_standard * p.area_per_piece,2) AS standard_change_area,
+    ROUND(t.qty_paid_over * p.area_per_piece,2) AS paid_over_change_area
+FROM prec_trans_header@recowebprod h
+JOIN prec_transactions@recowebprod t
+  ON t.header_id = h.header_id
+LEFT JOIN prec_pcf_panels@recowebprod p
+  ON p.pcf_id = t.pcf_id
+ AND p.mark_number = t.mark_number
+WHERE h.header_id = 1302197
+  AND NVL(t.qty_paid_over,0) <> 0
+ORDER BY t.mark_number;
+
+1	-90	90	0	24.2	-2178	2178
+4	-1	1	0	24.2	-24.2	24.2
+8	-73	73	0	12.1	-883.3	883.3
+9	-1	1	0	12.1	-12.1	12.1
+10	-1	1	0	7.45	-7.45	7.45
+16	-1	1	0	17.9	-17.9	17.9
+17	-1	1	0	17.86	-17.86	17.86
+18	-1	1	0	17.86	-17.86	17.86
+21	-1	1	0	15.9	-15.9	15.9
+22	-1	1	0	11	-11	11
+27	-1	1	0	26.96	-26.96	26.96
+30	-2	2	0	30	-60	60
+31	-1	1	0	29.96	-29.96	29.96
+32	-1	1	0	29.96	-29.96	29.96
+33	-1	1	0	18.45	-18.45	18.45
+39	-2	2	0	3.28	-6.56	6.56
+40	-1	1	0	1.64	-1.64	1.64
+
+SELECT
+    ROUND(SUM(NVL(t.qty_standard,0) * NVL(p.area_per_piece,0)),2)
+        AS standard_area_change,
+
+    ROUND(SUM(NVL(t.qty_paid_over,0) * NVL(p.area_per_piece,0)),2)
+        AS paid_over_area_change,
+
+    ROUND(SUM(NVL(t.qty_overage,0) * NVL(p.area_per_piece,0)),2)
+        AS unpaid_over_area_change,
+
+    ROUND(
+        SUM(
+            (
+                NVL(t.qty_standard,0)
+              + NVL(t.qty_paid_over,0)
+              + NVL(t.qty_overage,0)
+            ) * NVL(p.area_per_piece,0)
+        ),
+        2
+    ) AS net_area_change
+FROM prec_trans_header@recowebprod h
+JOIN prec_transactions@recowebprod t
+  ON t.header_id = h.header_id
+LEFT JOIN prec_pcf_panels@recowebprod p
+  ON p.pcf_id = t.pcf_id
+ AND p.mark_number = t.mark_number
+WHERE h.header_id = 1302197;
+
+-3334.9	3359.1	-24.2	0
+
+SELECT *
+FROM pa_expenditure_items_all
+WHERE expenditure_item_id = 7195412;
+
+7195412	26-08-07	1681	26-05-20	9512	6239339	14405604	26-05-19	PRECAST PANELS  - SF	Y	Y	Y	N	-2766.7			173		-26145.32		-26145.32					21.95	0	0			-60729.07										N			13077042	12569001	275	32730	26-08-07	Precast Revision Adjustment		191252	2	3										X		191252-3	RECO FLORIDA Prod Revision Adj	1790598		0		PJ					USD	-26145.32	-26145.32	USD				-26145.32	-26145.32		USD				X	0	0											NO	0	X	X						N																					-26145.32	-26145.32				-60729.07	USD				USD		-60729.07						USD					O		3301537		N	-60729.07																BUDGET																				N	0	0			N	76350								
+
+SELECT
+    expenditure_item_id,
+    expenditure_item_date,
+    quantity,
+    raw_cost,
+    denom_raw_cost,
+    burden_cost,
+    transaction_source,
+    orig_transaction_reference,
+    expenditure_type,
+    project_id,
+    task_id,
+    billable_flag,
+    cost_distributed_flag,
+    revenue_distributed_flag,
+    bill_hold_flag,
+    attribute_category,
+    attribute1,
+    attribute2,
+    attribute3,
+    attribute4,
+    attribute5,
+    attribute6,
+    attribute7,
+    attribute8,
+    attribute9,
+    attribute10,
+    creation_date,
+    created_by
+FROM pa_expenditure_items_all
+WHERE expenditure_item_id = 7195412;
+
+7195412	26-05-19	-2766.7	-26145.32	-26145.32	-26145.32	RECO FLORIDA Prod Revision Adj	191252-3	PRECAST PANELS  - SF	1790598	14405604	Y	Y	Y	N	Precast Revision Adjustment		191252	2	3							26-05-20	9512
+
+
+SELECT
+    expenditure_item_id,
+    expenditure_item_date,
+    quantity,
+    denom_raw_cost,
+    transaction_source,
+    orig_transaction_reference,
+    attribute1,
+    attribute2,
+    attribute3,
+    attribute4,
+    attribute5,
+    attribute6,
+    creation_date
+FROM pa_expenditure_items_all
+WHERE project_id = 1790598
+  AND task_id = 14405604
+  AND (
+       transaction_source LIKE '%Revision%'
+       OR orig_transaction_reference LIKE '191252-%'
+      )
+ORDER BY expenditure_item_date,
+         creation_date;
+
+7195412	26-05-19	-2766.7	-26145.32	RECO FLORIDA Prod Revision Adj	191252-3		191252	2	3			26-05-20
+
+
+SELECT
+    revision_number,
+    SUM(quantity_required) AS required_qty,
+    ROUND(
+        SUM(quantity_required * area_per_piece),
+        2
+    ) AS required_area
+FROM reco_production_requirements
+WHERE pcf_id = 191252
+GROUP BY revision_number
+ORDER BY revision_number;
+
+0	527	10784.99
+1	527	10784.99
+2	527	10784.99
+3	518	11531.48
+4	518	11531.48
+5	518	11531.48
+
+SELECT
+    owner,
+    name,
+    type,
+    line,
+    text
+FROM all_source
+WHERE UPPER(text) LIKE '%RECO FLORIDA PROD REVISION ADJ%'
+ORDER BY owner, name, type, line;
+RECO	REVISION_ADJUSTMENT	PROCEDURE	189	"        trx_source := 'RECO FLORIDA Prod Revision Adj';
+"
+
+SELECT
+    owner,
+    name,
+    type,
+    line,
+    text
+FROM all_source
+WHERE UPPER(text) LIKE '%PRECAST REVISION ADJUSTMENT%'
+ORDER BY owner, name, type, line;
+
+RECO	PRECAST_NEARING_COMPLETION	PROCEDURE	59	"  where project_id = p_project_id and attribute_category in ( 'Precast Production', 'Precast Revision Adjustment', 'Intraproject Transfers' )
+"
+RECO	RECO_ACTUAL_UTIL	PACKAGE BODY	476	"        AND ei.attribute_category IN ('Precast Production', 'Precast Revision Adjustment');
+"
+RECO	RECO_ACTUAL_UTIL	PACKAGE BODY	495	"        AND ei.attribute_category IN ('Precast Production', 'Precast Revision Adjustment');
+"
+RECO	RECO_PRECAST_REPORTS	PACKAGE BODY	1509	"                                                'Precast Revision Adjustment',
+"
+RECO	REVISION_ADJUSTMENT	PROCEDURE	242	"            'Precast Revision Adjustment', TO_CHAR(p_pcf_id), TO_CHAR(revone), TO_CHAR(revtwo), 0 );
+"
+RECO	REVISION_ADJUSTMENT	PROCEDURE	284	"           'Precast Revision Adjustment', TO_CHAR(p_pcf_id), TO_CHAR(revtwo), TO_CHAR(revone), 0 );
+"
+
+
+SELECT
+    owner,
+    name,
+    type,
+    line,
+    text
+FROM all_source
+WHERE UPPER(text) LIKE '%REVISION ADJ%'
+  AND (
+       UPPER(text) LIKE '%PRECAST%'
+       OR UPPER(name) LIKE '%PRECAST%'
+      )
+ORDER BY owner, name, type, line;
+
+RECO	PRECAST_ACCRUAL_PKG	PACKAGE BODY	40	"and transaction_source in ( 'RECO Production','RECO Production Adj','RECO Production Revision Adj' )
+"
+RECO	PRECAST_NEARING_COMPLETION	PROCEDURE	59	"  where project_id = p_project_id and attribute_category in ( 'Precast Production', 'Precast Revision Adjustment', 'Intraproject Transfers' )
+"
+RECO	RECO_ACTUAL_UTIL	PACKAGE BODY	476	"        AND ei.attribute_category IN ('Precast Production', 'Precast Revision Adjustment');
+"
+RECO	RECO_ACTUAL_UTIL	PACKAGE BODY	495	"        AND ei.attribute_category IN ('Precast Production', 'Precast Revision Adjustment');
+"
+RECO	RECO_PRECAST	PACKAGE	79	"-- determines any revision adjustment for a mark and revisions, 0 if none
+"
+RECO	RECO_PRECAST	PACKAGE BODY	1095	"-- determines any revision adjustment for a mark and revisions, 0 if none
+"
+RECO	RECO_PRECAST_REPORTS	PACKAGE BODY	1509	"                                                'Precast Revision Adjustment',
+"
+RECO	REVISION_ADJUSTMENT	PROCEDURE	242	"            'Precast Revision Adjustment', TO_CHAR(p_pcf_id), TO_CHAR(revone), TO_CHAR(revtwo), 0 );
+"
+RECO	REVISION_ADJUSTMENT	PROCEDURE	284	"           'Precast Revision Adjustment', TO_CHAR(p_pcf_id), TO_CHAR(revtwo), TO_CHAR(revone), 0 );
+"
+
+
+SELECT
+    transaction_source,
+    batch_name,
+    expenditure_item_date,
+    project_number,
+    task_number,
+    expenditure_type,
+    quantity,
+    denom_raw_cost,
+    transaction_status_code,
+    transaction_rejection_code,
+    orig_transaction_reference,
+    attribute_category,
+    attribute1,
+    attribute2,
+    attribute3,
+    attribute4,
+    attribute5,
+    attribute6,
+    creation_date
+FROM pa_transaction_interface_all
+WHERE orig_transaction_reference = '191252-3'
+   OR (
+        attribute2 = '191252'
+        AND attribute3 = '2'
+        AND attribute4 = '3'
+      )
+ORDER BY creation_date;
+
+no row
+
+
+SELECT
+    SUM(
+        CASE
+            WHEN expenditure_item_date < DATE '2026-05-19'
+            THEN quantity
+            ELSE 0
+        END
+    ) AS before_revision_3,
+
+    SUM(
+        CASE
+            WHEN expenditure_item_date = DATE '2026-05-19'
+            THEN quantity
+            ELSE 0
+        END
+    ) AS revision_3_adjustment,
+
+    SUM(
+        CASE
+            WHEN expenditure_item_date <= DATE '2026-05-19'
+            THEN quantity
+            ELSE 0
+        END
+    ) AS after_revision_3
+FROM pa_expenditure_items_all
+WHERE project_id = 1790598
+  AND task_id = 14405604
+  AND (
+        attribute3 = '191252'
+        OR transaction_source = 'RECO FLORIDA Prod Revision Adj'
+      );
+      
+9985.59	-2766.7	7218.89      
+
+----------------------------
+
+
+
+SELECT
+    line,
+    text
+FROM all_source
+WHERE owner = 'RECO'
+  AND name = 'REVISION_ADJUSTMENT'
+  AND type = 'PROCEDURE'
+  AND line BETWEEN 1 AND 330
+ORDER BY line;
+
+1	"PROCEDURE        REVISION_ADJUSTMENT (
+"
+2	"    p_pcf_id IN number,
+"
+3	"    revtouse IN NUMBER) IS
+"
+4	"--
+"
+5	"-- This procedure creates an adjustment entry in the import table
+"
+6	"-- that reflects the change in overage from the last rev to the current one.
+"
+7	"-- It creates one entry for each pcf.   If revtouse is null it assumes current rev,
+"
+8	"-- otherwise it generates based on rev and rev-1.
+"
+9	"--
+"
+10	"--  march 14;  if negative pcf is passed in, generate a negative adjustment
+"
+11	"--             in order to revert revisions properly.
+"
+12	"--
+"
+13	"CURSOR getrev IS
+"
+14	"   SELECT revision_number
+"
+15	"     FROM reco_pcf_v
+"
+16	"    WHERE pcf_id = ABS(p_pcf_id);
+"
+17	"
+"
+18	"CURSOR checkrev(curr number) IS
+"
+19	"   SELECT revision_number
+"
+20	"     FROM reco_pcf
+"
+21	"    WHERE pcf_id = ABS(p_pcf_id)
+"
+22	"      AND revision_number = curr - 1;
+"
+23	"
+"
+24	"CURSOR pcfinfo IS
+"
+25	"   SELECT project_num, task_number, expenditure_Type, unit_price, creation_date, vendor_id, project_id
+"
+26	"     FROM reco_pcf_v
+"
+27	"    WHERE pcf_id = ABS(p_pcf_id);
+"
+28	"
+"
+29	"CURSOR revdate( rev number ) IS
+"
+30	"   SELECT TRUNC(revision_date+(8-TO_NUMBER(TO_CHAR(TRUNC(revision_date),'d')))) end_of_week,
+"
+31	"          revision_date
+"
+32	"     FROM reco_pcf
+"
+33	"    WHERE pcf_id = ABS(P_pcf_id)
+"
+34	"      AND revisioN_number = rev;
+"
+35	"
+"
+36	"-- 2/24/04 added billed date check to ignore current nonbilled
+"
+37	"CURSOR overage( pcfid number, rev number, cdate date ) IS
+"
+38	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+39	"                 * AVG(area_per_piece) )
+"
+40	"       FROM reco_production_rev_v
+"
+41	"      WHERE pcf_id = pcfid AND revision_number = rev
+"
+42	"        AND creation_date <= cdate
+"
+43	"        AND billed_date IS NOT NULL
+"
+44	"      GROUP BY mark_number
+"
+45	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+46	"
+"
+47	"CURSOR getemployee IS
+"
+48	" SELECT employee_number
+"
+49	" FROM per_people_f P, fnd_user f
+"
+50	" WHERE person_id = employee_id
+"
+51	" AND user_name = fnd_global.user_name
+"
+52	" AND P.effective_end_date >= SYSDATE;
+"
+53	"
+"
+54	"CURSOR getEmailList(projId IN Number) IS
+"
+55	"SELECT A.person_id person_id, A.full_name fn, b.email_address em, A.ROLE
+"
+56	"FROM pa_project_players_v A, fnd_user b
+"
+57	"WHERE A.ROLE IN ('Project Manager', 'Job Cost Administrator', 'Project Assistant', 'Assistant Project Manager')
+"
+58	"AND A.person_id=b.employee_id
+"
+59	"AND A.project_id = projId
+"
+60	"AND TRUNC(SYSDATE) BETWEEN start_date_active AND NVL(end_date_active, TRUNC(SYSDATE));
+"
+61	"
+"
+62	"enum  per_people_f.employee_number%TYPE;
+"
+63	"
+"
+64	"prodemail varchar2(256) := get_reco_variable( 'PRODUCTION EMAIL GROUP' );
+"
+65	"revone number;
+"
+66	"revtwo number;
+"
+67	"
+"
+68	"ovgone number;
+"
+69	"ovgtwo number;
+"
+70	"ovgchange number;
+"
+71	"
+"
+72	"revd date;
+"
+73	"actd date;
+"
+74	"crea date;
+"
+75	"
+"
+76	"pnum varchar2(25);
+"
+77	"pid number;
+"
+78	"TASK varchar2(25);
+"
+79	"expt varchar2(30);
+"
+80	"price number;
+"
+81	"vendor  number;
+"
+82	"
+"
+83	"waco_vendor_id      NUMBER;
+"
+84	"waco_vendor_name    VARCHAR2(100);
+"
+85	"georgia_vendor_id      NUMBER;
+"
+86	"georgia_vendor_name    VARCHAR2(100);
+"
+87	"florida_vendor_id      NUMBER;
+"
+88	"florida_vendor_name    VARCHAR2(100);
+"
+89	"ca_vendor_name  varchar2(80);
+"
+90	"ca_vendor_id number;
+"
+91	"lb_vendor_name  varchar2(80);
+"
+92	"lb_vendor_id number;
+"
+93	"wm_vendor_name  varchar2(80);
+"
+94	"wm_vendor_id number;
+"
+95	"
+"
+96	"trx_source          VARCHAR2(100);
+"
+97	"
+"
+98	"isnegative varchar2(1) := 'N';
+"
+99	"dfltempnum   number := get_reco_variable('Default Precast Employee');
+"
+100	"dfltwacoempnum number := get_reco_variable('Default WACO Precast Employee');
+"
+101	"dfltgeorgiaempnum number := get_reco_variable('Default GEORGIA Precast Employee');
+"
+102	"dfltfloridaempnum number := get_reco_variable('Default FLORIDA Precast Employee');
+"
+103	"dfltcaempnum number := get_reco_variable('Default CA Precast Employee');
+"
+104	"dfltlbempnum number := get_reco_variable('Default LB Precast Employee');
+"
+105	"dfltwmempnum number := get_reco_variable('Default WM Precast Employee');
+"
+106	"msgId   number;
+"
+107	"
+"
+108	"BEGIN
+"
+109	"  get_reco_organization(nvl(fnd_global.org_id,'0'));
+"
+110	"  revtwo := revtouse;
+"
+111	"  IF   revtouse IS NULL THEN
+"
+112	"       OPEN getrev;
+"
+113	"       FETCH getrev INTO revtwo;
+"
+114	"       CLOSE getrev;
+"
+115	"  END IF;
+"
+116	"  OPEN checkrev( revtwo );
+"
+117	"  FETCH checkrev INTO revone;
+"
+118	"  IF checkrev%NOTFOUND THEN
+"
+119	"     revone := NULL;
+"
+120	"  END IF;
+"
+121	"  CLOSE checkrev;
+"
+122	"-- if rev is null, we have no previous rev to work against
+"
+123	"  IF revone IS NOT NULL THEN
+"
+124	"     OPEN getemployee;
+"
+125	"     FETCH getemployee INTO enum;
+"
+126	"     CLOSE getemployee;
+"
+127	"      Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+"
+128	"     IF enum IS NULL THEN
+"
+129	"        enum := dfltempnum;
+"
+130	"     END IF;
+"
+131	"      Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+"
+132	"
+"
+133	"
+"
+134	"     OPEN revdate(revtwo);
+"
+135	"     FETCH revdate INTO revd, actd;
+"
+136	"     CLOSE revdate;
+"
+137	"     OPEN pcfinfo;
+"
+138	"     FETCH pcfinfo INTO pnum, TASK, expt, price, crea, vendor, pid;
+"
+139	"     CLOSE pcfinfo;
+"
+140	"
+"
+141	"     waco_vendor_name := get_reco_variable('WACO PLANT VENDOR ID');
+"
+142	"     georgia_vendor_name := get_reco_variable('GEORGIA PLANT VENDOR ID');
+"
+143	"     florida_vendor_name := get_reco_variable('FLORIDA PLANT VENDOR ID');
+"
+144	"     ca_vendor_name := get_reco_variable( 'CA PLANT VENDOR ID' );
+"
+145	"     lb_vendor_name := get_reco_variable( 'LB PLANT VENDOR ID' );
+"
+146	"     wm_vendor_name := get_reco_variable( 'WM PLANT VENDOR ID' );
+"
+147	"     
+"
+148	"     SELECT vendor_id
+"
+149	"     INTO waco_vendor_id
+"
+150	"     FROM po_vendors
+"
+151	"     WHERE vendor_name = waco_vendor_name;
+"
+152	"
+"
+153	"     SELECT vendor_id
+"
+154	"     INTO georgia_vendor_id
+"
+155	"     FROM po_vendors
+"
+156	"     WHERE vendor_name = georgia_vendor_name;
+"
+157	"
+"
+158	"     SELECT vendor_id
+"
+159	"     INTO florida_vendor_id
+"
+160	"     FROM po_vendors
+"
+161	"     WHERE vendor_name = florida_vendor_name;
+"
+162	"
+"
+163	"     SELECT vendor_id
+"
+164	"     INTO ca_vendor_id
+"
+165	"     FROM po_vendors
+"
+166	"     WHERE vendor_name = ca_vendor_name;
+"
+167	"
+"
+168	"     SELECT vendor_id
+"
+169	"     INTO lb_vendor_id
+"
+170	"     FROM po_vendors
+"
+171	"     WHERE vendor_name = lb_vendor_name;
+"
+172	"
+"
+173	"     SELECT vendor_id
+"
+174	"     INTO wm_vendor_id
+"
+175	"     FROM po_vendors
+"
+176	"     WHERE vendor_name = wm_vendor_name;
+"
+177	"
+"
+178	"     IF waco_vendor_id = vendor THEN
+"
+179	"        trx_source := 'RECO WACO Prod Revision Adj';
+"
+180	"        IF enum = dfltempnum THEN
+"
+181	"           enum := dfltwacoempnum;
+"
+182	"        END IF;
+"
+183	"     ELSIF georgia_vendor_id = vendor THEN
+"
+184	"        trx_source := 'RECO GEORGIA Prod Revision Adj';
+"
+185	"        IF enum = dfltempnum THEN
+"
+186	"           enum := dfltgeorgiaempnum;
+"
+187	"        END IF;
+"
+188	"     ELSIF florida_vendor_id = vendor THEN
+"
+189	"        trx_source := 'RECO FLORIDA Prod Revision Adj';
+"
+190	"        IF enum = dfltempnum THEN
+"
+191	"           enum := dfltfloridaempnum;
+"
+192	"        END IF;
+"
+193	"     ELSIF ca_vendor_id = vendor THEN
+"
+194	"        trx_source := 'RECO CA Prod Revision Adj';
+"
+195	"        IF enum = dfltempnum THEN
+"
+196	"           enum := dfltcaempnum;
+"
+197	"        END IF;
+"
+198	"     ELSIF lb_vendor_id = vendor THEN
+"
+199	"        trx_source := 'RECO LB Prod Revision Adj';
+"
+200	"        IF enum = dfltempnum THEN
+"
+201	"           enum := dfltlbempnum;
+"
+202	"        END IF;
+"
+203	"     ELSIF wm_vendor_id = vendor THEN
+"
+204	"        trx_source := 'RECO WM Prod Revision Adj';
+"
+205	"        IF enum = dfltempnum THEN
+"
+206	"           enum := dfltwmempnum;
+"
+207	"        END IF;
+"
+208	"     ELSE
+"
+209	"        trx_source := 'RECO Production Revision Adj';
+"
+210	"     END IF;
+"
+211	"--
+"
+212	"     OPEN overage( ABS(p_pcf_id), revone, SYSDATE );
+"
+213	"     FETCH overage INTO ovgone;
+"
+214	"     CLOSE overage;
+"
+215	"     OPEN overage( ABS(p_pcf_id), revtwo, crea );
+"
+216	"     FETCH overage INTO ovgtwo;
+"
+217	"     CLOSE overage;
+"
+218	"     IF ovgone IS NULL THEN ovgone := 0;
+"
+219	"     END IF;
+"
+220	"     IF ovgtwo IS NULL THEN ovgtwo := 0;
+"
+221	"     END IF;
+"
+222	"--   difference is overage change.   one - two = change
+"
+223	"     ovgchange := ovgone - ovgtwo;
+"
+224	"     IF ovgchange < 0 THEN
+"
+225	"        isnegative := 'Y';
+"
+226	"     END IF;
+"
+227	"     IF ovgchange <> 0 THEN
+"
+228	"       IF p_pcf_id > 0 THEN
+"
+229	"        INSERT INTO apps.pa_transaction_interface_all (
+"
+230	"          transaction_source, batch_name, expenditure_ending_date,
+"
+231	"          expenditure_item_date, project_number, task_number,
+"
+232	"          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+"
+233	"          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+"
+234	"          expenditure_comment, attribute_category, attribute2, attribute3, attribute4, org_id )
+"
+235	"        VALUES (
+"
+236	"          --'REVISION_ADJUSTMENT',
+"
+237	"          trx_source, TO_CHAR(p_pcf_id)||'-'||TO_CHAR(revtwo), revd, actd,
+"
+238	"          pnum, TASK, expt, ovgchange, ovgchange*price,
+"
+239	"          'P', TO_CHAR(p_pcf_id)||'-'||TO_CHAR(revtwo),
+"
+240	"          enum, isnegative,
+"
+241	"          TO_CHAR(vendor)||','||TO_CHAR(p_pcf_id)||',Overage Adjustment, Revision '||TO_CHAR(revone)||' ->'||TO_CHAR(revtwo),
+"
+242	"            'Precast Revision Adjustment', TO_CHAR(p_pcf_id), TO_CHAR(revone), TO_CHAR(revtwo), 0 );
+"
+243	"
+"
+244	"            --Notification
+"
+245	"
+"
+246	"            reco_notify.add_notification(NULL,
+"
+247	"                                                                     'Revision Adjustment, '||pnum||','||TASK||','||TO_CHAR(p_pcf_id)||' Overage Adjustment : '||TO_CHAR(revone)||'->'||TO_CHAR(revtwo),
+"
+248	"                                                                    'Project:'||pnum||' Task:'||TASK||' PCF#'||TO_CHAR(p_pcf_id)||CHR(10));
+"
+249	"            msgId := reco_notify.lastmsg;
+"
+250	"            reco_notify.add_chunk_to( msgid, 'From Revision '||TO_CHAR(revone)||' to '||TO_CHAR(revtwo)||CHR(10));
+"
+251	"            reco_notify.add_chunk_to( msgid, 'Overage change: '||TO_CHAR(ovgchange)||' units'|| '               $'||TO_CHAR(ovgchange*price)||CHR(10));
+"
+252	"            reco_notify.add_chunk_to( msgid,  'Sent to accounting for posting.'  );
+"
+253	"
+"
+254	"            FOR email IN getEmailList(pid) LOOP
+"
+255	"                reco_notify.add_addressee_to(msgid, email.em);
+"
+256	"            END LOOP;
+"
+257	"            reco_notify.add_addressee_to(msgid, prodemail);
+"
+258	"
+"
+259	"            reco_notify.mail_notification(msgid);
+"
+260	"
+"
+261	"            /*
+"
+262	"            reco_notify.send_mail( prodemail,
+"
+263	"                               'Revision Adjustment, '||pnum||','||TASK||','||TO_CHAR(p_pcf_id)||' Overage Adjustment : '||TO_CHAR(revone)||'->'||TO_CHAR(revtwo),
+"
+264	"                               'Project:'||pnum||' Task:'||TASK||' PCF#'||TO_CHAR(p_pcf_id)||CHR(10)||
+"
+265	"                               'From Revision '||TO_CHAR(revone)||' to '||TO_CHAR(revtwo)||CHR(10)||
+"
+266	"                               'Overage change: '||TO_CHAR(ovgchange)||' units'||CHR(10)||
+"
+267	"                               '               $'||TO_CHAR(ovgchange*price)||CHR(10)||
+"
+268	"                               'Sent to accounting for posting.'  );
+"
+269	"        */
+"
+270	"       ELSE
+"
+271	"        INSERT INTO apps.pa_transaction_interface_all (
+"
+272	"          transaction_source, batch_name, expenditure_ending_date,
+"
+273	"          expenditure_item_date, project_number, task_number,
+"
+274	"          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+"
+275	"          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+"
+276	"          expenditure_comment, attribute_category, attribute2, attribute3, attribute4, org_id )
+"
+277	"        VALUES (
+"
+278	"          --'REVISION_ADJUSTMENT',
+"
+279	"          trx_source, TO_CHAR(ABS(p_pcf_id))||'-R-'||TO_CHAR(revtwo), revd, actd,
+"
+280	"          pnum, TASK, expt, 0-ovgchange, 0-ovgchange*price,
+"
+281	"          'P', TO_CHAR(p_pcf_id)||'-'||TO_CHAR(revtwo),
+"
+282	"          enum, DECODE(isnegative,'Y','N','Y'),
+"
+283	"          TO_CHAR(vendor)||','||TO_CHAR(p_pcf_id)||',Overage Adj, Reversal '||TO_CHAR(revtwo)||' ->'||TO_CHAR(revone),
+"
+284	"           'Precast Revision Adjustment', TO_CHAR(p_pcf_id), TO_CHAR(revtwo), TO_CHAR(revone), 0 );
+"
+285	"
+"
+286	"            reco_notify.add_notification(NULL,
+"
+287	"                                                                      'REVERSE-Revision Adjustment, '||pnum||','||TASK||','||TO_CHAR(p_pcf_id)||' Overage Adjustment : '||TO_CHAR(revtwo)||'->'||TO_CHAR(revone),
+"
+288	"                                                                      'Project:'||pnum||' Task:'||TASK||' PCF#'||TO_CHAR(p_pcf_id)||CHR(10));
+"
+289	"            msgId := reco_notify.lastmsg;
+"
+290	"            reco_notify.add_chunk_to( msgid, 'From Revision '||TO_CHAR(revtwo)||' to '||TO_CHAR(revone)||CHR(10));
+"
+291	"            reco_notify.add_chunk_to( msgid, 'Overage change: '||TO_CHAR(0-ovgchange)||' units'|| '               $'||TO_CHAR(0-ovgchange*price)||CHR(10));
+"
+292	"            reco_notify.add_chunk_to( msgid,  'Sent to accounting for posting.'  );
+"
+293	"
+"
+294	"            FOR email IN getEmailList(pid) LOOP
+"
+295	"                reco_notify.add_addressee_to(msgid, email.em);
+"
+296	"            END LOOP;
+"
+297	"            reco_notify.add_addressee_to(msgid, prodemail);
+"
+298	"
+"
+299	"            reco_notify.mail_notification(msgid);
+"
+300	"
+"
+301	"            /*
+"
+302	"            reco_notify.send_mail( prodemail,
+"
+303	"                               'REVERSE-Revision Adjustment, '||pnum||','||TASK||','||TO_CHAR(p_pcf_id)||' Overage Adjustment : '||TO_CHAR(revtwo)||'->'||TO_CHAR(revone),
+"
+304	"                               'Project:'||pnum||' Task:'||TASK||' PCF#'||TO_CHAR(p_pcf_id)||CHR(10)||
+"
+305	"                               'From Revision '||TO_CHAR(revtwo)||' to '||TO_CHAR(revone)||CHR(10)||
+"
+306	"                               'Overage change: '||TO_CHAR(0-ovgchange)||' units'||CHR(10)||
+"
+307	"                               '               $'||TO_CHAR(0-ovgchange*price)||CHR(10)||
+"
+308	"                               'Sent to accounting for posting.'  );
+"
+309	"            */
+"
+310	"       END IF;
+"
+311	"     END IF;
+"
+312	"  END IF;
+"
+313	"  -- commit outside
+"
+314	END;
+
+
+SELECT line, text
+FROM all_source
+WHERE owner = 'RECO'
+  AND name = 'REVISION_ADJUSTMENT'
+  AND type = 'PROCEDURE'
+  AND line BETWEEN 120 AND 220
+ORDER BY line;
+
+
+120	"  END IF;
+"
+121	"  CLOSE checkrev;
+"
+122	"-- if rev is null, we have no previous rev to work against
+"
+123	"  IF revone IS NOT NULL THEN
+"
+124	"     OPEN getemployee;
+"
+125	"     FETCH getemployee INTO enum;
+"
+126	"     CLOSE getemployee;
+"
+127	"      Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+"
+128	"     IF enum IS NULL THEN
+"
+129	"        enum := dfltempnum;
+"
+130	"     END IF;
+"
+131	"      Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+"
+132	"
+"
+133	"
+"
+134	"     OPEN revdate(revtwo);
+"
+135	"     FETCH revdate INTO revd, actd;
+"
+136	"     CLOSE revdate;
+"
+137	"     OPEN pcfinfo;
+"
+138	"     FETCH pcfinfo INTO pnum, TASK, expt, price, crea, vendor, pid;
+"
+139	"     CLOSE pcfinfo;
+"
+140	"
+"
+141	"     waco_vendor_name := get_reco_variable('WACO PLANT VENDOR ID');
+"
+142	"     georgia_vendor_name := get_reco_variable('GEORGIA PLANT VENDOR ID');
+"
+143	"     florida_vendor_name := get_reco_variable('FLORIDA PLANT VENDOR ID');
+"
+144	"     ca_vendor_name := get_reco_variable( 'CA PLANT VENDOR ID' );
+"
+145	"     lb_vendor_name := get_reco_variable( 'LB PLANT VENDOR ID' );
+"
+146	"     wm_vendor_name := get_reco_variable( 'WM PLANT VENDOR ID' );
+"
+147	"     
+"
+148	"     SELECT vendor_id
+"
+149	"     INTO waco_vendor_id
+"
+150	"     FROM po_vendors
+"
+151	"     WHERE vendor_name = waco_vendor_name;
+"
+152	"
+"
+153	"     SELECT vendor_id
+"
+154	"     INTO georgia_vendor_id
+"
+155	"     FROM po_vendors
+"
+156	"     WHERE vendor_name = georgia_vendor_name;
+"
+157	"
+"
+158	"     SELECT vendor_id
+"
+159	"     INTO florida_vendor_id
+"
+160	"     FROM po_vendors
+"
+161	"     WHERE vendor_name = florida_vendor_name;
+"
+162	"
+"
+163	"     SELECT vendor_id
+"
+164	"     INTO ca_vendor_id
+"
+165	"     FROM po_vendors
+"
+166	"     WHERE vendor_name = ca_vendor_name;
+"
+167	"
+"
+168	"     SELECT vendor_id
+"
+169	"     INTO lb_vendor_id
+"
+170	"     FROM po_vendors
+"
+171	"     WHERE vendor_name = lb_vendor_name;
+"
+172	"
+"
+173	"     SELECT vendor_id
+"
+174	"     INTO wm_vendor_id
+"
+175	"     FROM po_vendors
+"
+176	"     WHERE vendor_name = wm_vendor_name;
+"
+177	"
+"
+178	"     IF waco_vendor_id = vendor THEN
+"
+179	"        trx_source := 'RECO WACO Prod Revision Adj';
+"
+180	"        IF enum = dfltempnum THEN
+"
+181	"           enum := dfltwacoempnum;
+"
+182	"        END IF;
+"
+183	"     ELSIF georgia_vendor_id = vendor THEN
+"
+184	"        trx_source := 'RECO GEORGIA Prod Revision Adj';
+"
+185	"        IF enum = dfltempnum THEN
+"
+186	"           enum := dfltgeorgiaempnum;
+"
+187	"        END IF;
+"
+188	"     ELSIF florida_vendor_id = vendor THEN
+"
+189	"        trx_source := 'RECO FLORIDA Prod Revision Adj';
+"
+190	"        IF enum = dfltempnum THEN
+"
+191	"           enum := dfltfloridaempnum;
+"
+192	"        END IF;
+"
+193	"     ELSIF ca_vendor_id = vendor THEN
+"
+194	"        trx_source := 'RECO CA Prod Revision Adj';
+"
+195	"        IF enum = dfltempnum THEN
+"
+196	"           enum := dfltcaempnum;
+"
+197	"        END IF;
+"
+198	"     ELSIF lb_vendor_id = vendor THEN
+"
+199	"        trx_source := 'RECO LB Prod Revision Adj';
+"
+200	"        IF enum = dfltempnum THEN
+"
+201	"           enum := dfltlbempnum;
+"
+202	"        END IF;
+"
+203	"     ELSIF wm_vendor_id = vendor THEN
+"
+204	"        trx_source := 'RECO WM Prod Revision Adj';
+"
+205	"        IF enum = dfltempnum THEN
+"
+206	"           enum := dfltwmempnum;
+"
+207	"        END IF;
+"
+208	"     ELSE
+"
+209	"        trx_source := 'RECO Production Revision Adj';
+"
+210	"     END IF;
+"
+211	"--
+"
+212	"     OPEN overage( ABS(p_pcf_id), revone, SYSDATE );
+"
+213	"     FETCH overage INTO ovgone;
+"
+214	"     CLOSE overage;
+"
+215	"     OPEN overage( ABS(p_pcf_id), revtwo, crea );
+"
+216	"     FETCH overage INTO ovgtwo;
+"
+217	"     CLOSE overage;
+"
+218	"     IF ovgone IS NULL THEN ovgone := 0;
+"
+219	"     END IF;
+"
+220	"     IF ovgtwo IS NULL THEN ovgtwo := 0;
+"
+
+
+SELECT line, text
+FROM all_source
+WHERE owner = 'RECO'
+  AND name = 'REVISION_ADJUSTMENT'
+  AND type = 'PROCEDURE'
+  AND line BETWEEN 220 AND 300
+ORDER BY line;
+
+
+220	"     IF ovgtwo IS NULL THEN ovgtwo := 0;
+"
+221	"     END IF;
+"
+222	"--   difference is overage change.   one - two = change
+"
+223	"     ovgchange := ovgone - ovgtwo;
+"
+224	"     IF ovgchange < 0 THEN
+"
+225	"        isnegative := 'Y';
+"
+226	"     END IF;
+"
+227	"     IF ovgchange <> 0 THEN
+"
+228	"       IF p_pcf_id > 0 THEN
+"
+229	"        INSERT INTO apps.pa_transaction_interface_all (
+"
+230	"          transaction_source, batch_name, expenditure_ending_date,
+"
+231	"          expenditure_item_date, project_number, task_number,
+"
+232	"          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+"
+233	"          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+"
+234	"          expenditure_comment, attribute_category, attribute2, attribute3, attribute4, org_id )
+"
+235	"        VALUES (
+"
+236	"          --'REVISION_ADJUSTMENT',
+"
+237	"          trx_source, TO_CHAR(p_pcf_id)||'-'||TO_CHAR(revtwo), revd, actd,
+"
+238	"          pnum, TASK, expt, ovgchange, ovgchange*price,
+"
+239	"          'P', TO_CHAR(p_pcf_id)||'-'||TO_CHAR(revtwo),
+"
+240	"          enum, isnegative,
+"
+241	"          TO_CHAR(vendor)||','||TO_CHAR(p_pcf_id)||',Overage Adjustment, Revision '||TO_CHAR(revone)||' ->'||TO_CHAR(revtwo),
+"
+242	"            'Precast Revision Adjustment', TO_CHAR(p_pcf_id), TO_CHAR(revone), TO_CHAR(revtwo), 0 );
+"
+243	"
+"
+244	"            --Notification
+"
+245	"
+"
+246	"            reco_notify.add_notification(NULL,
+"
+247	"                                                                     'Revision Adjustment, '||pnum||','||TASK||','||TO_CHAR(p_pcf_id)||' Overage Adjustment : '||TO_CHAR(revone)||'->'||TO_CHAR(revtwo),
+"
+248	"                                                                    'Project:'||pnum||' Task:'||TASK||' PCF#'||TO_CHAR(p_pcf_id)||CHR(10));
+"
+249	"            msgId := reco_notify.lastmsg;
+"
+250	"            reco_notify.add_chunk_to( msgid, 'From Revision '||TO_CHAR(revone)||' to '||TO_CHAR(revtwo)||CHR(10));
+"
+251	"            reco_notify.add_chunk_to( msgid, 'Overage change: '||TO_CHAR(ovgchange)||' units'|| '               $'||TO_CHAR(ovgchange*price)||CHR(10));
+"
+252	"            reco_notify.add_chunk_to( msgid,  'Sent to accounting for posting.'  );
+"
+253	"
+"
+254	"            FOR email IN getEmailList(pid) LOOP
+"
+255	"                reco_notify.add_addressee_to(msgid, email.em);
+"
+256	"            END LOOP;
+"
+257	"            reco_notify.add_addressee_to(msgid, prodemail);
+"
+258	"
+"
+259	"            reco_notify.mail_notification(msgid);
+"
+260	"
+"
+261	"            /*
+"
+262	"            reco_notify.send_mail( prodemail,
+"
+263	"                               'Revision Adjustment, '||pnum||','||TASK||','||TO_CHAR(p_pcf_id)||' Overage Adjustment : '||TO_CHAR(revone)||'->'||TO_CHAR(revtwo),
+"
+264	"                               'Project:'||pnum||' Task:'||TASK||' PCF#'||TO_CHAR(p_pcf_id)||CHR(10)||
+"
+265	"                               'From Revision '||TO_CHAR(revone)||' to '||TO_CHAR(revtwo)||CHR(10)||
+"
+266	"                               'Overage change: '||TO_CHAR(ovgchange)||' units'||CHR(10)||
+"
+267	"                               '               $'||TO_CHAR(ovgchange*price)||CHR(10)||
+"
+268	"                               'Sent to accounting for posting.'  );
+"
+269	"        */
+"
+270	"       ELSE
+"
+271	"        INSERT INTO apps.pa_transaction_interface_all (
+"
+272	"          transaction_source, batch_name, expenditure_ending_date,
+"
+273	"          expenditure_item_date, project_number, task_number,
+"
+274	"          expenditure_type, quantity, denom_raw_cost, transaction_status_code,
+"
+275	"          orig_transaction_reference, employee_number, unmatched_negative_txn_flag,
+"
+276	"          expenditure_comment, attribute_category, attribute2, attribute3, attribute4, org_id )
+"
+277	"        VALUES (
+"
+278	"          --'REVISION_ADJUSTMENT',
+"
+279	"          trx_source, TO_CHAR(ABS(p_pcf_id))||'-R-'||TO_CHAR(revtwo), revd, actd,
+"
+280	"          pnum, TASK, expt, 0-ovgchange, 0-ovgchange*price,
+"
+281	"          'P', TO_CHAR(p_pcf_id)||'-'||TO_CHAR(revtwo),
+"
+282	"          enum, DECODE(isnegative,'Y','N','Y'),
+"
+283	"          TO_CHAR(vendor)||','||TO_CHAR(p_pcf_id)||',Overage Adj, Reversal '||TO_CHAR(revtwo)||' ->'||TO_CHAR(revone),
+"
+284	"           'Precast Revision Adjustment', TO_CHAR(p_pcf_id), TO_CHAR(revtwo), TO_CHAR(revone), 0 );
+"
+285	"
+"
+286	"            reco_notify.add_notification(NULL,
+"
+287	"                                                                      'REVERSE-Revision Adjustment, '||pnum||','||TASK||','||TO_CHAR(p_pcf_id)||' Overage Adjustment : '||TO_CHAR(revtwo)||'->'||TO_CHAR(revone),
+"
+288	"                                                                      'Project:'||pnum||' Task:'||TASK||' PCF#'||TO_CHAR(p_pcf_id)||CHR(10));
+"
+289	"            msgId := reco_notify.lastmsg;
+"
+290	"            reco_notify.add_chunk_to( msgid, 'From Revision '||TO_CHAR(revtwo)||' to '||TO_CHAR(revone)||CHR(10));
+"
+291	"            reco_notify.add_chunk_to( msgid, 'Overage change: '||TO_CHAR(0-ovgchange)||' units'|| '               $'||TO_CHAR(0-ovgchange*price)||CHR(10));
+"
+292	"            reco_notify.add_chunk_to( msgid,  'Sent to accounting for posting.'  );
+"
+293	"
+"
+294	"            FOR email IN getEmailList(pid) LOOP
+"
+295	"                reco_notify.add_addressee_to(msgid, email.em);
+"
+296	"            END LOOP;
+"
+297	"            reco_notify.add_addressee_to(msgid, prodemail);
+"
+298	"
+"
+299	"            reco_notify.mail_notification(msgid);
+"
+300	"
+"
+
+
+
+SELECT
+    line,
+    text
+FROM all_source
+WHERE owner = 'RECO'
+  AND name = 'RECO_PRECAST'
+  AND type = 'PACKAGE BODY'
+  AND line BETWEEN 1060 AND 1160
+ORDER BY line;
+
+1060	"  open newlot;
+"
+1061	"  fetch newlot into mylot.waco_lot_id;
+"
+1062	"  close newlot;
+"
+1063	"
+"
+1064	"  mylot.lot_Number := 'RJ-'||mylot.lot_Number;
+"
+1065	"  mylot.lot_status := 'REJECTED';
+"
+1066	"  mylot.passed_flag := 'N';
+"
+1067	"  mylot.creation_date := sysdate;
+"
+1068	"  mylot.created_by := fnd_global.user_id;
+"
+1069	"  mylot.last_update_date := sysdate;
+"
+1070	"  mylot.last_updated_by := fnd_global.user_id;
+"
+1071	"  mylot.last_Update_login := fnd_global.session_id;
+"
+1072	"
+"
+1073	"  insert into reco_waco_lot_numbers values mylot;
+"
+1074	"
+"
+1075	"  if nvl(p_assign ,'N') = 'Y' then
+"
+1076	"     open getfirst;
+"
+1077	"     fetch getfirst into firstschedule;
+"
+1078	"     close getfirst;
+"
+1079	"     correctingschedule := create_correction( firstschedule );
+"
+1080	"     if correctingschedule = -1 then
+"
+1081	"        return -1;
+"
+1082	"     end if;
+"
+1083	"     for eachline in getlines loop
+"
+1084	"        if add_correction_line( correctingschedule, eachline.pcf_id, eachline.mark_number,
+"
+1085	"              eachline.quantity_made, mylot.waco_lot_id, eachline.first_schedule  ) <> 0 then
+"
+1086	"        -- silent fail
+"
+1087	"           null;
+"
+1088	"        end if;
+"
+1089	"     end loop;
+"
+1090	"  end if;
+"
+1091	"
+"
+1092	"  return mylot.waco_lot_id;
+"
+1093	"end;
+"
+1094	"
+"
+1095	"-- determines any revision adjustment for a mark and revisions, 0 if none
+"
+1096	"function revision_adj_mark( p_pcf_id in number, p_mark_number in number, p_new_revision in number ) return number is
+"
+1097	"
+"
+1098	"  -- we use creation-date to determine when to calculate
+"
+1099	"  cursor getdate is select creation_date from reco_pcf
+"
+1100	"                     where pcf_id = p_pcf_id and revision_number = p_new_revision;
+"
+1101	"
+"
+1102	"  CURSOR overage( mark number, rev number, cdate date ) IS
+"
+1103	"     SELECT ( SUM(quantity_produced) - AVG(quantity_required) )
+"
+1104	"                 * AVG(area_per_piece) adj
+"
+1105	"       FROM reco_production_rev_v
+"
+1106	"      WHERE pcf_id = p_pcf_id AND revision_number = rev
+"
+1107	"        and mark_number = mark
+"
+1108	"        AND creation_date <= cdate
+"
+1109	"        AND billed_date IS NOT NULL
+"
+1110	"      GROUP BY mark_number
+"
+1111	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+1112	"
+"
+1113	"  mydate date;
+"
+1114	"  ovg1 number;
+"
+1115	"  ovg2 number;
+"
+1116	"  begin
+"
+1117	"    if p_new_revision = 0 then
+"
+1118	"      -- no overage, first rev
+"
+1119	"      return 0;
+"
+1120	"    end if;
+"
+1121	"    open getdate;
+"
+1122	"    fetch getdate into mydate;
+"
+1123	"    if getdate%NOTFOUND then
+"
+1124	"       -- error, no revision
+"
+1125	"       close getdate;
+"
+1126	"       return 0;
+"
+1127	"    end if;
+"
+1128	"    close getdate;
+"
+1129	"    open overage( p_mark_number, p_new_revision, mydate );
+"
+1130	"    fetch overage into ovg2;
+"
+1131	"    close overage;
+"
+1132	"    ovg2 := nvl(ovg2,0);
+"
+1133	"
+"
+1134	"    open overage( p_mark_number, p_new_revision-1, mydate );
+"
+1135	"    fetch overage into ovg1;
+"
+1136	"    close overage;
+"
+1137	"    ovg1 := nvl(ovg1,0);
+"
+1138	"
+"
+1139	"    return (ovg1-ovg2);
+"
+1140	"  end;
+"
+1141	"
+"
+1142	"begin
+"
+1143	"  -- this is only for reco
+"
+1144	"  get_reco_organization('0');
+"
+1145	end;
+
+
+SELECT
+    attribute_category,
+    transaction_source,
+    ROUND(SUM(quantity),2) AS quantity,
+    ROUND(SUM(denom_raw_cost),2) AS raw_cost
+FROM pa_expenditure_items_all
+WHERE project_id = 1790598
+  AND task_id = 14405604
+  AND (
+        attribute3 = '191252'
+        OR (
+             attribute_category = 'Precast Revision Adjustment'
+         AND attribute2 = '191252'
+           )
+      )
+GROUP BY
+    attribute_category,
+    transaction_source
+ORDER BY attribute_category,
+         transaction_source;
+         
+Precast Production	RECO FLORIDA Prod	14066.98	132949.17
+Precast Revision Adjustment	RECO FLORIDA Prod Revision Adj	-2766.7	-26145.32
+
+
+SELECT
+    ROUND(SUM(quantity),2) AS true_pa_net_quantity
+FROM pa_expenditure_items_all
+WHERE project_id = 1790598
+  AND task_id = 14405604
+  AND (
+        attribute3 = '191252'
+        OR (
+             attribute_category = 'Precast Revision Adjustment'
+         AND attribute2 = '191252'
+           )
+      );
+ 
+11300.28      
+
+
+exec get_reco_organization(0);
+
+
+SELECT
+    pcf_id,
+    revision_number,
+    creation_date,
+    revision_date,
+    project_num,
+    task_number,
+    unit_price,
+    vendor_id
+FROM reco_pcf_v
+WHERE pcf_id = 191252;
+
+191252	5	26-06-12	26-06-12	22553	015.01.01.16	10.21	1141832
+
+SELECT
+    pcf_id,
+    revision_number,
+    creation_date,
+    revision_date
+FROM reco_pcf
+WHERE pcf_id = 191252
+ORDER BY revision_number;
+
+191252	0	25-08-21	25-08-21
+191252	1	25-08-21	25-08-21
+191252	2	25-08-25	25-08-25
+191252	3	26-05-19	26-05-19
+191252	4	26-06-01	26-06-01
+191252	5	26-06-12	26-06-12
+
+
+SELECT
+    mark_number,
+    SUM(quantity_produced) AS produced_qty,
+    AVG(quantity_required) AS required_qty,
+    AVG(area_per_piece) AS area_per_piece,
+    ROUND(
+        (SUM(quantity_produced) - AVG(quantity_required))
+        * AVG(area_per_piece),
+        2
+    ) AS overage_area
+FROM reco_production_rev_v
+WHERE pcf_id = 191252
+  AND revision_number = 2
+  AND creation_date <= DATE '2026-05-19'
+  AND billed_date IS NOT NULL
+GROUP BY mark_number
+HAVING AVG(quantity_required) - SUM(quantity_produced) < 0
+ORDER BY mark_number;
+
+
+34	8	7	24.2	24.2
+
+
+SELECT
+    mark_number,
+    SUM(quantity_produced) AS produced_qty,
+    AVG(quantity_required) AS required_qty,
+    AVG(area_per_piece) AS area_per_piece,
+    ROUND(
+        (SUM(quantity_produced) - AVG(quantity_required))
+        * AVG(area_per_piece),
+        2
+    ) AS overage_area
+FROM reco_production_rev_v
+WHERE pcf_id = 191252
+  AND revision_number = 3
+  AND creation_date <= DATE '2026-05-19'
+  AND billed_date IS NOT NULL
+GROUP BY mark_number
+HAVING AVG(quantity_required) - SUM(quantity_produced) < 0
+ORDER BY mark_number;
+
+
+1	123	50	24.2	1766.6
+4	1	0	24.2	24.2
+8	65	0	12.1	786.5
+9	1	0	12.1	12.1
+10	1	0	7.45	7.45
+16	1	0	17.9	17.9
+17	1	0	17.86	17.86
+18	1	0	17.86	17.86
+21	1	0	15.9	15.9
+22	1	0	11	11
+27	1	0	26.96	26.96
+31	1	0	29.96	29.96
+32	1	0	29.96	29.96
+33	1	0	18.45	18.45
+39	2	0	3.28	6.56
+40	1	0	1.64	1.64
+
+
+WITH rev2 AS
+(
+    SELECT
+        mark_number,
+        (SUM(quantity_produced) - AVG(quantity_required))
+            * AVG(area_per_piece) AS overage_area
+    FROM reco_production_rev_v
+    WHERE pcf_id = 191252
+      AND revision_number = 2
+      AND creation_date <= DATE '2026-05-19'
+      AND billed_date IS NOT NULL
+    GROUP BY mark_number
+    HAVING AVG(quantity_required) - SUM(quantity_produced) < 0
+),
+rev3 AS
+(
+    SELECT
+        mark_number,
+        (SUM(quantity_produced) - AVG(quantity_required))
+            * AVG(area_per_piece) AS overage_area
+    FROM reco_production_rev_v
+    WHERE pcf_id = 191252
+      AND revision_number = 3
+      AND creation_date <= DATE '2026-05-19'
+      AND billed_date IS NOT NULL
+    GROUP BY mark_number
+    HAVING AVG(quantity_required) - SUM(quantity_produced) < 0
+)
+SELECT
+    ROUND((SELECT NVL(SUM(overage_area),0) FROM rev2),2)
+        AS rev2_overage,
+
+    ROUND((SELECT NVL(SUM(overage_area),0) FROM rev3),2)
+        AS rev3_overage,
+
+    ROUND(
+        (SELECT NVL(SUM(overage_area),0) FROM rev2)
+        -
+        (SELECT NVL(SUM(overage_area),0) FROM rev3),
+        2
+    ) AS revision_adjustment
+FROM dual;
+
+24.2	2790.9	-2766.7
+
+
+WITH rev3_at_revision AS
+(
+    SELECT
+        mark_number,
+        ROUND(
+            (SUM(quantity_produced) - AVG(quantity_required))
+            * AVG(area_per_piece),
+            2
+        ) AS overage_area
+    FROM reco_production_rev_v
+    WHERE pcf_id = 191252
+      AND revision_number = 3
+      AND creation_date <= DATE '2026-05-19'
+      AND billed_date IS NOT NULL
+    GROUP BY mark_number
+    HAVING AVG(quantity_required) - SUM(quantity_produced) < 0
+),
+current_overage AS
+(
+    SELECT
+        r.mark_number,
+        ROUND(
+            GREATEST(
+                NVL(p.produced_qty, 0) - r.quantity_required,
+                0
+            ) * r.area_per_piece,
+            2
+        ) AS overage_area
+    FROM
+    (
+        SELECT
+            mark_number,
+            quantity_required,
+            area_per_piece
+        FROM reco_production_requirements
+        WHERE pcf_id = 191252
+          AND revision_number = 5
+    ) r
+    LEFT JOIN
+    (
+        SELECT
+            mark_number,
+            SUM(NVL(quantity_produced,0)) produced_qty
+        FROM reco_production_v
+        WHERE pcf_id = 191252
+        GROUP BY mark_number
+    ) p
+      ON p.mark_number = r.mark_number
+)
+SELECT
+    COALESCE(a.mark_number,c.mark_number) AS mark_number,
+    NVL(a.overage_area,0) AS rev3_overage,
+    NVL(c.overage_area,0) AS current_overage,
+    ROUND(
+        NVL(a.overage_area,0)
+        - NVL(c.overage_area,0),
+        2
+    ) AS overage_change
+FROM rev3_at_revision a
+FULL OUTER JOIN current_overage c
+  ON c.mark_number = a.mark_number
+WHERE NVL(a.overage_area,0)
+   <> NVL(c.overage_area,0)
+ORDER BY ABS(
+    NVL(a.overage_area,0)
+    - NVL(c.overage_area,0)
+) DESC;
+
+
+8	786.5	580.8	205.7
+1	1766.6	1597.2	169.4
+30	0	60	-60
+
+
+    SELECT
+        lot_number,
+        lot_date,
+        lot_type,
+        mark_number,
+        quantity_produced,
+        area_per_piece,
+        area_total,
+        billed_flag,
+        billed_date
+    FROM reco_production_v
+    WHERE pcf_id = 191252
+      AND mark_number IN (1,4,8,30)
+      AND lot_date >= DATE '2026-05-19'
+    ORDER BY lot_date, lot_number, mark_number;
+    
+    T-1307771	26-06-26	Transfer	1	-24	24.2	-580.8	X	26-06-26
+    T-1307771	26-06-26	Transfer	8	-25	12.1	-302.5	X	26-06-26
+    
+    SELECT
+        rl.lot_id,
+        rl.lot_number,
+        rl.lot_date,
+        rl.lot_type,
+        rl.billed_flag,
+        rl.billed_date,
+        rl.precast_lot_id,
+        l.tnum
+    FROM reco_lot_numbers rl
+    LEFT JOIN reco_precast_linkage l
+      ON l.lot_id = rl.lot_id
+    WHERE rl.pcf_id = 191252
+      AND rl.lot_date >= DATE '2026-05-19'
+    ORDER BY rl.lot_date, rl.lot_id;
+    
+    1096484	T-1303228	26-05-28	Transfer	Y	26-05-28	1303229	P801504
+    1096486	T-1303231	26-05-28	Transfer	Y	26-05-28	1303232	P801504
+    1096559	T-1303305	26-05-28	Transfer	Y	26-05-28	1303306	P801504
+    1096974	05/30/2026	26-05-30	Normal	Y	26-06-04	1304329	P802321
+    1098658	T-1307771	26-06-26	Transfer	X	26-06-26	1307771	P804831
+    
+    
+    SELECT
+        owner,
+        name,
+        type,
+        line,
+        text
+    FROM all_source
+    WHERE owner = 'RECO'
+      AND UPPER(text) LIKE '%QTY_PAID_OVER%'
+    ORDER BY name, type, line;
+    
+    RECO	UPDATE_WACO	PROCEDURE	71	"                              nvl(sum(qty_paid_over),0), nvl(sum(qty_shipped),0)
+    "
+    RECO	UPGRADE_WACO	PROCEDURE	81	"                              nvl(sum(qty_paid_over),0), nvl(sum(qty_shipped),0)
+    "
+    RECO	WACO_SYNCHRONIZER	PACKAGE BODY	867	"                              nvl(sum(qty_paid_over),0), nvl(sum(qty_shipped),0)
+    "
+    
+    
+    SELECT
+        owner,
+        name,
+        type,
+        line,
+        text
+    FROM all_source
+    WHERE owner = 'RECO'
+      AND (
+           UPPER(text) LIKE '%PAID%OVER%'
+           OR UPPER(text) LIKE '%OVERAGE%'
+          )
+      AND (
+           UPPER(name) LIKE '%PRECAST%'
+           OR UPPER(name) LIKE '%PRODUCTION%'
+          )
+    ORDER BY name, type, line;
+    
+    
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	594	"-- corrected to give correct overage number
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	595	"CURSOR startoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	604	"CURSOR endoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	725	"     OPEN startoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	726	"     FETCH startoverage INTO sover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	727	"     CLOSE startoverage;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	728	"     OPEN endoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	729	"     FETCH endoverage INTO eover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	730	"     CLOSE endoverage;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	873	"-- corrected to give correct overage number
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	874	"CURSOR startoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	883	"CURSOR endoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1002	"     OPEN startoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1003	"     FETCH startoverage INTO sover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1004	"     CLOSE startoverage;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1005	"     OPEN endoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1006	"     FETCH endoverage INTO eover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1007	"     CLOSE endoverage;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1166	"-- corrected to give correct overage number
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1167	"CURSOR startoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1176	"CURSOR endoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1295	"     OPEN startoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1296	"     FETCH startoverage INTO sover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1297	"     CLOSE startoverage;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1298	"     OPEN endoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1299	"     FETCH endoverage INTO eover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1300	"     CLOSE endoverage;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1443	"-- corrected to give correct overage number
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1444	"CURSOR startoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1453	"CURSOR endoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1572	"     OPEN startoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1573	"     FETCH startoverage INTO sover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1574	"     CLOSE startoverage;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1575	"     OPEN endoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1576	"     FETCH endoverage INTO eover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1577	"     CLOSE endoverage;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1720	"-- corrected to give correct overage number
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1721	"CURSOR startoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1730	"CURSOR endoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1849	"     OPEN startoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1850	"     FETCH startoverage INTO sover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1851	"     CLOSE startoverage;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1852	"     OPEN endoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1853	"     FETCH endoverage INTO eover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1854	"     CLOSE endoverage;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1997	"-- corrected to give correct overage number
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	1998	"CURSOR startoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2007	"CURSOR endoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2126	"     OPEN startoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2127	"     FETCH startoverage INTO sover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2128	"     CLOSE startoverage;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2129	"     OPEN endoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2130	"     FETCH endoverage INTO eover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2131	"     CLOSE endoverage;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2274	"-- corrected to give correct overage number
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2275	"CURSOR startoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2284	"CURSOR endoverage( pcfid number ) IS
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2403	"     OPEN startoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2404	"     FETCH startoverage INTO sover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2405	"     CLOSE startoverage;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2406	"     OPEN endoverage( eachtwo.pcf_id );
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2407	"     FETCH endoverage INTO eover;
+    "
+    RECO	RECO_BILL_PRODUCTION	PACKAGE BODY	2408	"     CLOSE endoverage;
+    "
+    RECO	RECO_PRECAST	PACKAGE BODY	1102	"  CURSOR overage( mark number, rev number, cdate date ) IS
+    "
+    RECO	RECO_PRECAST	PACKAGE BODY	1118	"      -- no overage, first rev
+    "
+    RECO	RECO_PRECAST	PACKAGE BODY	1129	"    open overage( p_mark_number, p_new_revision, mydate );
+    "
+    RECO	RECO_PRECAST	PACKAGE BODY	1130	"    fetch overage into ovg2;
+    "
+    RECO	RECO_PRECAST	PACKAGE BODY	1131	"    close overage;
+    "
+    RECO	RECO_PRECAST	PACKAGE BODY	1134	"    open overage( p_mark_number, p_new_revision-1, mydate );
+    "
+    RECO	RECO_PRECAST	PACKAGE BODY	1135	"    fetch overage into ovg1;
+    "
+    RECO	RECO_PRECAST	PACKAGE BODY	1136	"    close overage;
+    "
+    RECO	RECO_PRECAST_REPORTS	PACKAGE BODY	1250	"    -- Skip overproduction PCF tasks. Their only goal is to hold overage
+    "
+
+
+SELECT
+    line,
+    text
+FROM all_source
+WHERE owner = 'RECO'
+  AND name = 'RECO_BILL_PRODUCTION'
+  AND type = 'PACKAGE BODY'
+  AND (
+       line BETWEEN 550 AND 760
+    OR line BETWEEN 830 AND 1030
+    OR line BETWEEN 1120 AND 1320
+    OR line BETWEEN 1400 AND 1600
+    OR line BETWEEN 1680 AND 1880
+    OR line BETWEEN 1950 AND 2160
+    OR line BETWEEN 2230 AND 2430
+      )
+ORDER BY line;
+
+550	"          segment1 project_num,
+"
+551	"          t.task_number,
+"
+552	"          v.expenditure_type,
+"
+553	"          SUM(p.quantity_produced*pr.area_per_piece) qty,
+"
+554	"          v.unit_price,
+"
+555	"          v.pcf_id
+"
+556	"  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+"
+557	"        reco_production p, reco_production_requirements pr,
+"
+558	"        pa_projects pa, pa_tasks t
+"
+559	"  WHERE   l.billed_flag = 'N'
+"
+560	"  AND     l.lot_date <= enddate
+"
+561	"  AND     p.lot_id = l.lot_id
+"
+562	"  AND     v.pcf_id = l.pcf_id
+"
+563	"  AND     pc.pcf_id = v.pcf_id
+"
+564	"  AND     pc.revision_number = v.revision_number
+"
+565	"  AND     pr.pc_id = p.pc_id
+"
+566	"  and     pr.revision_number = pc.revision_number
+"
+567	"  AND     v.task_id != 1995
+"
+568	"  AND     v.vendor_id not in ( wacovendorid, georgiavendorid, floridavendorid, cavendorid, lbvendorid, wmvendorid )
+"
+569	"  AND     pa.project_id = v.project_id
+"
+570	"  AND     t.task_id = v.task_id
+"
+571	"  GROUP BY l.lot_id, l.lot_date,
+"
+572	"            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+"
+573	"            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+"
+574	"
+"
+575	"CURSOR startproduction( pcfid number ) IS
+"
+576	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+577	"         FROM  reco_production_v
+"
+578	"        WHERE lot_date < begindate
+"
+579	"          AND pcf_id = pcfid;
+"
+580	"
+"
+581	"CURSOR endproduction( pcfid number ) IS
+"
+582	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+583	"         FROM  reco_production_v
+"
+584	"        WHERE lot_date < enddate
+"
+585	"          AND pcf_id = pcfid;
+"
+586	"
+"
+587	"CURSOR pdbilled( pcfid number ) IS
+"
+588	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+589	"         FROM reco_production_v
+"
+590	"        WHERE lot_date BETWEEN begindate AND enddate
+"
+591	"          AND billed_flag = 'Y'
+"
+592	"          AND pcf_id = pcfid;
+"
+593	"
+"
+594	"-- corrected to give correct overage number
+"
+595	"CURSOR startoverage( pcfid number ) IS
+"
+596	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+597	"                 * AVG(area_per_piece) )
+"
+598	"       FROM reco_production_v
+"
+599	"      WHERE pcf_id = pcfid AND lot_date < begindate
+"
+600	"        AND billed_date < billdate
+"
+601	"      GROUP BY mark_number
+"
+602	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+603	"
+"
+604	"CURSOR endoverage( pcfid number ) IS
+"
+605	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+606	"                 * AVG(area_per_piece) )
+"
+607	"       FROM reco_production_v
+"
+608	"      WHERE pcf_id = pcfid AND lot_date < enddate
+"
+609	"      GROUP BY mark_number
+"
+610	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+611	"
+"
+612	"CURSOR getbilled IS
+"
+613	"         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+"
+614	"          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+"
+615	"          pp.project_id, pv.revision_number
+"
+616	"         FROM reco_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+"
+617	"         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+"
+618	"           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+"
+619	"         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+"
+620	"
+"
+621	"CURSOR getemployee (thepid number) IS
+"
+622	" SELECT employee_number
+"
+623	" FROM apps.pa_proj_info_view piv, per_people_f P
+"
+624	" WHERE person_id = manager_person_id
+"
+625	" AND project_id = thepid
+"
+626	" AND P.effective_end_date >= SYSDATE;
+"
+627	"
+"
+628	"CURSOR getvendor (pcfid number ) IS
+"
+629	"    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+"
+630	"
+"
+631	"CURSOR gnum IS
+"
+632	"   SELECT transentry_seq.NEXTVAL FROM dual;
+"
+633	"
+"
+634	"enum  per_people_f.employee_number%TYPE;
+"
+635	"calcunits number;
+"
+636	"calccost number;
+"
+637	"debug BOOLEAN := FALSE;
+"
+638	"tinum varchar2(10);
+"
+639	"tvalue  number;
+"
+640	"
+"
+641	"sprod number;
+"
+642	"eprod number;
+"
+643	"sover number;
+"
+644	"eover number;
+"
+645	"billed number;
+"
+646	"junkval number;
+"
+647	"
+"
+648	"isnegative  varchar2(1) := 'N';
+"
+649	"adjusteddate date := NULL;
+"
+650	"adjustedeow  date := NULL;
+"
+651	"expcomment   varchar2(240) := NULL;
+"
+652	"vendor  number;
+"
+653	"transtype varchar2(30);
+"
+654	"
+"
+655	"dfltempnum   number := get_reco_variable('Default Precast Employee');
+"
+656	"
+"
+657	"BEGIN
+"
+658	"
+"
+659	"  begindate := bdate;
+"
+660	"  enddate := edate + .999;
+"
+661	"  howmany := action;
+"
+662	"  IF howmany < 0 THEN
+"
+663	"     debug := TRUE;
+"
+664	"     Dbms_Output.Enable( 200000 );
+"
+665	"  END IF;
+"
+666	"  IF begindate IS NULL THEN
+"
+667	"     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+"
+668	"  END IF;
+"
+669	"  howmany := 0;
+"
+670	"
+"
+671	"--
+"
+672	"  FOR eachone IN getproduction LOOP
+"
+673	"--
+"
+674	"     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+"
+675	"     INSERT INTO reco_prod_billing (
+"
+676	"          lot_id, end_of_week, lot_date, project_num, task_number,
+"
+677	"          expenditure_type, qty, calccost, pcf_id, unit_price )
+"
+678	"     VALUES (
+"
+679	"          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+"
+680	"          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+"
+681	"          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+"
+682	"--
+"
+683	"     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+"
+684	"      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+"
+685	"     IF debug THEN
+"
+686	"        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+"
+687	"     END IF;
+"
+688	"     howmany := howmany + 1;
+"
+689	"  END LOOP;
+"
+690	"--
+"
+691	"  IF action = -2 THEN
+"
+692	"     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+"
+693	"  ELSE
+"
+694	"     COMMIT;
+"
+695	"  END IF;
+"
+696	"  FOR eachtwo IN getbilled LOOP
+"
+697	"-- get enum for each project line
+"
+698	"     OPEN getemployee( eachtwo.project_id );
+"
+699	"     FETCH getemployee INTO enum;
+"
+700	"     CLOSE getemployee;
+"
+701	"     IF debug THEN
+"
+702	"        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+"
+703	"     END IF;
+"
+704	"     IF enum IS NULL THEN
+"
+705	"        enum := dfltempnum;
+"
+706	"     END IF;
+"
+707	"     IF debug THEN
+"
+708	"        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+"
+709	"     END IF;
+"
+710	"--
+"
+711	"     -- get vendor 8/5
+"
+712	"     OPEN getvendor( eachtwo.pcf_id );
+"
+713	"     FETCH getvendor INTO vendor;
+"
+714	"     CLOSE getvendor;
+"
+715	"     --
+"
+716	"     OPEN gnum;
+"
+717	"     FETCH gnum INTO tvalue;
+"
+718	"     CLOSE gnum;
+"
+719	"     OPEN startproduction( eachtwo.pcf_id );
+"
+720	"     FETCH startproduction INTO sprod;
+"
+721	"     CLOSE startproduction;
+"
+722	"     OPEN endproduction( eachtwo.pcf_id );
+"
+723	"     FETCH endproduction INTO eprod;
+"
+724	"     CLOSE endproduction;
+"
+725	"     OPEN startoverage( eachtwo.pcf_id );
+"
+726	"     FETCH startoverage INTO sover;
+"
+727	"     CLOSE startoverage;
+"
+728	"     OPEN endoverage( eachtwo.pcf_id );
+"
+729	"     FETCH endoverage INTO eover;
+"
+730	"     CLOSE endoverage;
+"
+731	"     OPEN pdbilled( eachtwo.pcf_id );
+"
+732	"     FETCH pdbilled INTO billed;
+"
+733	"     CLOSE pdbilled;
+"
+734	"
+"
+735	"     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+"
+736	"     --calcunits := ( calcunits - nvl(billed,0) );
+"
+737	"     calccost := calcunits * eachtwo.unit_price;
+"
+738	"
+"
+739	"     tinum := 'P'||TO_CHAR(tvalue);
+"
+740	"
+"
+741	"     IF NVL(calccost,0) < 0 THEN
+"
+742	"        isnegative := 'Y';
+"
+743	"     ELSE
+"
+744	"        isnegative := 'N';
+"
+745	"     END IF;
+"
+746	"--
+"
+747	"--  4-13 determine correct lot date if previous period lots
+"
+748	"     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+"
+749	"        adjusteddate := eachtwo.ldate;
+"
+750	"        adjustedeow  := eachtwo.eow;
+"
+751	"        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+"
+752	"        transtype := 'CURRENT';
+"
+753	"     ELSE
+"
+754	"        adjusteddate := begindate + (enddate - begindate)/2;
+"
+755	"        adjustedeow := TRUNC(adjusteddate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjusteddate),'d'))));
+"
+756	"        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Previous period production.';
+"
+757	"        transtype := 'PREVIOUS';
+"
+758	"     END IF;
+"
+759	"     IF NVL(calccost,0) <> 0 THEN
+"
+760	"        INSERT INTO apps.pa_transaction_interface_all (
+"
+830	"          t.task_number,
+"
+831	"          v.expenditure_type,
+"
+832	"          SUM(p.quantity_produced*pr.area_per_piece) qty,
+"
+833	"          v.unit_price,
+"
+834	"          v.pcf_id
+"
+835	"  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+"
+836	"        reco_production p, reco_production_requirements pr,
+"
+837	"        pa_projects pa, pa_tasks t
+"
+838	"  WHERE   l.billed_flag = 'N'
+"
+839	"  AND     l.lot_date <= enddate
+"
+840	"  AND     p.lot_id = l.lot_id
+"
+841	"  AND     v.pcf_id = l.pcf_id
+"
+842	"  AND     pc.pcf_id = v.pcf_id
+"
+843	"  AND     pc.revision_number = v.revision_number
+"
+844	"  AND     pr.pc_id = p.pc_id
+"
+845	"  and     pr.revision_number = pc.revision_number
+"
+846	"  AND     v.task_id != 1995
+"
+847	"  AND     v.vendor_id = wacovendorid
+"
+848	"  AND     pa.project_id = v.project_id
+"
+849	"  AND     t.task_id = v.task_id
+"
+850	"  GROUP BY l.lot_id, l.lot_date,
+"
+851	"            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+"
+852	"            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+"
+853	"
+"
+854	"CURSOR startproduction( pcfid number ) IS
+"
+855	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+856	"         FROM  reco_production_v
+"
+857	"        WHERE lot_date < begindate
+"
+858	"          AND pcf_id = pcfid;
+"
+859	"
+"
+860	"CURSOR endproduction( pcfid number ) IS
+"
+861	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+862	"         FROM  reco_production_v
+"
+863	"        WHERE lot_date < enddate
+"
+864	"          AND pcf_id = pcfid;
+"
+865	"
+"
+866	"CURSOR pdbilled( pcfid number ) IS
+"
+867	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+868	"         FROM reco_production_v
+"
+869	"        WHERE lot_date BETWEEN begindate AND enddate
+"
+870	"          AND billed_flag = 'Y'
+"
+871	"          AND pcf_id = pcfid;
+"
+872	"
+"
+873	"-- corrected to give correct overage number
+"
+874	"CURSOR startoverage( pcfid number ) IS
+"
+875	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+876	"                 * AVG(area_per_piece) )
+"
+877	"       FROM reco_production_v
+"
+878	"      WHERE pcf_id = pcfid AND lot_date < begindate
+"
+879	"        AND billed_date < billdate
+"
+880	"      GROUP BY mark_number
+"
+881	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+882	"
+"
+883	"CURSOR endoverage( pcfid number ) IS
+"
+884	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+885	"                 * AVG(area_per_piece) )
+"
+886	"       FROM reco_production_v
+"
+887	"      WHERE pcf_id = pcfid AND lot_date < enddate
+"
+888	"      GROUP BY mark_number
+"
+889	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+890	"
+"
+891	"CURSOR getbilled IS
+"
+892	"         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+"
+893	"          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+"
+894	"          pp.project_id, pv.revision_number
+"
+895	"         FROM reco_waco_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+"
+896	"         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+"
+897	"           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+"
+898	"         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+"
+899	"
+"
+900	"CURSOR getemployee (thepid number) IS
+"
+901	" SELECT employee_number
+"
+902	" FROM apps.pa_proj_info_view piv, per_people_f P
+"
+903	" WHERE person_id = manager_person_id
+"
+904	" AND project_id = thepid
+"
+905	" AND P.effective_end_date >= SYSDATE;
+"
+906	"
+"
+907	"CURSOR getvendor (pcfid number ) IS
+"
+908	"    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+"
+909	"
+"
+910	"CURSOR gnum IS
+"
+911	"   SELECT transentry_seq.NEXTVAL FROM dual;
+"
+912	"
+"
+913	"enum  per_people_f.employee_number%TYPE;
+"
+914	"calcunits number;
+"
+915	"calccost number;
+"
+916	"debug BOOLEAN := FALSE;
+"
+917	"tinum varchar2(10);
+"
+918	"tvalue  number;
+"
+919	"
+"
+920	"sprod number;
+"
+921	"eprod number;
+"
+922	"sover number;
+"
+923	"eover number;
+"
+924	"billed number;
+"
+925	"junkval number;
+"
+926	"
+"
+927	"isnegative  varchar2(1) := 'N';
+"
+928	"adjusteddate date := NULL;
+"
+929	"adjustedeow  date := NULL;
+"
+930	"expcomment   varchar2(240) := NULL;
+"
+931	"vendor  number;
+"
+932	"transtype varchar2(30);
+"
+933	"
+"
+934	"dfltwacoempnum number := get_reco_variable('Default WACO Precast Employee');
+"
+935	"BEGIN
+"
+936	"
+"
+937	"  begindate := bdate;
+"
+938	"  enddate := edate + .999;
+"
+939	"  howmany := action;
+"
+940	"  IF howmany < 0 THEN
+"
+941	"     debug := TRUE;
+"
+942	"     Dbms_Output.Enable( 200000 );
+"
+943	"  END IF;
+"
+944	"  IF begindate IS NULL THEN
+"
+945	"     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+"
+946	"  END IF;
+"
+947	"  howmany := 0;
+"
+948	"--
+"
+949	"  FOR eachone IN getproduction LOOP
+"
+950	"--
+"
+951	"     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+"
+952	"     INSERT INTO reco_waco_prod_billing (
+"
+953	"          lot_id, end_of_week, lot_date, project_num, task_number,
+"
+954	"          expenditure_type, qty, calccost, pcf_id, unit_price )
+"
+955	"     VALUES (
+"
+956	"          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+"
+957	"          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+"
+958	"          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+"
+959	"--
+"
+960	"     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+"
+961	"      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+"
+962	"     IF debug THEN
+"
+963	"        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+"
+964	"     END IF;
+"
+965	"     howmany := howmany + 1;
+"
+966	"  END LOOP;
+"
+967	"--
+"
+968	"  IF action = -2 THEN
+"
+969	"     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+"
+970	"  ELSE
+"
+971	"     COMMIT;
+"
+972	"  END IF;
+"
+973	"  FOR eachtwo IN getbilled LOOP
+"
+974	"-- get enum for each project line
+"
+975	"     OPEN getemployee( eachtwo.project_id );
+"
+976	"     FETCH getemployee INTO enum;
+"
+977	"     CLOSE getemployee;
+"
+978	"     IF debug THEN
+"
+979	"        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+"
+980	"     END IF;
+"
+981	"     IF enum IS NULL THEN
+"
+982	"        enum := dfltwacoempnum;
+"
+983	"     END IF;
+"
+984	"     IF debug THEN
+"
+985	"        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+"
+986	"     END IF;
+"
+987	"--
+"
+988	"     -- get vendor 8/5
+"
+989	"     OPEN getvendor( eachtwo.pcf_id );
+"
+990	"     FETCH getvendor INTO vendor;
+"
+991	"     CLOSE getvendor;
+"
+992	"     --
+"
+993	"     OPEN gnum;
+"
+994	"     FETCH gnum INTO tvalue;
+"
+995	"     CLOSE gnum;
+"
+996	"     OPEN startproduction( eachtwo.pcf_id );
+"
+997	"     FETCH startproduction INTO sprod;
+"
+998	"     CLOSE startproduction;
+"
+999	"     OPEN endproduction( eachtwo.pcf_id );
+"
+1000	"     FETCH endproduction INTO eprod;
+"
+1001	"     CLOSE endproduction;
+"
+1002	"     OPEN startoverage( eachtwo.pcf_id );
+"
+1003	"     FETCH startoverage INTO sover;
+"
+1004	"     CLOSE startoverage;
+"
+1005	"     OPEN endoverage( eachtwo.pcf_id );
+"
+1006	"     FETCH endoverage INTO eover;
+"
+1007	"     CLOSE endoverage;
+"
+1008	"     OPEN pdbilled( eachtwo.pcf_id );
+"
+1009	"     FETCH pdbilled INTO billed;
+"
+1010	"     CLOSE pdbilled;
+"
+1011	"
+"
+1012	"     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+"
+1013	"     --calcunits := ( calcunits - nvl(billed,0) );
+"
+1014	"     calccost := calcunits * eachtwo.unit_price;
+"
+1015	"
+"
+1016	"     tinum := 'P'||TO_CHAR(tvalue);
+"
+1017	"
+"
+1018	"     IF NVL(calccost,0) < 0 THEN
+"
+1019	"        isnegative := 'Y';
+"
+1020	"     ELSE
+"
+1021	"        isnegative := 'N';
+"
+1022	"     END IF;
+"
+1023	"--
+"
+1024	"--  4-13 determine correct lot date if previous period lots
+"
+1025	"     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+"
+1026	"        adjusteddate := eachtwo.ldate;
+"
+1027	"        adjustedeow  := eachtwo.eow;
+"
+1028	"        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+"
+1029	"        transtype := 'CURRENT';
+"
+1030	"     ELSE
+"
+1120	"          l.lot_date,
+"
+1121	"          TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))) end_of_week,
+"
+1122	"          segment1 project_num,
+"
+1123	"          t.task_number,
+"
+1124	"          v.expenditure_type,
+"
+1125	"          SUM(p.quantity_produced*pr.area_per_piece) qty,
+"
+1126	"          v.unit_price,
+"
+1127	"          v.pcf_id
+"
+1128	"  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+"
+1129	"        reco_production p, reco_production_requirements pr,
+"
+1130	"        pa_projects pa, pa_tasks t
+"
+1131	"  WHERE   l.billed_flag = 'N'
+"
+1132	"  AND     l.lot_date <= enddate
+"
+1133	"  AND     p.lot_id = l.lot_id
+"
+1134	"  AND     v.pcf_id = l.pcf_id
+"
+1135	"  AND     pc.pcf_id = v.pcf_id
+"
+1136	"  AND     pc.revision_number = v.revision_number
+"
+1137	"  AND     pr.pc_id = p.pc_id
+"
+1138	"  and     pr.revision_number = pc.revision_number
+"
+1139	"  AND     v.task_id != 1995
+"
+1140	"  AND     v.vendor_id = georgiavendorid
+"
+1141	"  AND     pa.project_id = v.project_id
+"
+1142	"  AND     t.task_id = v.task_id
+"
+1143	"  GROUP BY l.lot_id, l.lot_date,
+"
+1144	"            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+"
+1145	"            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+"
+1146	"
+"
+1147	"CURSOR startproduction( pcfid number ) IS
+"
+1148	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1149	"         FROM  reco_production_v
+"
+1150	"        WHERE lot_date < begindate
+"
+1151	"          AND pcf_id = pcfid;
+"
+1152	"
+"
+1153	"CURSOR endproduction( pcfid number ) IS
+"
+1154	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1155	"         FROM  reco_production_v
+"
+1156	"        WHERE lot_date < enddate
+"
+1157	"          AND pcf_id = pcfid;
+"
+1158	"
+"
+1159	"CURSOR pdbilled( pcfid number ) IS
+"
+1160	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1161	"         FROM reco_production_v
+"
+1162	"        WHERE lot_date BETWEEN begindate AND enddate
+"
+1163	"          AND billed_flag = 'Y'
+"
+1164	"          AND pcf_id = pcfid;
+"
+1165	"
+"
+1166	"-- corrected to give correct overage number
+"
+1167	"CURSOR startoverage( pcfid number ) IS
+"
+1168	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+1169	"                 * AVG(area_per_piece) )
+"
+1170	"       FROM reco_production_v
+"
+1171	"      WHERE pcf_id = pcfid AND lot_date < begindate
+"
+1172	"        AND billed_date < billdate
+"
+1173	"      GROUP BY mark_number
+"
+1174	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+1175	"
+"
+1176	"CURSOR endoverage( pcfid number ) IS
+"
+1177	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+1178	"                 * AVG(area_per_piece) )
+"
+1179	"       FROM reco_production_v
+"
+1180	"      WHERE pcf_id = pcfid AND lot_date < enddate
+"
+1181	"      GROUP BY mark_number
+"
+1182	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+1183	"
+"
+1184	"CURSOR getbilled IS
+"
+1185	"         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+"
+1186	"          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+"
+1187	"          pp.project_id, pv.revision_number
+"
+1188	"         FROM reco_georgia_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+"
+1189	"         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+"
+1190	"           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+"
+1191	"         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+"
+1192	"
+"
+1193	"CURSOR getemployee (thepid number) IS
+"
+1194	" SELECT employee_number
+"
+1195	" FROM apps.pa_proj_info_view piv, per_people_f P
+"
+1196	" WHERE person_id = manager_person_id
+"
+1197	" AND project_id = thepid
+"
+1198	" AND P.effective_end_date >= SYSDATE;
+"
+1199	"
+"
+1200	"CURSOR getvendor (pcfid number ) IS
+"
+1201	"    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+"
+1202	"
+"
+1203	"CURSOR gnum IS
+"
+1204	"   SELECT transentry_seq.NEXTVAL FROM dual;
+"
+1205	"
+"
+1206	"enum  per_people_f.employee_number%TYPE;
+"
+1207	"calcunits number;
+"
+1208	"calccost number;
+"
+1209	"debug BOOLEAN := FALSE;
+"
+1210	"tinum varchar2(10);
+"
+1211	"tvalue  number;
+"
+1212	"
+"
+1213	"sprod number;
+"
+1214	"eprod number;
+"
+1215	"sover number;
+"
+1216	"eover number;
+"
+1217	"billed number;
+"
+1218	"junkval number;
+"
+1219	"
+"
+1220	"isnegative  varchar2(1) := 'N';
+"
+1221	"adjusteddate date := NULL;
+"
+1222	"adjustedeow  date := NULL;
+"
+1223	"expcomment   varchar2(240) := NULL;
+"
+1224	"vendor  number;
+"
+1225	"transtype varchar2(30);
+"
+1226	"
+"
+1227	"dfltgeorgiaempnum number := get_reco_variable('Default GEORGIA Precast Employee');
+"
+1228	"BEGIN
+"
+1229	"
+"
+1230	"  begindate := bdate;
+"
+1231	"  enddate := edate + .999;
+"
+1232	"  howmany := action;
+"
+1233	"  IF howmany < 0 THEN
+"
+1234	"     debug := TRUE;
+"
+1235	"     Dbms_Output.Enable( 200000 );
+"
+1236	"  END IF;
+"
+1237	"  IF begindate IS NULL THEN
+"
+1238	"     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+"
+1239	"  END IF;
+"
+1240	"  howmany := 0;
+"
+1241	"--
+"
+1242	"  FOR eachone IN getproduction LOOP
+"
+1243	"--
+"
+1244	"     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+"
+1245	"     INSERT INTO reco_georgia_prod_billing (
+"
+1246	"          lot_id, end_of_week, lot_date, project_num, task_number,
+"
+1247	"          expenditure_type, qty, calccost, pcf_id, unit_price )
+"
+1248	"     VALUES (
+"
+1249	"          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+"
+1250	"          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+"
+1251	"          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+"
+1252	"--
+"
+1253	"     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+"
+1254	"      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+"
+1255	"     IF debug THEN
+"
+1256	"        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+"
+1257	"     END IF;
+"
+1258	"     howmany := howmany + 1;
+"
+1259	"  END LOOP;
+"
+1260	"--
+"
+1261	"  IF action = -2 THEN
+"
+1262	"     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+"
+1263	"  ELSE
+"
+1264	"     COMMIT;
+"
+1265	"  END IF;
+"
+1266	"  FOR eachtwo IN getbilled LOOP
+"
+1267	"-- get enum for each project line
+"
+1268	"     OPEN getemployee( eachtwo.project_id );
+"
+1269	"     FETCH getemployee INTO enum;
+"
+1270	"     CLOSE getemployee;
+"
+1271	"     IF debug THEN
+"
+1272	"        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+"
+1273	"     END IF;
+"
+1274	"     IF enum IS NULL THEN
+"
+1275	"        enum := dfltgeorgiaempnum;
+"
+1276	"     END IF;
+"
+1277	"     IF debug THEN
+"
+1278	"        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+"
+1279	"     END IF;
+"
+1280	"--
+"
+1281	"     -- get vendor 8/5
+"
+1282	"     OPEN getvendor( eachtwo.pcf_id );
+"
+1283	"     FETCH getvendor INTO vendor;
+"
+1284	"     CLOSE getvendor;
+"
+1285	"     --
+"
+1286	"     OPEN gnum;
+"
+1287	"     FETCH gnum INTO tvalue;
+"
+1288	"     CLOSE gnum;
+"
+1289	"     OPEN startproduction( eachtwo.pcf_id );
+"
+1290	"     FETCH startproduction INTO sprod;
+"
+1291	"     CLOSE startproduction;
+"
+1292	"     OPEN endproduction( eachtwo.pcf_id );
+"
+1293	"     FETCH endproduction INTO eprod;
+"
+1294	"     CLOSE endproduction;
+"
+1295	"     OPEN startoverage( eachtwo.pcf_id );
+"
+1296	"     FETCH startoverage INTO sover;
+"
+1297	"     CLOSE startoverage;
+"
+1298	"     OPEN endoverage( eachtwo.pcf_id );
+"
+1299	"     FETCH endoverage INTO eover;
+"
+1300	"     CLOSE endoverage;
+"
+1301	"     OPEN pdbilled( eachtwo.pcf_id );
+"
+1302	"     FETCH pdbilled INTO billed;
+"
+1303	"     CLOSE pdbilled;
+"
+1304	"
+"
+1305	"     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+"
+1306	"     --calcunits := ( calcunits - nvl(billed,0) );
+"
+1307	"     calccost := calcunits * eachtwo.unit_price;
+"
+1308	"
+"
+1309	"     tinum := 'P'||TO_CHAR(tvalue);
+"
+1310	"
+"
+1311	"     IF NVL(calccost,0) < 0 THEN
+"
+1312	"        isnegative := 'Y';
+"
+1313	"     ELSE
+"
+1314	"        isnegative := 'N';
+"
+1315	"     END IF;
+"
+1316	"--
+"
+1317	"--  4-13 determine correct lot date if previous period lots
+"
+1318	"     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+"
+1319	"        adjusteddate := eachtwo.ldate;
+"
+1320	"        adjustedeow  := eachtwo.eow;
+"
+1400	"          t.task_number,
+"
+1401	"          v.expenditure_type,
+"
+1402	"          SUM(p.quantity_produced*pr.area_per_piece) qty,
+"
+1403	"          v.unit_price,
+"
+1404	"          v.pcf_id
+"
+1405	"  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+"
+1406	"        reco_production p, reco_production_requirements pr,
+"
+1407	"        pa_projects pa, pa_tasks t
+"
+1408	"  WHERE   l.billed_flag = 'N'
+"
+1409	"  AND     l.lot_date <= enddate
+"
+1410	"  AND     p.lot_id = l.lot_id
+"
+1411	"  AND     v.pcf_id = l.pcf_id
+"
+1412	"  AND     pc.pcf_id = v.pcf_id
+"
+1413	"  AND     pc.revision_number = v.revision_number
+"
+1414	"  AND     pr.pc_id = p.pc_id
+"
+1415	"  and     pr.revision_number = pc.revision_number
+"
+1416	"  AND     v.task_id != 1995
+"
+1417	"  AND     v.vendor_id = floridavendorid
+"
+1418	"  AND     pa.project_id = v.project_id
+"
+1419	"  AND     t.task_id = v.task_id
+"
+1420	"  GROUP BY l.lot_id, l.lot_date,
+"
+1421	"            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+"
+1422	"            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+"
+1423	"
+"
+1424	"CURSOR startproduction( pcfid number ) IS
+"
+1425	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1426	"         FROM  reco_production_v
+"
+1427	"        WHERE lot_date < begindate
+"
+1428	"          AND pcf_id = pcfid;
+"
+1429	"
+"
+1430	"CURSOR endproduction( pcfid number ) IS
+"
+1431	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1432	"         FROM  reco_production_v
+"
+1433	"        WHERE lot_date < enddate
+"
+1434	"          AND pcf_id = pcfid;
+"
+1435	"
+"
+1436	"CURSOR pdbilled( pcfid number ) IS
+"
+1437	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1438	"         FROM reco_production_v
+"
+1439	"        WHERE lot_date BETWEEN begindate AND enddate
+"
+1440	"          AND billed_flag = 'Y'
+"
+1441	"          AND pcf_id = pcfid;
+"
+1442	"
+"
+1443	"-- corrected to give correct overage number
+"
+1444	"CURSOR startoverage( pcfid number ) IS
+"
+1445	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+1446	"                 * AVG(area_per_piece) )
+"
+1447	"       FROM reco_production_v
+"
+1448	"      WHERE pcf_id = pcfid AND lot_date < begindate
+"
+1449	"        AND billed_date < billdate
+"
+1450	"      GROUP BY mark_number
+"
+1451	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+1452	"
+"
+1453	"CURSOR endoverage( pcfid number ) IS
+"
+1454	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+1455	"                 * AVG(area_per_piece) )
+"
+1456	"       FROM reco_production_v
+"
+1457	"      WHERE pcf_id = pcfid AND lot_date < enddate
+"
+1458	"      GROUP BY mark_number
+"
+1459	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+1460	"
+"
+1461	"CURSOR getbilled IS
+"
+1462	"         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+"
+1463	"          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+"
+1464	"          pp.project_id, pv.revision_number
+"
+1465	"         FROM reco_florida_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+"
+1466	"         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+"
+1467	"           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+"
+1468	"         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+"
+1469	"
+"
+1470	"CURSOR getemployee (thepid number) IS
+"
+1471	" SELECT employee_number
+"
+1472	" FROM apps.pa_proj_info_view piv, per_people_f P
+"
+1473	" WHERE person_id = manager_person_id
+"
+1474	" AND project_id = thepid
+"
+1475	" AND P.effective_end_date >= SYSDATE;
+"
+1476	"
+"
+1477	"CURSOR getvendor (pcfid number ) IS
+"
+1478	"    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+"
+1479	"
+"
+1480	"CURSOR gnum IS
+"
+1481	"   SELECT transentry_seq.NEXTVAL FROM dual;
+"
+1482	"
+"
+1483	"enum  per_people_f.employee_number%TYPE;
+"
+1484	"calcunits number;
+"
+1485	"calccost number;
+"
+1486	"debug BOOLEAN := FALSE;
+"
+1487	"tinum varchar2(10);
+"
+1488	"tvalue  number;
+"
+1489	"
+"
+1490	"sprod number;
+"
+1491	"eprod number;
+"
+1492	"sover number;
+"
+1493	"eover number;
+"
+1494	"billed number;
+"
+1495	"junkval number;
+"
+1496	"
+"
+1497	"isnegative  varchar2(1) := 'N';
+"
+1498	"adjusteddate date := NULL;
+"
+1499	"adjustedeow  date := NULL;
+"
+1500	"expcomment   varchar2(240) := NULL;
+"
+1501	"vendor  number;
+"
+1502	"transtype varchar2(30);
+"
+1503	"
+"
+1504	"dfltfloridaempnum number := get_reco_variable('Default FLORIDA Precast Employee');
+"
+1505	"BEGIN
+"
+1506	"
+"
+1507	"  begindate := bdate;
+"
+1508	"  enddate := edate + .999;
+"
+1509	"  howmany := action;
+"
+1510	"  IF howmany < 0 THEN
+"
+1511	"     debug := TRUE;
+"
+1512	"     Dbms_Output.Enable( 200000 );
+"
+1513	"  END IF;
+"
+1514	"  IF begindate IS NULL THEN
+"
+1515	"     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+"
+1516	"  END IF;
+"
+1517	"  howmany := 0;
+"
+1518	"--
+"
+1519	"  FOR eachone IN getproduction LOOP
+"
+1520	"--
+"
+1521	"     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+"
+1522	"     INSERT INTO reco_florida_prod_billing (
+"
+1523	"          lot_id, end_of_week, lot_date, project_num, task_number,
+"
+1524	"          expenditure_type, qty, calccost, pcf_id, unit_price )
+"
+1525	"     VALUES (
+"
+1526	"          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+"
+1527	"          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+"
+1528	"          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+"
+1529	"--
+"
+1530	"     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+"
+1531	"      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+"
+1532	"     IF debug THEN
+"
+1533	"        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+"
+1534	"     END IF;
+"
+1535	"     howmany := howmany + 1;
+"
+1536	"  END LOOP;
+"
+1537	"--
+"
+1538	"  IF action = -2 THEN
+"
+1539	"     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+"
+1540	"  ELSE
+"
+1541	"     COMMIT;
+"
+1542	"  END IF;
+"
+1543	"  FOR eachtwo IN getbilled LOOP
+"
+1544	"-- get enum for each project line
+"
+1545	"     OPEN getemployee( eachtwo.project_id );
+"
+1546	"     FETCH getemployee INTO enum;
+"
+1547	"     CLOSE getemployee;
+"
+1548	"     IF debug THEN
+"
+1549	"        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+"
+1550	"     END IF;
+"
+1551	"     IF enum IS NULL THEN
+"
+1552	"        enum := dfltfloridaempnum;
+"
+1553	"     END IF;
+"
+1554	"     IF debug THEN
+"
+1555	"        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+"
+1556	"     END IF;
+"
+1557	"--
+"
+1558	"     -- get vendor 8/5
+"
+1559	"     OPEN getvendor( eachtwo.pcf_id );
+"
+1560	"     FETCH getvendor INTO vendor;
+"
+1561	"     CLOSE getvendor;
+"
+1562	"     --
+"
+1563	"     OPEN gnum;
+"
+1564	"     FETCH gnum INTO tvalue;
+"
+1565	"     CLOSE gnum;
+"
+1566	"     OPEN startproduction( eachtwo.pcf_id );
+"
+1567	"     FETCH startproduction INTO sprod;
+"
+1568	"     CLOSE startproduction;
+"
+1569	"     OPEN endproduction( eachtwo.pcf_id );
+"
+1570	"     FETCH endproduction INTO eprod;
+"
+1571	"     CLOSE endproduction;
+"
+1572	"     OPEN startoverage( eachtwo.pcf_id );
+"
+1573	"     FETCH startoverage INTO sover;
+"
+1574	"     CLOSE startoverage;
+"
+1575	"     OPEN endoverage( eachtwo.pcf_id );
+"
+1576	"     FETCH endoverage INTO eover;
+"
+1577	"     CLOSE endoverage;
+"
+1578	"     OPEN pdbilled( eachtwo.pcf_id );
+"
+1579	"     FETCH pdbilled INTO billed;
+"
+1580	"     CLOSE pdbilled;
+"
+1581	"
+"
+1582	"     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+"
+1583	"     --calcunits := ( calcunits - nvl(billed,0) );
+"
+1584	"     calccost := calcunits * eachtwo.unit_price;
+"
+1585	"
+"
+1586	"     tinum := 'P'||TO_CHAR(tvalue);
+"
+1587	"
+"
+1588	"     IF NVL(calccost,0) < 0 THEN
+"
+1589	"        isnegative := 'Y';
+"
+1590	"     ELSE
+"
+1591	"        isnegative := 'N';
+"
+1592	"     END IF;
+"
+1593	"--
+"
+1594	"--  4-13 determine correct lot date if previous period lots
+"
+1595	"     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+"
+1596	"        adjusteddate := eachtwo.ldate;
+"
+1597	"        adjustedeow  := eachtwo.eow;
+"
+1598	"        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+"
+1599	"        transtype := 'CURRENT';
+"
+1600	"     ELSE
+"
+1680	"          v.unit_price,
+"
+1681	"          v.pcf_id
+"
+1682	"  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+"
+1683	"        reco_production p, reco_production_requirements pr,
+"
+1684	"        pa_projects pa, pa_tasks t
+"
+1685	"  WHERE   l.billed_flag = 'N'
+"
+1686	"  AND     l.lot_date <= enddate
+"
+1687	"  AND     p.lot_id = l.lot_id
+"
+1688	"  AND     v.pcf_id = l.pcf_id
+"
+1689	"  AND     pc.pcf_id = v.pcf_id
+"
+1690	"  AND     pc.revision_number = v.revision_number
+"
+1691	"  AND     pr.pc_id = p.pc_id
+"
+1692	"  and     pr.revision_number = pc.revision_number
+"
+1693	"  AND     v.task_id != 1995
+"
+1694	"  AND     v.vendor_id = cavendorid
+"
+1695	"  AND     pa.project_id = v.project_id
+"
+1696	"  AND     t.task_id = v.task_id
+"
+1697	"  GROUP BY l.lot_id, l.lot_date,
+"
+1698	"            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+"
+1699	"            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+"
+1700	"
+"
+1701	"CURSOR startproduction( pcfid number ) IS
+"
+1702	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1703	"         FROM  reco_production_v
+"
+1704	"        WHERE lot_date < begindate
+"
+1705	"          AND pcf_id = pcfid;
+"
+1706	"
+"
+1707	"CURSOR endproduction( pcfid number ) IS
+"
+1708	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1709	"         FROM  reco_production_v
+"
+1710	"        WHERE lot_date < enddate
+"
+1711	"          AND pcf_id = pcfid;
+"
+1712	"
+"
+1713	"CURSOR pdbilled( pcfid number ) IS
+"
+1714	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1715	"         FROM reco_production_v
+"
+1716	"        WHERE lot_date BETWEEN begindate AND enddate
+"
+1717	"          AND billed_flag = 'Y'
+"
+1718	"          AND pcf_id = pcfid;
+"
+1719	"
+"
+1720	"-- corrected to give correct overage number
+"
+1721	"CURSOR startoverage( pcfid number ) IS
+"
+1722	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+1723	"                 * AVG(area_per_piece) )
+"
+1724	"       FROM reco_production_v
+"
+1725	"      WHERE pcf_id = pcfid AND lot_date < begindate
+"
+1726	"        AND billed_date < billdate
+"
+1727	"      GROUP BY mark_number
+"
+1728	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+1729	"
+"
+1730	"CURSOR endoverage( pcfid number ) IS
+"
+1731	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+1732	"                 * AVG(area_per_piece) )
+"
+1733	"       FROM reco_production_v
+"
+1734	"      WHERE pcf_id = pcfid AND lot_date < enddate
+"
+1735	"      GROUP BY mark_number
+"
+1736	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+1737	"
+"
+1738	"CURSOR getbilled IS
+"
+1739	"         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+"
+1740	"          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+"
+1741	"          pp.project_id, pv.revision_number
+"
+1742	"         FROM reco_ca_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+"
+1743	"         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+"
+1744	"           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+"
+1745	"         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+"
+1746	"
+"
+1747	"CURSOR getemployee (thepid number) IS
+"
+1748	" SELECT employee_number
+"
+1749	" FROM apps.pa_proj_info_view piv, per_people_f P
+"
+1750	" WHERE person_id = manager_person_id
+"
+1751	" AND project_id = thepid
+"
+1752	" AND P.effective_end_date >= SYSDATE;
+"
+1753	"
+"
+1754	"CURSOR getvendor (pcfid number ) IS
+"
+1755	"    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+"
+1756	"
+"
+1757	"CURSOR gnum IS
+"
+1758	"   SELECT transentry_seq.NEXTVAL FROM dual;
+"
+1759	"
+"
+1760	"enum  per_people_f.employee_number%TYPE;
+"
+1761	"calcunits number;
+"
+1762	"calccost number;
+"
+1763	"debug BOOLEAN := FALSE;
+"
+1764	"tinum varchar2(10);
+"
+1765	"tvalue  number;
+"
+1766	"
+"
+1767	"sprod number;
+"
+1768	"eprod number;
+"
+1769	"sover number;
+"
+1770	"eover number;
+"
+1771	"billed number;
+"
+1772	"junkval number;
+"
+1773	"
+"
+1774	"isnegative  varchar2(1) := 'N';
+"
+1775	"adjusteddate date := NULL;
+"
+1776	"adjustedeow  date := NULL;
+"
+1777	"expcomment   varchar2(240) := NULL;
+"
+1778	"vendor  number;
+"
+1779	"transtype varchar2(30);
+"
+1780	"
+"
+1781	"dfltcaempnum number := get_reco_variable('Default CA Precast Employee');
+"
+1782	"BEGIN
+"
+1783	"
+"
+1784	"  begindate := bdate;
+"
+1785	"  enddate := edate + .999;
+"
+1786	"  howmany := action;
+"
+1787	"  IF howmany < 0 THEN
+"
+1788	"     debug := TRUE;
+"
+1789	"     Dbms_Output.Enable( 200000 );
+"
+1790	"  END IF;
+"
+1791	"  IF begindate IS NULL THEN
+"
+1792	"     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+"
+1793	"  END IF;
+"
+1794	"  howmany := 0;
+"
+1795	"--
+"
+1796	"  FOR eachone IN getproduction LOOP
+"
+1797	"--
+"
+1798	"     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+"
+1799	"     INSERT INTO reco_ca_prod_billing (
+"
+1800	"          lot_id, end_of_week, lot_date, project_num, task_number,
+"
+1801	"          expenditure_type, qty, calccost, pcf_id, unit_price )
+"
+1802	"     VALUES (
+"
+1803	"          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+"
+1804	"          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+"
+1805	"          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+"
+1806	"--
+"
+1807	"     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+"
+1808	"      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+"
+1809	"     IF debug THEN
+"
+1810	"        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+"
+1811	"     END IF;
+"
+1812	"     howmany := howmany + 1;
+"
+1813	"  END LOOP;
+"
+1814	"--
+"
+1815	"  IF action = -2 THEN
+"
+1816	"     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+"
+1817	"  ELSE
+"
+1818	"     COMMIT;
+"
+1819	"  END IF;
+"
+1820	"  FOR eachtwo IN getbilled LOOP
+"
+1821	"-- get enum for each project line
+"
+1822	"     OPEN getemployee( eachtwo.project_id );
+"
+1823	"     FETCH getemployee INTO enum;
+"
+1824	"     CLOSE getemployee;
+"
+1825	"     IF debug THEN
+"
+1826	"        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+"
+1827	"     END IF;
+"
+1828	"     IF enum IS NULL THEN
+"
+1829	"        enum := dfltcaempnum;
+"
+1830	"     END IF;
+"
+1831	"     IF debug THEN
+"
+1832	"        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+"
+1833	"     END IF;
+"
+1834	"--
+"
+1835	"     -- get vendor 8/5
+"
+1836	"     OPEN getvendor( eachtwo.pcf_id );
+"
+1837	"     FETCH getvendor INTO vendor;
+"
+1838	"     CLOSE getvendor;
+"
+1839	"     --
+"
+1840	"     OPEN gnum;
+"
+1841	"     FETCH gnum INTO tvalue;
+"
+1842	"     CLOSE gnum;
+"
+1843	"     OPEN startproduction( eachtwo.pcf_id );
+"
+1844	"     FETCH startproduction INTO sprod;
+"
+1845	"     CLOSE startproduction;
+"
+1846	"     OPEN endproduction( eachtwo.pcf_id );
+"
+1847	"     FETCH endproduction INTO eprod;
+"
+1848	"     CLOSE endproduction;
+"
+1849	"     OPEN startoverage( eachtwo.pcf_id );
+"
+1850	"     FETCH startoverage INTO sover;
+"
+1851	"     CLOSE startoverage;
+"
+1852	"     OPEN endoverage( eachtwo.pcf_id );
+"
+1853	"     FETCH endoverage INTO eover;
+"
+1854	"     CLOSE endoverage;
+"
+1855	"     OPEN pdbilled( eachtwo.pcf_id );
+"
+1856	"     FETCH pdbilled INTO billed;
+"
+1857	"     CLOSE pdbilled;
+"
+1858	"
+"
+1859	"     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+"
+1860	"     --calcunits := ( calcunits - nvl(billed,0) );
+"
+1861	"     calccost := calcunits * eachtwo.unit_price;
+"
+1862	"
+"
+1863	"     tinum := 'P'||TO_CHAR(tvalue);
+"
+1864	"
+"
+1865	"     IF NVL(calccost,0) < 0 THEN
+"
+1866	"        isnegative := 'Y';
+"
+1867	"     ELSE
+"
+1868	"        isnegative := 'N';
+"
+1869	"     END IF;
+"
+1870	"--
+"
+1871	"--  4-13 determine correct lot date if previous period lots
+"
+1872	"     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+"
+1873	"        adjusteddate := eachtwo.ldate;
+"
+1874	"        adjustedeow  := eachtwo.eow;
+"
+1875	"        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+"
+1876	"        transtype := 'CURRENT';
+"
+1877	"     ELSE
+"
+1878	"        adjusteddate := begindate + (enddate - begindate)/2;
+"
+1879	"        adjustedeow := TRUNC(adjusteddate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjusteddate),'d'))));
+"
+1880	"        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Previous period production.';
+"
+1950	"     SELECT /*+ ORDERED USE_NL( L,P,V,PC,PR,PA,T ) */ l.lot_id,
+"
+1951	"          l.lot_date,
+"
+1952	"          TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))) end_of_week,
+"
+1953	"          segment1 project_num,
+"
+1954	"          t.task_number,
+"
+1955	"          v.expenditure_type,
+"
+1956	"          SUM(p.quantity_produced*pr.area_per_piece) qty,
+"
+1957	"          v.unit_price,
+"
+1958	"          v.pcf_id
+"
+1959	"  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+"
+1960	"        reco_production p, reco_production_requirements pr,
+"
+1961	"        pa_projects pa, pa_tasks t
+"
+1962	"  WHERE   l.billed_flag = 'N'
+"
+1963	"  AND     l.lot_date <= enddate
+"
+1964	"  AND     p.lot_id = l.lot_id
+"
+1965	"  AND     v.pcf_id = l.pcf_id
+"
+1966	"  AND     pc.pcf_id = v.pcf_id
+"
+1967	"  AND     pc.revision_number = v.revision_number
+"
+1968	"  AND     pr.pc_id = p.pc_id
+"
+1969	"  and     pr.revision_number = pc.revision_number
+"
+1970	"  AND     v.task_id != 1995
+"
+1971	"  AND     v.vendor_id = lbvendorid
+"
+1972	"  AND     pa.project_id = v.project_id
+"
+1973	"  AND     t.task_id = v.task_id
+"
+1974	"  GROUP BY l.lot_id, l.lot_date,
+"
+1975	"            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+"
+1976	"            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+"
+1977	"
+"
+1978	"CURSOR startproduction( pcfid number ) IS
+"
+1979	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1980	"         FROM  reco_production_v
+"
+1981	"        WHERE lot_date < begindate
+"
+1982	"          AND pcf_id = pcfid;
+"
+1983	"
+"
+1984	"CURSOR endproduction( pcfid number ) IS
+"
+1985	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1986	"         FROM  reco_production_v
+"
+1987	"        WHERE lot_date < enddate
+"
+1988	"          AND pcf_id = pcfid;
+"
+1989	"
+"
+1990	"CURSOR pdbilled( pcfid number ) IS
+"
+1991	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1992	"         FROM reco_production_v
+"
+1993	"        WHERE lot_date BETWEEN begindate AND enddate
+"
+1994	"          AND billed_flag = 'Y'
+"
+1995	"          AND pcf_id = pcfid;
+"
+1996	"
+"
+1997	"-- corrected to give correct overage number
+"
+1998	"CURSOR startoverage( pcfid number ) IS
+"
+1999	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+2000	"                 * AVG(area_per_piece) )
+"
+2001	"       FROM reco_production_v
+"
+2002	"      WHERE pcf_id = pcfid AND lot_date < begindate
+"
+2003	"        AND billed_date < billdate
+"
+2004	"      GROUP BY mark_number
+"
+2005	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+2006	"
+"
+2007	"CURSOR endoverage( pcfid number ) IS
+"
+2008	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+2009	"                 * AVG(area_per_piece) )
+"
+2010	"       FROM reco_production_v
+"
+2011	"      WHERE pcf_id = pcfid AND lot_date < enddate
+"
+2012	"      GROUP BY mark_number
+"
+2013	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+2014	"
+"
+2015	"CURSOR getbilled IS
+"
+2016	"         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+"
+2017	"          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+"
+2018	"          pp.project_id, pv.revision_number
+"
+2019	"         FROM reco_lb_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+"
+2020	"         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+"
+2021	"           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+"
+2022	"         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+"
+2023	"
+"
+2024	"CURSOR getemployee (thepid number) IS
+"
+2025	" SELECT employee_number
+"
+2026	" FROM apps.pa_proj_info_view piv, per_people_f P
+"
+2027	" WHERE person_id = manager_person_id
+"
+2028	" AND project_id = thepid
+"
+2029	" AND P.effective_end_date >= SYSDATE;
+"
+2030	"
+"
+2031	"CURSOR getvendor (pcfid number ) IS
+"
+2032	"    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+"
+2033	"
+"
+2034	"CURSOR gnum IS
+"
+2035	"   SELECT transentry_seq.NEXTVAL FROM dual;
+"
+2036	"
+"
+2037	"enum  per_people_f.employee_number%TYPE;
+"
+2038	"calcunits number;
+"
+2039	"calccost number;
+"
+2040	"debug BOOLEAN := FALSE;
+"
+2041	"tinum varchar2(10);
+"
+2042	"tvalue  number;
+"
+2043	"
+"
+2044	"sprod number;
+"
+2045	"eprod number;
+"
+2046	"sover number;
+"
+2047	"eover number;
+"
+2048	"billed number;
+"
+2049	"junkval number;
+"
+2050	"
+"
+2051	"isnegative  varchar2(1) := 'N';
+"
+2052	"adjusteddate date := NULL;
+"
+2053	"adjustedeow  date := NULL;
+"
+2054	"expcomment   varchar2(240) := NULL;
+"
+2055	"vendor  number;
+"
+2056	"transtype varchar2(30);
+"
+2057	"
+"
+2058	"dfltlbempnum number := get_reco_variable('Default LB Precast Employee');
+"
+2059	"BEGIN
+"
+2060	"
+"
+2061	"  begindate := bdate;
+"
+2062	"  enddate := edate + .999;
+"
+2063	"  howmany := action;
+"
+2064	"  IF howmany < 0 THEN
+"
+2065	"     debug := TRUE;
+"
+2066	"     Dbms_Output.Enable( 200000 );
+"
+2067	"  END IF;
+"
+2068	"  IF begindate IS NULL THEN
+"
+2069	"     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+"
+2070	"  END IF;
+"
+2071	"  howmany := 0;
+"
+2072	"--
+"
+2073	"  FOR eachone IN getproduction LOOP
+"
+2074	"--
+"
+2075	"     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+"
+2076	"     INSERT INTO reco_lb_prod_billing (
+"
+2077	"          lot_id, end_of_week, lot_date, project_num, task_number,
+"
+2078	"          expenditure_type, qty, calccost, pcf_id, unit_price )
+"
+2079	"     VALUES (
+"
+2080	"          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+"
+2081	"          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+"
+2082	"          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+"
+2083	"--
+"
+2084	"     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+"
+2085	"      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+"
+2086	"     IF debug THEN
+"
+2087	"        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+"
+2088	"     END IF;
+"
+2089	"     howmany := howmany + 1;
+"
+2090	"  END LOOP;
+"
+2091	"--
+"
+2092	"  IF action = -2 THEN
+"
+2093	"     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+"
+2094	"  ELSE
+"
+2095	"     COMMIT;
+"
+2096	"  END IF;
+"
+2097	"  FOR eachtwo IN getbilled LOOP
+"
+2098	"-- get enum for each project line
+"
+2099	"     OPEN getemployee( eachtwo.project_id );
+"
+2100	"     FETCH getemployee INTO enum;
+"
+2101	"     CLOSE getemployee;
+"
+2102	"     IF debug THEN
+"
+2103	"        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+"
+2104	"     END IF;
+"
+2105	"     IF enum IS NULL THEN
+"
+2106	"        enum := dfltlbempnum;
+"
+2107	"     END IF;
+"
+2108	"     IF debug THEN
+"
+2109	"        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+"
+2110	"     END IF;
+"
+2111	"--
+"
+2112	"     -- get vendor 8/5
+"
+2113	"     OPEN getvendor( eachtwo.pcf_id );
+"
+2114	"     FETCH getvendor INTO vendor;
+"
+2115	"     CLOSE getvendor;
+"
+2116	"     --
+"
+2117	"     OPEN gnum;
+"
+2118	"     FETCH gnum INTO tvalue;
+"
+2119	"     CLOSE gnum;
+"
+2120	"     OPEN startproduction( eachtwo.pcf_id );
+"
+2121	"     FETCH startproduction INTO sprod;
+"
+2122	"     CLOSE startproduction;
+"
+2123	"     OPEN endproduction( eachtwo.pcf_id );
+"
+2124	"     FETCH endproduction INTO eprod;
+"
+2125	"     CLOSE endproduction;
+"
+2126	"     OPEN startoverage( eachtwo.pcf_id );
+"
+2127	"     FETCH startoverage INTO sover;
+"
+2128	"     CLOSE startoverage;
+"
+2129	"     OPEN endoverage( eachtwo.pcf_id );
+"
+2130	"     FETCH endoverage INTO eover;
+"
+2131	"     CLOSE endoverage;
+"
+2132	"     OPEN pdbilled( eachtwo.pcf_id );
+"
+2133	"     FETCH pdbilled INTO billed;
+"
+2134	"     CLOSE pdbilled;
+"
+2135	"
+"
+2136	"     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+"
+2137	"     --calcunits := ( calcunits - nvl(billed,0) );
+"
+2138	"     calccost := calcunits * eachtwo.unit_price;
+"
+2139	"
+"
+2140	"     tinum := 'P'||TO_CHAR(tvalue);
+"
+2141	"
+"
+2142	"     IF NVL(calccost,0) < 0 THEN
+"
+2143	"        isnegative := 'Y';
+"
+2144	"     ELSE
+"
+2145	"        isnegative := 'N';
+"
+2146	"     END IF;
+"
+2147	"--
+"
+2148	"--  4-13 determine correct lot date if previous period lots
+"
+2149	"     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+"
+2150	"        adjusteddate := eachtwo.ldate;
+"
+2151	"        adjustedeow  := eachtwo.eow;
+"
+2152	"        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+"
+2153	"        transtype := 'CURRENT';
+"
+2154	"     ELSE
+"
+2155	"        adjusteddate := begindate + (enddate - begindate)/2;
+"
+2156	"        adjustedeow := TRUNC(adjusteddate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjusteddate),'d'))));
+"
+2157	"        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Previous period production.';
+"
+2158	"        transtype := 'PREVIOUS';
+"
+2159	"     END IF;
+"
+2160	"
+"
+2230	"          segment1 project_num,
+"
+2231	"          t.task_number,
+"
+2232	"          v.expenditure_type,
+"
+2233	"          SUM(p.quantity_produced*pr.area_per_piece) qty,
+"
+2234	"          v.unit_price,
+"
+2235	"          v.pcf_id
+"
+2236	"  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+"
+2237	"        reco_production p, reco_production_requirements pr,
+"
+2238	"        pa_projects pa, pa_tasks t
+"
+2239	"  WHERE   l.billed_flag = 'N'
+"
+2240	"  AND     l.lot_date <= enddate
+"
+2241	"  AND     p.lot_id = l.lot_id
+"
+2242	"  AND     v.pcf_id = l.pcf_id
+"
+2243	"  AND     pc.pcf_id = v.pcf_id
+"
+2244	"  AND     pc.revision_number = v.revision_number
+"
+2245	"  AND     pr.pc_id = p.pc_id
+"
+2246	"  and     pr.revision_number = pc.revision_number
+"
+2247	"  AND     v.task_id != 1995
+"
+2248	"  AND     v.vendor_id = wmvendorid
+"
+2249	"  AND     pa.project_id = v.project_id
+"
+2250	"  AND     t.task_id = v.task_id
+"
+2251	"  GROUP BY l.lot_id, l.lot_date,
+"
+2252	"            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+"
+2253	"            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+"
+2254	"
+"
+2255	"CURSOR startproduction( pcfid number ) IS
+"
+2256	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+2257	"         FROM  reco_production_v
+"
+2258	"        WHERE lot_date < begindate
+"
+2259	"          AND pcf_id = pcfid;
+"
+2260	"
+"
+2261	"CURSOR endproduction( pcfid number ) IS
+"
+2262	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+2263	"         FROM  reco_production_v
+"
+2264	"        WHERE lot_date < enddate
+"
+2265	"          AND pcf_id = pcfid;
+"
+2266	"
+"
+2267	"CURSOR pdbilled( pcfid number ) IS
+"
+2268	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+2269	"         FROM reco_production_v
+"
+2270	"        WHERE lot_date BETWEEN begindate AND enddate
+"
+2271	"          AND billed_flag = 'Y'
+"
+2272	"          AND pcf_id = pcfid;
+"
+2273	"
+"
+2274	"-- corrected to give correct overage number
+"
+2275	"CURSOR startoverage( pcfid number ) IS
+"
+2276	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+2277	"                 * AVG(area_per_piece) )
+"
+2278	"       FROM reco_production_v
+"
+2279	"      WHERE pcf_id = pcfid AND lot_date < begindate
+"
+2280	"        AND billed_date < billdate
+"
+2281	"      GROUP BY mark_number
+"
+2282	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+2283	"
+"
+2284	"CURSOR endoverage( pcfid number ) IS
+"
+2285	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+2286	"                 * AVG(area_per_piece) )
+"
+2287	"       FROM reco_production_v
+"
+2288	"      WHERE pcf_id = pcfid AND lot_date < enddate
+"
+2289	"      GROUP BY mark_number
+"
+2290	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+2291	"
+"
+2292	"CURSOR getbilled IS
+"
+2293	"         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+"
+2294	"          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+"
+2295	"          pp.project_id, pv.revision_number
+"
+2296	"         FROM reco_wm_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+"
+2297	"         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+"
+2298	"           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+"
+2299	"         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+"
+2300	"
+"
+2301	"CURSOR getemployee (thepid number) IS
+"
+2302	" SELECT employee_number
+"
+2303	" FROM apps.pa_proj_info_view piv, per_people_f P
+"
+2304	" WHERE person_id = manager_person_id
+"
+2305	" AND project_id = thepid
+"
+2306	" AND P.effective_end_date >= SYSDATE;
+"
+2307	"
+"
+2308	"CURSOR getvendor (pcfid number ) IS
+"
+2309	"    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+"
+2310	"
+"
+2311	"CURSOR gnum IS
+"
+2312	"   SELECT transentry_seq.NEXTVAL FROM dual;
+"
+2313	"
+"
+2314	"enum  per_people_f.employee_number%TYPE;
+"
+2315	"calcunits number;
+"
+2316	"calccost number;
+"
+2317	"debug BOOLEAN := FALSE;
+"
+2318	"tinum varchar2(10);
+"
+2319	"tvalue  number;
+"
+2320	"
+"
+2321	"sprod number;
+"
+2322	"eprod number;
+"
+2323	"sover number;
+"
+2324	"eover number;
+"
+2325	"billed number;
+"
+2326	"junkval number;
+"
+2327	"
+"
+2328	"isnegative  varchar2(1) := 'N';
+"
+2329	"adjusteddate date := NULL;
+"
+2330	"adjustedeow  date := NULL;
+"
+2331	"expcomment   varchar2(240) := NULL;
+"
+2332	"vendor  number;
+"
+2333	"transtype varchar2(30);
+"
+2334	"
+"
+2335	"dfltwmempnum number := get_reco_variable('Default WM Precast Employee');
+"
+2336	"BEGIN
+"
+2337	"
+"
+2338	"  begindate := bdate;
+"
+2339	"  enddate := edate + .999;
+"
+2340	"  howmany := action;
+"
+2341	"  IF howmany < 0 THEN
+"
+2342	"     debug := TRUE;
+"
+2343	"     Dbms_Output.Enable( 200000 );
+"
+2344	"  END IF;
+"
+2345	"  IF begindate IS NULL THEN
+"
+2346	"     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+"
+2347	"  END IF;
+"
+2348	"  howmany := 0;
+"
+2349	"--
+"
+2350	"  FOR eachone IN getproduction LOOP
+"
+2351	"--
+"
+2352	"     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+"
+2353	"     INSERT INTO reco_wm_prod_billing (
+"
+2354	"          lot_id, end_of_week, lot_date, project_num, task_number,
+"
+2355	"          expenditure_type, qty, calccost, pcf_id, unit_price )
+"
+2356	"     VALUES (
+"
+2357	"          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+"
+2358	"          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+"
+2359	"          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+"
+2360	"--
+"
+2361	"     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+"
+2362	"      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+"
+2363	"     IF debug THEN
+"
+2364	"        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+"
+2365	"     END IF;
+"
+2366	"     howmany := howmany + 1;
+"
+2367	"  END LOOP;
+"
+2368	"--
+"
+2369	"  IF action = -2 THEN
+"
+2370	"     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+"
+2371	"  ELSE
+"
+2372	"     COMMIT;
+"
+2373	"  END IF;
+"
+2374	"  FOR eachtwo IN getbilled LOOP
+"
+2375	"-- get enum for each project line
+"
+2376	"     OPEN getemployee( eachtwo.project_id );
+"
+2377	"     FETCH getemployee INTO enum;
+"
+2378	"     CLOSE getemployee;
+"
+2379	"     IF debug THEN
+"
+2380	"        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+"
+2381	"     END IF;
+"
+2382	"     IF enum IS NULL THEN
+"
+2383	"        enum := dfltwmempnum;
+"
+2384	"     END IF;
+"
+2385	"     IF debug THEN
+"
+2386	"        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+"
+2387	"     END IF;
+"
+2388	"--
+"
+2389	"     -- get vendor 8/5
+"
+2390	"     OPEN getvendor( eachtwo.pcf_id );
+"
+2391	"     FETCH getvendor INTO vendor;
+"
+2392	"     CLOSE getvendor;
+"
+2393	"     --
+"
+2394	"     OPEN gnum;
+"
+2395	"     FETCH gnum INTO tvalue;
+"
+2396	"     CLOSE gnum;
+"
+2397	"     OPEN startproduction( eachtwo.pcf_id );
+"
+2398	"     FETCH startproduction INTO sprod;
+"
+2399	"     CLOSE startproduction;
+"
+2400	"     OPEN endproduction( eachtwo.pcf_id );
+"
+2401	"     FETCH endproduction INTO eprod;
+"
+2402	"     CLOSE endproduction;
+"
+2403	"     OPEN startoverage( eachtwo.pcf_id );
+"
+2404	"     FETCH startoverage INTO sover;
+"
+2405	"     CLOSE startoverage;
+"
+2406	"     OPEN endoverage( eachtwo.pcf_id );
+"
+2407	"     FETCH endoverage INTO eover;
+"
+2408	"     CLOSE endoverage;
+"
+2409	"     OPEN pdbilled( eachtwo.pcf_id );
+"
+2410	"     FETCH pdbilled INTO billed;
+"
+2411	"     CLOSE pdbilled;
+"
+2412	"
+"
+2413	"     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+"
+2414	"     --calcunits := ( calcunits - nvl(billed,0) );
+"
+2415	"     calccost := calcunits * eachtwo.unit_price;
+"
+2416	"
+"
+2417	"     tinum := 'P'||TO_CHAR(tvalue);
+"
+2418	"
+"
+2419	"     IF NVL(calccost,0) < 0 THEN
+"
+2420	"        isnegative := 'Y';
+"
+2421	"     ELSE
+"
+2422	"        isnegative := 'N';
+"
+2423	"     END IF;
+"
+2424	"--
+"
+2425	"--  4-13 determine correct lot date if previous period lots
+"
+2426	"     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+"
+2427	"        adjusteddate := eachtwo.ldate;
+"
+2428	"        adjustedeow  := eachtwo.eow;
+"
+2429	"        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+"
+2430	"        transtype := 'CURRENT';
+"
+
+
+SELECT
+    line,
+    text
+FROM all_source
+WHERE owner = 'RECO'
+  AND name = 'RECO_BILL_PRODUCTION'
+  AND type = 'PACKAGE BODY'
+  AND (
+       UPPER(text) LIKE '%FLORIDA%'
+       OR UPPER(text) LIKE '%RECO FLORIDA%'
+      )
+ORDER BY line;
+
+59	"FUNCTION florida_date_billed( indate IN date ) RETURN BOOLEAN IS
+"
+62	"  SELECT * FROM reco_florida_pcf_billing
+"
+66	"  floridabilling := clearflorida;
+"
+68	"  FETCH lookupdate INTO floridabilling;
+"
+71	"  IF floridabilling.billed_date IS NOT NULL THEN
+"
+162	"  bill_florida( vv, retcode, lastrun );
+"
+336	"PROCEDURE  bill_florida( errbuf OUT varchar2,
+"
+340	"-- This procedure bills standard florida precaster entries only
+"
+353	"     IF florida_date_billed( billing_date ) THEN
+"
+354	"           errbuf := 'FLORIDA Date billed';
+"
+359	"  floridabilling.billed_date := billing_date;
+"
+360	"  floridabilling.bill_range_low := billing_date;
+"
+361	"  floridabilling.bill_range_high := billing_date;
+"
+362	"  floridabilling.last_UPDATE_date := SYSDATE;
+"
+363	"  floridabilling.creation_date := SYSDATE;
+"
+364	"  floridabilling.last_updated_by := apps.fnd_global.user_ID;
+"
+365	"  floridabilling.created_by := apps.fnd_global.user_id;
+"
+366	"  floridabilling.last_update_login := apps.fnd_global.session_id;
+"
+368	"  INSERT INTO reco_florida_pcf_billing VALUES  floridabilling ;
+"
+370	"  reco_bill_production.reco_florida_pass_production( billing_date, billing_date, 0, billing_date );
+"
+372	"  reco_bill_production.reco_florida_ship_billing( billing_date, billing_date, 0 );
+"
+568	"  AND     v.vendor_id not in ( wacovendorid, georgiavendorid, floridavendorid, cavendorid, lbvendorid, wmvendorid )
+"
+1372	"PROCEDURE RECO_florida_PASS_PRODUCTION ( bdate IN date,
+"
+1417	"  AND     v.vendor_id = floridavendorid
+"
+1465	"         FROM reco_florida_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+"
+1504	"dfltfloridaempnum number := get_reco_variable('Default FLORIDA Precast Employee');
+"
+1522	"     INSERT INTO reco_florida_prod_billing (
+"
+1552	"        enum := dfltfloridaempnum;
+"
+1616	"              --'florida PRODUCTION'
+"
+1617	"              'RECO FLORIDA Prod',tinum, adjustedeow, adjusteddate,
+"
+1631	"     UPDATE reco_florida_prod_billing
+"
+1637	"     SELECT tnum, lot_id FROM reco_florida_prod_billing
+"
+2513	"         AND v.vendor_id not in ( wacovendorid, georgiavendorid, floridavendorid, cavendorid, lbvendorid, wmvendorid )
+"
+2956	"PROCEDURE RECO_florida_SHIP_BILLING (    bdate IN date,
+"
+2987	"         AND v.vendor_id = floridavendorid
+"
+3008	"dfltfloridaempnum number := get_reco_variable('Default FLORIDA Precast Employee');
+"
+3034	"        enum := dfltfloridaempnum;
+"
+3062	"-- Ensure florida passes dollars, like WACO
+"
+3072	"          'RECO FLORIDA Prod Shipping', eachone.interfacenum, adjeow,
+"
+3087	"          'RECO FLORIDA Prod Shipping', eachone.interfacenum||'a', adjeow,
+"
+3626	"cursor getfloridabilled is
+"
+3628	"from reco_florida_prod_billing b, pa_expenditure_items_all p
+"
+3643	"floridacnt number :=0;
+"
+3677	"  for eachflorida in getfloridabilled loop
+"
+3681	"                         where tnum = eachflorida.tnum );
+"
+3682	"      floridacnt := floridacnt + SQL%ROWCOUNT;
+"
+3683	"      delete from reco_florida_prod_billing where tnum = eachflorida.tnum;
+"
+3705	"    ', florida:'||to_char(floridacnt)||', ca:'||to_char(cacnt)||', lb:'||to_char(lbcnt)||', Other:'||to_char(othercnt) );
+"
+3730	"  floridavendor := get_reco_variable('FLORIDA PLANT VENDOR ID');
+"
+3731	"  OPEN determinewaco( floridavendor );
+"
+3732	"  FETCH determinewaco INTO floridavendorid;
+"
+
+
+SELECT
+    line,
+    text
+FROM all_source
+WHERE owner = 'RECO'
+  AND name = 'RECO_BILL_PRODUCTION'
+  AND type = 'PACKAGE BODY'
+  AND (
+       REGEXP_LIKE(UPPER(text), '^[[:space:]]*(PROCEDURE|FUNCTION)')
+      )
+ORDER BY line;
+
+5	"FUNCTION date_billed( indate IN date ) RETURN BOOLEAN IS
+"
+23	"FUNCTION waco_date_billed( indate IN date ) RETURN BOOLEAN IS
+"
+41	"FUNCTION georgia_date_billed( indate IN date ) RETURN BOOLEAN IS
+"
+59	"FUNCTION florida_date_billed( indate IN date ) RETURN BOOLEAN IS
+"
+77	"FUNCTION ca_date_billed( indate IN date ) RETURN BOOLEAN IS
+"
+95	"FUNCTION lb_date_billed( indate IN date ) RETURN BOOLEAN IS
+"
+113	"FUNCTION wm_date_billed( indate IN date ) RETURN BOOLEAN IS
+"
+132	"PROCEDURE  bill_all( errbuf OUT varchar2,
+"
+187	"PROCEDURE  bill_precast( errbuf OUT varchar2,
+"
+244	"PROCEDURE  bill_waco( errbuf OUT varchar2,
+"
+290	"PROCEDURE  bill_georgia( errbuf OUT varchar2,
+"
+336	"PROCEDURE  bill_florida( errbuf OUT varchar2,
+"
+382	"PROCEDURE  bill_ca( errbuf OUT varchar2,
+"
+428	"PROCEDURE  bill_lb( errbuf OUT varchar2,
+"
+474	"PROCEDURE  bill_wm( errbuf OUT varchar2,
+"
+522	"PROCEDURE RECO_PASS_PRODUCTION ( bdate IN date,
+"
+802	"PROCEDURE RECO_WACO_PASS_PRODUCTION ( bdate IN date,
+"
+1095	"PROCEDURE RECO_georgia_PASS_PRODUCTION ( bdate IN date,
+"
+1372	"PROCEDURE RECO_florida_PASS_PRODUCTION ( bdate IN date,
+"
+1649	"PROCEDURE RECO_ca_PASS_PRODUCTION ( bdate IN date,
+"
+1926	"PROCEDURE RECO_lb_PASS_PRODUCTION ( bdate IN date,
+"
+2203	"PROCEDURE RECO_wm_PASS_PRODUCTION ( bdate IN date,
+"
+2482	"PROCEDURE RECO_SHIP_BILLING (    bdate IN date,
+"
+2629	"PROCEDURE RECO_WACO_SHIP_BILLING (    bdate IN date,
+"
+2794	"PROCEDURE RECO_georgia_SHIP_BILLING (    bdate IN date,
+"
+2956	"PROCEDURE RECO_florida_SHIP_BILLING (    bdate IN date,
+"
+3118	"PROCEDURE RECO_ca_SHIP_BILLING (    bdate IN date,
+"
+3280	"PROCEDURE RECO_lb_SHIP_BILLING (    bdate IN date,
+"
+3442	"PROCEDURE RECO_wm_SHIP_BILLING (    bdate IN date,
+"
+3605	"procedure mark_lots_billed( errbuf out varchar2,
+"
+
+
+SELECT
+    line,
+    text
+FROM all_source
+WHERE owner = 'RECO'
+  AND name = 'RECO_BILL_PRODUCTION'
+  AND type = 'PACKAGE BODY'
+  AND line BETWEEN 1400 AND 1610
+ORDER BY line;
+
+
+1400	"          t.task_number,
+"
+1401	"          v.expenditure_type,
+"
+1402	"          SUM(p.quantity_produced*pr.area_per_piece) qty,
+"
+1403	"          v.unit_price,
+"
+1404	"          v.pcf_id
+"
+1405	"  FROM  reco_lot_numbers l, reco_pcf v, reco_pcf_current pc,
+"
+1406	"        reco_production p, reco_production_requirements pr,
+"
+1407	"        pa_projects pa, pa_tasks t
+"
+1408	"  WHERE   l.billed_flag = 'N'
+"
+1409	"  AND     l.lot_date <= enddate
+"
+1410	"  AND     p.lot_id = l.lot_id
+"
+1411	"  AND     v.pcf_id = l.pcf_id
+"
+1412	"  AND     pc.pcf_id = v.pcf_id
+"
+1413	"  AND     pc.revision_number = v.revision_number
+"
+1414	"  AND     pr.pc_id = p.pc_id
+"
+1415	"  and     pr.revision_number = pc.revision_number
+"
+1416	"  AND     v.task_id != 1995
+"
+1417	"  AND     v.vendor_id = floridavendorid
+"
+1418	"  AND     pa.project_id = v.project_id
+"
+1419	"  AND     t.task_id = v.task_id
+"
+1420	"  GROUP BY l.lot_id, l.lot_date,
+"
+1421	"            TRUNC(l.lot_date+(8-TO_NUMBER(TO_CHAR(TRUNC(l.lot_date),'d')))),
+"
+1422	"            segment1, t.task_number, v.expenditure_type, v.unit_price, v.pcf_id;
+"
+1423	"
+"
+1424	"CURSOR startproduction( pcfid number ) IS
+"
+1425	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1426	"         FROM  reco_production_v
+"
+1427	"        WHERE lot_date < begindate
+"
+1428	"          AND pcf_id = pcfid;
+"
+1429	"
+"
+1430	"CURSOR endproduction( pcfid number ) IS
+"
+1431	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1432	"         FROM  reco_production_v
+"
+1433	"        WHERE lot_date < enddate
+"
+1434	"          AND pcf_id = pcfid;
+"
+1435	"
+"
+1436	"CURSOR pdbilled( pcfid number ) IS
+"
+1437	"       SELECT SUM(quantity_produced*area_per_piece)
+"
+1438	"         FROM reco_production_v
+"
+1439	"        WHERE lot_date BETWEEN begindate AND enddate
+"
+1440	"          AND billed_flag = 'Y'
+"
+1441	"          AND pcf_id = pcfid;
+"
+1442	"
+"
+1443	"-- corrected to give correct overage number
+"
+1444	"CURSOR startoverage( pcfid number ) IS
+"
+1445	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+1446	"                 * AVG(area_per_piece) )
+"
+1447	"       FROM reco_production_v
+"
+1448	"      WHERE pcf_id = pcfid AND lot_date < begindate
+"
+1449	"        AND billed_date < billdate
+"
+1450	"      GROUP BY mark_number
+"
+1451	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+1452	"
+"
+1453	"CURSOR endoverage( pcfid number ) IS
+"
+1454	"     SELECT SUM (( SUM(quantity_produced) - AVG(quantity_required) )
+"
+1455	"                 * AVG(area_per_piece) )
+"
+1456	"       FROM reco_production_v
+"
+1457	"      WHERE pcf_id = pcfid AND lot_date < enddate
+"
+1458	"      GROUP BY mark_number
+"
+1459	"     HAVING AVG(quantity_required)-SUM(quantity_produced) < 0;
+"
+1460	"
+"
+1461	"CURSOR getbilled IS
+"
+1462	"         SELECT MAX(end_of_week) eow, MAX(P.lot_date) ldate, SUM(qty) qty,
+"
+1463	"          P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price,
+"
+1464	"          pp.project_id, pv.revision_number
+"
+1465	"         FROM reco_florida_prod_billing P, reco_lot_numbers l, pa_projects pp, reco_pcf_v pv
+"
+1466	"         WHERE l.billed_date = billdate AND l.lot_id = P.lot_id
+"
+1467	"           AND pp.segment1 = P.project_num AND pv.pcf_id = P.pcf_id
+"
+1468	"         GROUP BY P.project_num, P.task_number, P.expenditure_type, P.pcf_id, P.unit_price, pp.project_id, pv.revision_number;
+"
+1469	"
+"
+1470	"CURSOR getemployee (thepid number) IS
+"
+1471	" SELECT employee_number
+"
+1472	" FROM apps.pa_proj_info_view piv, per_people_f P
+"
+1473	" WHERE person_id = manager_person_id
+"
+1474	" AND project_id = thepid
+"
+1475	" AND P.effective_end_date >= SYSDATE;
+"
+1476	"
+"
+1477	"CURSOR getvendor (pcfid number ) IS
+"
+1478	"    SELECT vendor_id FROM reco_pcf_v WHERE pcf_id = pcfid;
+"
+1479	"
+"
+1480	"CURSOR gnum IS
+"
+1481	"   SELECT transentry_seq.NEXTVAL FROM dual;
+"
+1482	"
+"
+1483	"enum  per_people_f.employee_number%TYPE;
+"
+1484	"calcunits number;
+"
+1485	"calccost number;
+"
+1486	"debug BOOLEAN := FALSE;
+"
+1487	"tinum varchar2(10);
+"
+1488	"tvalue  number;
+"
+1489	"
+"
+1490	"sprod number;
+"
+1491	"eprod number;
+"
+1492	"sover number;
+"
+1493	"eover number;
+"
+1494	"billed number;
+"
+1495	"junkval number;
+"
+1496	"
+"
+1497	"isnegative  varchar2(1) := 'N';
+"
+1498	"adjusteddate date := NULL;
+"
+1499	"adjustedeow  date := NULL;
+"
+1500	"expcomment   varchar2(240) := NULL;
+"
+1501	"vendor  number;
+"
+1502	"transtype varchar2(30);
+"
+1503	"
+"
+1504	"dfltfloridaempnum number := get_reco_variable('Default FLORIDA Precast Employee');
+"
+1505	"BEGIN
+"
+1506	"
+"
+1507	"  begindate := bdate;
+"
+1508	"  enddate := edate + .999;
+"
+1509	"  howmany := action;
+"
+1510	"  IF howmany < 0 THEN
+"
+1511	"     debug := TRUE;
+"
+1512	"     Dbms_Output.Enable( 200000 );
+"
+1513	"  END IF;
+"
+1514	"  IF begindate IS NULL THEN
+"
+1515	"     begindate := TO_DATE('01-01-1901','dd-mm-yyyy');
+"
+1516	"  END IF;
+"
+1517	"  howmany := 0;
+"
+1518	"--
+"
+1519	"  FOR eachone IN getproduction LOOP
+"
+1520	"--
+"
+1521	"     calccost := ROUND(eachone.qty * eachone.unit_price, 2);
+"
+1522	"     INSERT INTO reco_florida_prod_billing (
+"
+1523	"          lot_id, end_of_week, lot_date, project_num, task_number,
+"
+1524	"          expenditure_type, qty, calccost, pcf_id, unit_price )
+"
+1525	"     VALUES (
+"
+1526	"          eachone.lot_id, eachone.end_of_week, eachone.lot_date,
+"
+1527	"          eachone.project_num, eachone.task_number, eachone.expenditure_type,
+"
+1528	"          eachone.qty, calccost, eachone.pcf_id, eachone.unit_price );
+"
+1529	"--
+"
+1530	"     UPDATE reco_lot_numbers set billed_flag = 'X', billed_date = billdate
+"
+1531	"      WHERE lot_id = eachone.lot_id AND billed_flag != 'X';
+"
+1532	"     IF debug THEN
+"
+1533	"        Dbms_Output.Put_Line( 'Lot:'||TO_CHAR(eachone.lot_id) );
+"
+1534	"     END IF;
+"
+1535	"     howmany := howmany + 1;
+"
+1536	"  END LOOP;
+"
+1537	"--
+"
+1538	"  IF action = -2 THEN
+"
+1539	"     Dbms_Output.Put_Line( 'Manual Commit used, check output first.'  );
+"
+1540	"  ELSE
+"
+1541	"     COMMIT;
+"
+1542	"  END IF;
+"
+1543	"  FOR eachtwo IN getbilled LOOP
+"
+1544	"-- get enum for each project line
+"
+1545	"     OPEN getemployee( eachtwo.project_id );
+"
+1546	"     FETCH getemployee INTO enum;
+"
+1547	"     CLOSE getemployee;
+"
+1548	"     IF debug THEN
+"
+1549	"        Dbms_Output.Put_Line( 'Found Enum was:"'||enum||'"' );
+"
+1550	"     END IF;
+"
+1551	"     IF enum IS NULL THEN
+"
+1552	"        enum := dfltfloridaempnum;
+"
+1553	"     END IF;
+"
+1554	"     IF debug THEN
+"
+1555	"        Dbms_Output.Put_Line( 'Used Enum was:"'||enum||'"' );
+"
+1556	"     END IF;
+"
+1557	"--
+"
+1558	"     -- get vendor 8/5
+"
+1559	"     OPEN getvendor( eachtwo.pcf_id );
+"
+1560	"     FETCH getvendor INTO vendor;
+"
+1561	"     CLOSE getvendor;
+"
+1562	"     --
+"
+1563	"     OPEN gnum;
+"
+1564	"     FETCH gnum INTO tvalue;
+"
+1565	"     CLOSE gnum;
+"
+1566	"     OPEN startproduction( eachtwo.pcf_id );
+"
+1567	"     FETCH startproduction INTO sprod;
+"
+1568	"     CLOSE startproduction;
+"
+1569	"     OPEN endproduction( eachtwo.pcf_id );
+"
+1570	"     FETCH endproduction INTO eprod;
+"
+1571	"     CLOSE endproduction;
+"
+1572	"     OPEN startoverage( eachtwo.pcf_id );
+"
+1573	"     FETCH startoverage INTO sover;
+"
+1574	"     CLOSE startoverage;
+"
+1575	"     OPEN endoverage( eachtwo.pcf_id );
+"
+1576	"     FETCH endoverage INTO eover;
+"
+1577	"     CLOSE endoverage;
+"
+1578	"     OPEN pdbilled( eachtwo.pcf_id );
+"
+1579	"     FETCH pdbilled INTO billed;
+"
+1580	"     CLOSE pdbilled;
+"
+1581	"
+"
+1582	"     calcunits := (eachtwo.qty) - (NVL(eover,0) - NVL(sover,0));
+"
+1583	"     --calcunits := ( calcunits - nvl(billed,0) );
+"
+1584	"     calccost := calcunits * eachtwo.unit_price;
+"
+1585	"
+"
+1586	"     tinum := 'P'||TO_CHAR(tvalue);
+"
+1587	"
+"
+1588	"     IF NVL(calccost,0) < 0 THEN
+"
+1589	"        isnegative := 'Y';
+"
+1590	"     ELSE
+"
+1591	"        isnegative := 'N';
+"
+1592	"     END IF;
+"
+1593	"--
+"
+1594	"--  4-13 determine correct lot date if previous period lots
+"
+1595	"     IF eachtwo.ldate BETWEEN begindate AND enddate THEN
+"
+1596	"        adjusteddate := eachtwo.ldate;
+"
+1597	"        adjustedeow  := eachtwo.eow;
+"
+1598	"        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Production';
+"
+1599	"        transtype := 'CURRENT';
+"
+1600	"     ELSE
+"
+1601	"        adjusteddate := begindate + (enddate - begindate)/2;
+"
+1602	"        adjustedeow := TRUNC(adjusteddate+(8-TO_NUMBER(TO_CHAR(TRUNC(adjusteddate),'d'))));
+"
+1603	"        expcomment := TO_CHAR(vendor)||','||TO_CHAR(eachtwo.pcf_id)||', Previous period production.';
+"
+1604	"        transtype := 'PREVIOUS';
+"
+1605	"     END IF;
+"
+1606	"
+"
+1607	"     IF NVL(calccost,0) <> 0 THEN
+"
+1608	"         INSERT INTO apps.pa_transaction_interface_all (
+"
+1609	"              transaction_source, batch_name, expenditure_ending_date,
+"
+1610	"              expenditure_item_date, project_number, task_number,
+"
+
+
+SELECT
+    mark_number,
+    SUM(quantity_produced) AS produced_qty,
+    AVG(quantity_required) AS required_qty,
+    AVG(area_per_piece) AS area_per_piece,
+    ROUND(
+        (SUM(quantity_produced) - AVG(quantity_required))
+        * AVG(area_per_piece),
+        2
+    ) AS oracle_overage
+FROM reco_production_v
+WHERE pcf_id = 191252
+  AND mark_number = 4
+GROUP BY mark_number;
+
+4	1	0	24.2	24.2
+
+
+SELECT
+    t.mark_number,
+    SUM(NVL(t.qty_standard,0))  AS standard_qty,
+    SUM(NVL(t.qty_paid_over,0)) AS paid_over_qty,
+    SUM(NVL(t.qty_overage,0))   AS unpaid_over_qty,
+    MAX(p.area_per_piece)       AS area_per_piece,
+    ROUND(
+        SUM(NVL(t.qty_paid_over,0))
+        * MAX(p.area_per_piece),
+        2
+    ) AS paid_over_area
+FROM prec_trans_header@recowebprod h
+JOIN prec_transactions@recowebprod t
+  ON t.header_id = h.header_id
+LEFT JOIN prec_pcf_panels@recowebprod p
+  ON p.pcf_id = t.pcf_id
+ AND p.mark_number = t.mark_number
+WHERE h.primary_pcf_id = 191252
+  AND t.mark_number = 4
+GROUP BY t.mark_number;
+
+4	0	1	0	24.2	24.2
+
+SELECT
+    'PRECAST WEB' source,
+    4 mark_number,
+    0 standard_qty,
+    1 paid_over_qty,
+    0 unpaid_over_qty,
+    24.20 area
+FROM dual
+
+UNION ALL
+
+SELECT
+    'ORACLE CURRENT',
+    r.mark_number,
+    SUM(p.quantity_produced),
+    NULL,
+    SUM(p.quantity_produced) - MAX(r.quantity_required),
+    ROUND(
+        (SUM(p.quantity_produced) - MAX(r.quantity_required))
+        * MAX(r.area_per_piece),
+        2
+    )
+FROM reco_production p
+JOIN reco_production_requirements r
+  ON r.pc_id = p.pc_id
+WHERE r.pcf_id = 191252
+  AND r.revision_number = 5
+  AND r.mark_number = 4
+GROUP BY r.mark_number;
+
+PRECAST WEB	4	0	1	0	24.2
+ORACLE CURRENT	4	1		1	24.2
+
+
+SELECT
+    p.pcf_id,
+    p.revision_number,
+    p.project_id,
+    pa.segment1 AS project_number,
+    p.task_id,
+    t.task_number,
+    p.expenditure_type,
+    p.vendor_id,
+    p.unit_price
+FROM reco_pcf p
+JOIN pa_projects_all pa
+  ON pa.project_id = p.project_id
+JOIN pa_tasks t
+  ON t.task_id = p.task_id
+WHERE p.pcf_id = 191252
+  AND p.revision_number =
+      (
+          SELECT revision_number
+          FROM reco_pcf_current
+          WHERE pcf_id = 191252
+      );
+      
+191252	5	1790598	22553	14405604	015.01.01.16	PRECAST PANELS  - SF	1141832	10.21
+
+
+SELECT ROUND(24.20 * 10.21, 2) raw_cost
+FROM dual;
+
+247.08
