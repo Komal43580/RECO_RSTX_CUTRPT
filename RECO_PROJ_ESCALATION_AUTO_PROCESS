@@ -1,4 +1,4 @@
-create or replace PACKAGE BODY      RECO_PROJ_ESCALATION_AUTO_PROCESS AS
+create or replace PACKAGE BODY           RECO_PROJ_ESCALATION_AUTO_PROCESS AS
 /*  $Header: RECO_PROJ_ESCALATION_AUTO_PROCESS 1.0 12-JUNE-2026 RECO Project Escalation Automation Process, Rafi Syed $
 REM ====================================================================================================================+
 REM |        GEOQUEST USA Inc.,                                                                                         |
@@ -15,8 +15,17 @@ REM ============================================================================
 REM  Date                    Author                                   Activity
 REM =====================================================================================================================
 REM  Jun-12-2026            Rafi Syed                               Version 1.0
+REM  Aug-08-2026            Komal Mishra                            Version 2.0
 REM =====================================================================================================================
 */ 
+
+-------------------------------------------------------------------------------
+--Version 2.0
+-- Holds the latest detailed Oracle Projects API error message.
+-- Used so PROCESS_TASKS can store the real API failure reason in ERROR_MESSAGE. 
+-------------------------------------------------------------------------------
+G_LAST_API_ERROR VARCHAR2(4000);
+
 --Common Logging
 PROCEDURE LOG_MSG(P_MSG VARCHAR2) IS   
 
@@ -25,6 +34,7 @@ BEGIN
 	FND_FILE.PUT_LINE(FND_FILE.LOG,P_MSG);
 END LOG_MSG;
 
+/*
 PROCEDURE LOG_API_MESSAGES(P_MSG_COUNT NUMBER,P_MSG_DATA VARCHAR2)IS
 
 L_DATA VARCHAR2(4000);
@@ -47,6 +57,59 @@ BEGIN
 		LOG_MSG('API MESSAGE '||I||' : '||L_DATA);
 	END LOOP;
 END LOG_API_MESSAGES;
+*/
+--Version 2.0
+PROCEDURE LOG_API_MESSAGES
+(
+    P_MSG_COUNT NUMBER,
+    P_MSG_DATA  VARCHAR2
+)
+IS
+    L_DATA      VARCHAR2(4000);
+    L_INDEX_OUT NUMBER;
+BEGIN
+    G_LAST_API_ERROR := NULL;
+
+    LOG_MSG('API MESSAGE COUNT : ' || NVL(P_MSG_COUNT, 0));
+    LOG_MSG('API MESSAGE DATA : ' || P_MSG_DATA);
+
+    FOR I IN 1 .. NVL(P_MSG_COUNT, 0)
+    LOOP
+        L_DATA := NULL;
+
+        APPS.PA_INTERFACE_UTILS_PUB.GET_MESSAGES
+        (
+            P_MSG_DATA      => P_MSG_DATA,
+            P_ENCODED       => 'F',
+            P_DATA          => L_DATA,
+            P_MSG_COUNT     => P_MSG_COUNT,
+            P_MSG_INDEX     => I,
+            P_MSG_INDEX_OUT => L_INDEX_OUT
+        );
+
+        LOG_MSG('API MESSAGE ' || I || ' : ' || L_DATA);
+
+        IF L_DATA IS NOT NULL THEN
+            IF G_LAST_API_ERROR IS NULL THEN
+                G_LAST_API_ERROR := L_DATA;
+            ELSE
+                G_LAST_API_ERROR :=
+                    SUBSTR(
+                        G_LAST_API_ERROR || ' | ' || L_DATA,
+                        1,
+                        4000
+                    );
+            END IF;
+        END IF;
+    END LOOP;
+
+    IF G_LAST_API_ERROR IS NULL
+       AND P_MSG_DATA IS NOT NULL
+    THEN
+        G_LAST_API_ERROR := SUBSTR(P_MSG_DATA, 1, 4000);
+    END IF;
+
+END LOG_API_MESSAGES;
 
 PROCEDURE ADD_ERROR(P_MSG VARCHAR2)IS 
 
@@ -62,6 +125,7 @@ BEGIN
 	G_ERRORS.DELETE;
 	G_ERROR_COUNT := 0;
 	G_PROJECT_ERROR := FALSE;
+    G_LAST_API_ERROR := NULL; --Version 2.0
 END CLEAR_ERRORS;
 
 FUNCTION GET_ERROR_TEXT RETURN VARCHAR2 IS 
@@ -101,10 +165,25 @@ BEGIN
 	LOG_MSG('INSERT_PROCESS_LOG -> '||'PROJECT_ID='||P_PROJECT_ID||', TASK='||P_TASK_NUMBER||', STAGE='||P_STAGE||', STATUS='||P_STATUS);
 	INSERT INTO RECO_ESC_PROCESS_LOG
 	(LOG_ID,PROJECT_ID,TASK_NUMBER,PROCESS_STAGE,PROCESS_STATUS,ERROR_MESSAGE,CREATION_DATE) VALUES
-	(RECO_ESC_PROCESS_LOG_S.NEXTVAL,P_PROJECT_ID,P_TASK_NUMBER,P_STAGE,P_STATUS,P_ERROR_MESSAGE,SYSDATE);  
+	--(RECO_ESC_PROCESS_LOG_S.NEXTVAL,P_PROJECT_ID,P_TASK_NUMBER,P_STAGE,P_STATUS,P_ERROR_MESSAGE,SYSDATE);  
+    (RECO_ESC_PROCESS_LOG_S.NEXTVAL,P_PROJECT_ID,P_TASK_NUMBER,P_STAGE,P_STATUS,SUBSTR(P_ERROR_MESSAGE,1,4000),SYSDATE); --Version 2.0
 	COMMIT;
-EXCEPTION WHEN DUP_VAL_ON_INDEX THEN 
-	NULL;
+/*EXCEPTION WHEN DUP_VAL_ON_INDEX THEN 
+	NULL;*/ 
+    --Version 2.0
+    EXCEPTION
+    WHEN DUP_VAL_ON_INDEX THEN
+
+        UPDATE RECO_ESC_PROCESS_LOG
+           --SET ERROR_MESSAGE = P_ERROR_MESSAGE,
+           SET ERROR_MESSAGE = SUBSTR(P_ERROR_MESSAGE,1,4000), --Version 2.0
+               CREATION_DATE = SYSDATE
+         WHERE PROJECT_ID = P_PROJECT_ID
+           AND NVL(TASK_NUMBER,'#') = NVL(P_TASK_NUMBER,'#')
+           AND PROCESS_STAGE = P_STAGE
+           AND PROCESS_STATUS = P_STATUS;
+
+        COMMIT;
 	
 	WHEN OTHERS THEN  
 	ROLLBACK;
@@ -163,6 +242,7 @@ L_PROJECT_ID_OUT NUMBER;
 L_PROJECT_NUM_OUT VARCHAR2(30);
 L_TASK_ID NUMBER;
 BEGIN
+ G_LAST_API_ERROR := NULL; --Version 2.0
 	APPS.PA_PROJECT_PUB.ADD_TASK
 								(
 								p_api_version_number => L_API_VERSION_NUMBER,
@@ -189,7 +269,8 @@ BEGIN
 								);
 	IF L_RETURN_STATUS <> 'S' THEN
 		LOG_API_MESSAGES(L_MSG_COUNT,L_MSG_DATA);
-		ADD_ERROR('Task Creation Failed : '|| P_TASK_NUMBER);
+		--ADD_ERROR('Task Creation Failed : '|| P_TASK_NUMBER);
+        ADD_ERROR(SUBSTR('Task Creation Failed : ' || P_TASK_NUMBER || CASE WHEN G_LAST_API_ERROR IS NOT NULL THEN ' - ' || G_LAST_API_ERROR END,1,4000));--Version 2.0
 		X_SUCCESS := 'N';
 	ELSE
 		LOG_MSG('Task Created : '|| P_TASK_NUMBER);
@@ -356,8 +437,8 @@ BEGIN
 				IF l_create_status = 'Y' THEN
 					LOG_MSG('Created Sub Sub Task : '|| taskrow.sub_sub_task);
 				ELSE
-					UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.esc_setup_id,taskrow.task_number,'TASK_ERROR','Sub Sub Task Creation Failed');
-					CONTINUE;
+					UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.esc_setup_id,taskrow.task_number,'TASK_ERROR',SUBSTR('Sub Sub Task Creation Failed' || CASE WHEN G_LAST_API_ERROR IS NOT NULL THEN ': ' || G_LAST_API_ERROR END,1,4000));
+                    CONTINUE;
 				END IF;
 				
 				LOG_MSG('create child task - '||taskrow.task_number); 
@@ -384,7 +465,7 @@ BEGIN
 	            	LOG_MSG('Created Child Task: '||taskrow.task_number);
 		            UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.esc_setup_id,taskrow.task_number,'TASK_CREATED');
 		        ELSE 
-		            UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.esc_setup_id,taskrow.task_number,'TASK_ERROR','Child Task Creation Failed');
+		            UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.esc_setup_id,taskrow.task_number,'TASK_ERROR',SUBSTR('Child Task Creation Failed' ||CASE WHEN G_LAST_API_ERROR IS NOT NULL THEN ': ' || G_LAST_API_ERROR END,1,4000));--Version 2.0
 	            END IF;
 				
 			ELSIF l_c_t_cnt=2 THEN 
@@ -414,7 +495,7 @@ BEGIN
 	            	LOG_MSG('Created Child Task: '||taskrow.task_number);
 		            UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.esc_setup_id,taskrow.task_number,'TASK_CREATED');
 		        ELSE 
-		            UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.esc_setup_id,taskrow.task_number,'TASK_ERROR','Child Task Creation Failed');
+		            UPDATE_TASK_STATUS(projrow.reco_project_id,taskrow.esc_setup_id,taskrow.task_number,'TASK_ERROR',SUBSTR('Child Task Creation Failed' ||CASE WHEN G_LAST_API_ERROR IS NOT NULL THEN ': ' || G_LAST_API_ERROR END,1,4000));--Version 2.0
 	            END IF;
 	        ELSE
 				LOG_MSG('Task Already Exists : '|| taskrow.task_number);
