@@ -1,0 +1,3527 @@
+create or replace PACKAGE BODY      reco_project_api IS
+
+    G_UP_TEMPLATE_ID    NUMBER              := 978343;  
+    G_LS_TEMPLATE_ID    NUMBER              := 978344;  
+    G_RESOURCE_LIST_ID  NUMBER              := 1001;
+    G_FIN_PLAN_TYPE_ID  NUMBER              := 10021;
+    
+    G_PROJ_MGR_ROLE     VARCHAR2(50)        := 'PROJECT MANAGER';
+    G_DIV_MGR_ROLE      VARCHAR2(50)        := '1020';
+    G_REG_MGR_ROLE      VARCHAR2(50)        := 'REGIONAL MANAGER';
+    G_PROJ_ASST_ROLE    VARCHAR2(50)        := 'PROJECT ASSISTANT';
+    G_JC_ADMIN_ROLE     VARCHAR2(50)        := '1060'; 
+    G_ASST_PRJ_MGR_ROLE VARCHAR2(50)        := '3060'; --Added by Rafi Syed on 05/28/2025.    
+    G_PM_PRODUCT_CODE   VARCHAR2(25)        := 'RECO_CONTRACTS';
+    G_VERSION_TYPE      VARCHAR2(7)         := 'ALL'; --'COST', 'REVENUE'
+    G_BUDGET_CATEGORY   VARCHAR2(25)        := 'BUDGET_VERSION_TYPE';
+    G_BUDGET_TYPE       VARCHAR2(15)        := 'CONTRACT';
+    
+    G_CONC_PROG_SUCC_CODE       NUMBER          := 0;   
+    G_CONC_PROG_SUCC_MSG        VARCHAR2(250)   := 'Concurrent PROGRAM Execution completed';    
+    G_CONC_PROG_WARN_CODE       NUMBER          := 1;
+    G_CONC_PROG_WARN_MSG        VARCHAR2(250)   := 'Concurrent PROGRAM Execution completed with Warning';    
+    G_CONC_PROG_ERR_CODE        NUMBER          := 2;
+    G_CONC_PROG_ERR_MSG         VARCHAR2(250)   := 'Concurrent PROGRAM Execution completed with Error';        
+    
+    G_user_id           NUMBER;
+    G_resp_id           NUMBER;  
+    G_resp_appl_id      NUMBER;   
+    G_conc_req_id       NUMBER;
+    G_conc_prog_id      NUMBER;
+    G_login_id          NUMBER;
+    G_log_type          VARCHAR2(5);
+    G_Org_id            NUMBER;
+    G_Business_Group_Id NUMBER;
+
+    ----------------------------------------------------------------------------
+    
+    PROCEDURE write_log(pLogType IN VARCHAR2, pLogMsg IN VARCHAR2) IS
+    BEGIN
+        IF pLogType = 'LOG' THEN
+           fnd_file.put_line(fnd_file.LOG, pLogMsg); 
+        ELSIF pLogType = 'OUT' THEN
+            fnd_file.put_line(fnd_file.OUTPUT, pLogMsg);
+        ELSIF pLogType = 'TABLE' THEN
+            INSERT INTO reco_temp_messages(message) VALUES (pLogMsg);
+        ELSE
+            dbms_output.put_line(pLogMsg);
+        END IF;
+    END;
+    ----------------------------------------------------------------------------
+    
+    PROCEDURE initialize_global_vars IS
+    BEGIN
+        write_log(G_log_type, 'Initialize global vars');
+        G_user_id           := apps.fnd_global.user_id;
+        G_resp_id           := apps.fnd_global.resp_id;  
+        G_resp_appl_id      := apps.fnd_global.resp_appl_id;   
+        G_conc_req_id       := apps.fnd_global.conc_request_id;
+        G_conc_prog_id      := apps.fnd_global.CONC_PROGRAM_ID;
+        G_login_id          := apps.fnd_global.LOGIN_ID;
+        G_org_id            := apps.fnd_global.ORG_ID; 
+        G_Business_Group_Id := apps.fnd_global.PER_BUSINESS_GROUP_ID;
+                
+        
+        
+        write_log(G_log_type, 'G_user_id: '||G_user_id);
+        write_log(G_log_type, 'G_resp_id: '||G_resp_id);
+        write_log(G_log_type, 'G_resp_appl_id: '||G_resp_appl_id);
+        write_log(G_log_type, 'G_conc_req_id: '||G_conc_req_id);
+        write_log(G_log_type, 'G_conc_prog_id: '||G_conc_prog_id);
+        write_log(G_log_type, 'G_login_id: '||G_login_id);
+        write_log(G_log_type, 'G_org_Id: '||G_org_id);
+        write_log(G_log_type, 'G_Business_Group_Id: '||G_Business_Group_Id);
+        
+        write_log(G_log_type, 'Done initialize global vars');  
+        
+    END initialize_global_vars;
+    ----------------------------------------------------------------------------
+    
+    PROCEDURE refreshTemplateIds(pRetStatus OUT VARCHAR2) IS
+    BEGIN
+        SELECT VALUE INTO G_UP_TEMPLATE_ID
+        FROM RECO_PROJ_TEMP_ORG 
+        WHERE master_value = G_org_id
+        AND description = 'UNIT PRICE';
+        
+        SELECT VALUE INTO G_LS_TEMPLATE_ID
+        FROM RECO_PROJ_TEMP_ORG 
+        WHERE master_value = G_org_id
+        AND description = 'LUMP SUM';
+        
+        pRetStatus := 'S';
+    EXCEPTION 
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in refreshTemplateIds: '||sqlerrm);
+            pRetStatus := 'E';
+    END refreshTemplateIds;
+    
+    PROCEDURE refreshResourceListId(pRetStatus OUT VARCHAR2) IS
+    BEGIN
+        SELECT VALUE INTO G_RESOURCE_LIST_ID
+        FROM reco_resource_list_org 
+        WHERE master_value = G_org_id
+        AND description LIKE 'REVENUE%';
+        
+        pRetStatus := 'S';
+    EXCEPTION 
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in refreshResourceListId: '||sqlerrm);
+            pRetStatus := 'E';
+    END refreshResourceListId;
+    
+    FUNCTION contractExists(pProjNum IN VARCHAR2) RETURN BOOLEAN IS
+        lExists VARCHAR2(1);
+    BEGIN
+        write_log(G_log_type, 'In contractExists; pProjNum: '||pProjNum);
+        lExists := 'N';
+        
+        SELECT 'Y' INTO lExists   
+        FROM reco_contracts 
+        WHERE project_number = pProjNum
+        AND org_id = G_org_id;
+        
+        IF lExists = 'Y' THEN
+            write_log(G_log_type, 'ContractExists returns true for project '||pProjNum||' for org-id '||G_org_id);
+            RETURN TRUE;
+        ELSE
+            write_log(G_log_type, 'ContractExists returns false for project'||pProjNum||' for org-id '||G_org_id);
+            RETURN FALSE;
+        END IF;
+    EXCEPTION 
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in contractExists: '||sqlerrm);
+            RETURN FALSE;
+    END;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getProjectTemplateId(
+            pRecoProjId     IN  VARCHAR2, 
+            pProjType       OUT VARCHAR2, 
+            pProjBilling    OUT VARCHAR2, 
+            pRetStatus      OUT VARCHAR2) 
+        RETURN NUMBER IS
+        
+        lContractAmt    NUMBER;
+        lProjTemplateId NUMBER;
+        
+        CURSOR cProjTempl IS
+        SELECT NVL(rct.contract_amount, 0) AS contract_amount, 
+                DECODE(rct.project_type, 'U', G_UP_TEMPLATE_ID, G_LS_TEMPLATE_ID) AS project_template,
+                DECODE(rct.project_type, 'U', 'UNIT PRICE', 'LUMP SUM') AS project_type,                
+                CASE WHEN rct.invoice_on_prod = 'Y' AND rct.invoice_on_del = 'N' THEN 'ON PRODUCTION' 
+                    WHEN rct.invoice_on_prod = 'Y' AND rct.invoice_on_del = 'Y' THEN 'ON PROD + FREIGHT'
+                    WHEN rct.invoice_on_prod = 'N' AND rct.invoice_on_del = 'Y' THEN 'ON DELIVERY'
+                    ELSE NULL
+                END AS proj_billing
+        FROM reco_contract_tasks rct
+        WHERE reco_project_id = pRecoProjId
+        --AND crm_status_code = 'Won'
+        ORDER BY 1 DESC; 
+    BEGIN
+    
+        write_log(G_log_type, 'In getProjectTemplateId; pRecoProjId: '||pRecoProjId);
+        pRetStatus := 'S';
+        
+        OPEN cProjTempl; 
+        FETCH cProjTempl INTO lContractAmt, lProjTemplateId, pProjType, pProjBilling;
+        CLOSE cProjTempl; 
+        
+        write_log(G_log_type, 'getProjectTemplateId: project type: '||pProjType);
+        write_log(G_log_type, 'getProjectTemplateId: project billing: '||pProjBilling);
+        write_log(G_log_type, 'getProjectTemplateId: template id: '||lProjTemplateId);
+        
+        RETURN lProjTemplateId;
+    EXCEPTION
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in getProjectTemplateId: '||sqlerrm);
+            pRetStatus := 'E';
+            RETURN -1;
+    END getProjectTemplateId;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getProjectMgrId(pProjMgrName IN VARCHAR2, pRetStatus OUT VARCHAR2) RETURN NUMBER IS
+        lPersonId   NUMBER;
+    BEGIN
+        write_log(G_log_type, 'In getProjectMgrId; pProjMgrName: '||pProjMgrName);
+        pRetStatus := 'S';
+        
+        SELECT person_id INTO lPersonId
+        FROM apps.pa_employees 
+        WHERE full_name = pProjMgrName
+        AND person_type = 'EMP';
+        
+        write_log(G_log_type, 'getProjectMgrId return personid: '||lPersonId);
+        RETURN lPersonId;
+    EXCEPTION
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in getProjectMgrId: '||sqlerrm);
+            pRetStatus := 'E';
+            RETURN -1;
+    END getProjectMgrId;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getProjMemId(pRegion IN VARCHAR2, 
+                          pRole IN VARCHAR2,
+                          pPmId IN NUMBER,                          
+                          pMemName OUT VARCHAR2,
+                          pRetStatus OUT VARCHAR2) RETURN NUMBER IS
+                          
+        lMemberId   NUMBER;
+        lQry        VARCHAR2(3000);
+        --lUserName   VARCHAR2(25);
+        lTable      VARCHAR2(30);
+    BEGIN
+        write_log(G_log_type, 'In getProjMemId; pRegion: '||pRegion||'; pRole: '||pRole);
+        pRetStatus := 'S';
+        
+        lQry := 'SELECT DECODE(:1, 
+                    ''DM'', ''RECO_DIV_MGR_REGION'',
+                    ''RM'', ''RECO_REG_MGR_REGION'',
+                    ''PA'', ''RECO_PROJ_ASST_REGION'',
+                    ''JC'', ''RECO_JC_ADMIN_REGION'',
+                    ''APM'', ''RECO_ASST_PROJ_REGION'')
+                 FROM DUAL';
+                 
+        --write_log(G_log_type, 'getProjMemId: '||lQry);
+        EXECUTE IMMEDIATE lQry INTO lTable USING pRole;
+        write_log(G_log_type, 'getProjMemId: '||lTable);
+        
+        lQry := 'SELECT description FROM '||lTable||' WHERE VALUE = :1';        
+        --write_log(G_log_type, 'getProjMemId: '||lQry);
+        
+        EXECUTE IMMEDIATE lQry INTO pMemName USING pRegion;
+
+        IF pMemName = '<PM>' THEN
+            lMemberId := pPmId;
+        ELSE
+            SELECT employee_id
+            INTO lMemberId
+            FROM fnd_user
+            WHERE user_name = pMemName;
+        END IF;
+
+        write_log(G_log_type, 'getProjMemId returns member id: '||lMemberId);
+        RETURN lMemberId;
+    EXCEPTION
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in getProjMemId: '||sqlerrm);
+            pRetStatus := 'E';
+            RETURN -1;
+    END getProjMemId;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION validEmployee(pPersonId IN NUMBER) RETURN BOOLEAN IS
+        lValid VARCHAR2(1);
+    BEGIN
+        lValid := 'N';
+        
+        SELECT 'Y' 
+        INTO lValid
+        FROM per_people_f P,per_person_types pt
+        WHERE p.person_id = pPersonId
+        AND p.person_type_id = pt.person_type_id  
+        AND pt.system_person_type = 'EMP' --Employee
+        AND pt.business_group_id = G_Business_Group_Id
+        AND SYSDATE BETWEEN p.effective_start_date AND p.effective_end_date;
+        
+        IF lValid = 'Y' THEN
+            RETURN TRUE;
+        ELSE
+            RETURN FALSE;
+        END IF;
+    EXCEPTION
+        WHEN no_data_found THEN
+            write_log(G_log_type, 'Invalid Employee; personId: '||pPersonId);
+            RETURN FALSE;
+    END;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getContractAddrId(pRecoProjectId IN NUMBER, 
+                               pAddrType IN VARCHAR2, 
+                               pRetStatus OUT VARCHAR2) RETURN NUMBER IS
+        lAddrId NUMBER;
+        lAddrStatus CHAR(1);
+    BEGIN
+        write_log(G_log_type, 'In getContractAddrId; pRecoProjectId: '||pRecoProjectId||'; pAddrType: '||pAddrType);
+        pRetStatus := 'S';
+        
+        SELECT address_id
+        INTO lAddrId 
+        FROM reco_contract_addresses 
+        WHERE reco_project_id = pRecoProjectId
+        AND address_type = pAddrType;
+        
+        write_log(G_log_type, 'getContractAddrId returns addrid: '||lAddrId);
+        
+        IF lAddrId < 0 THEN
+            write_log(G_log_type, 'getContractAddrId address not synched ('||pAddrType||'): '||lAddrId);
+            pRetStatus := 'E';
+            RETURN -1; 
+        END IF;
+        
+        SELECT status
+        INTO lAddrStatus 
+        FROM apps.hz_cust_acct_sites 
+        WHERE cust_acct_site_id = lAddrId;
+        
+        IF lAddrStatus <> 'A' THEN
+            write_log(G_log_type, 'getContractAddrId Inactive address ('||pAddrType||'): '||lAddrId);
+            pRetStatus := 'E';
+            RETURN -1; 
+        END IF;       
+
+        RETURN lAddrId;
+
+    EXCEPTION
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in getContractAddrId: '||sqlerrm);
+            pRetStatus := 'E';
+            RETURN -1;
+    END getContractAddrId;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getContactId(pRecoProjectId IN NUMBER, 
+                          pAddrId IN NUMBER, 
+                          pRetStatus OUT VARCHAR2) RETURN NUMBER IS
+        lContactId  NUMBER;
+    BEGIN
+        write_log(G_log_type, 'In getContactId; pRecoProjectId: '||pRecoProjectId||'; pAddrId: '||pAddrId);
+        pRetStatus := 'S';
+        
+        SELECT reference_id 
+        INTO lContactId
+        FROM reco_contract_contacts cc, apps.ar_contacts_v ac 
+        WHERE reco_project_id = pRecoProjectId
+        AND cc.address_id = pAddrId
+        AND cc.address_id = ac.address_id
+        AND cc.reference_id = ac.contact_id
+        AND ac.status = 'A'
+        AND ROWNUM = 1;
+        
+        write_log(G_log_type, 'getContactId returns contactId: '||lContactId);
+        RETURN lContactId;
+    EXCEPTION
+        WHEN no_data_found THEN
+            write_log(G_log_type, 'Billing contact not found');
+            pRetStatus := 'W';
+            RETURN 0;
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in getContactId: '||sqlerrm);
+            pRetStatus := 'E';
+            RETURN -1;
+    END getContactId;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getWallCount(pProductId IN NUMBER, pRetStatus OUT VARCHAR2) RETURN NUMBER IS
+        lWallCount NUMBER;
+    BEGIN
+        write_log(G_log_type, 'In getWallCount; pProductId: '||pProductId);
+        pRetStatus := 'S';
+        
+        SELECT COUNT(product_id) 
+        INTO lWallCount
+        FROM reco_task_walls 
+        WHERE product_id = pProductId;
+        
+        write_log(G_log_type, 'getWallCount returns wallcount: '||lWallCount);
+        RETURN lWallCount;
+    EXCEPTION
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in getWallCount: '||sqlerrm);
+            pRetStatus := 'E';
+            RETURN 1;
+    END getWallCount;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION validProject(pProjNum IN VARCHAR2, pProjectId OUT NUMBER) RETURN BOOLEAN IS
+    BEGIN
+        IF PProjNum IS NULL THEN
+            RETURN FALSE;
+        END IF;
+        
+        SELECT project_id INTO pProjectId
+        FROM pa_projects 
+        WHERE segment1 = pProjNum;
+        
+        IF NVL(pProjectId, -1) > 0 THEN
+            RETURN TRUE;
+        ELSE
+            pProjectId := NULL;
+            RETURN FALSE;
+        END IF;
+    EXCEPTION 
+        WHEN no_data_found THEN
+            write_log(G_log_type, 'Exception in validProject: '||sqlerrm);
+            RETURN FALSE;
+            
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in validProject: '||sqlerrm);
+            RETURN FALSE;    
+    END validProject;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION validTask(pProjectId IN NUMBER, pTaskNum IN VARCHAR2, pTaskId OUT NUMBER) RETURN BOOLEAN IS
+    BEGIN
+        IF pProjectId IS NULL OR  pTaskNum IS NULL THEN
+            RETURN FALSE;
+        END IF;
+        
+        SELECT task_id
+        INTO pTaskId 
+        FROM pa_tasks
+        WHERE project_id = pProjectId
+        AND task_number = pTaskNum;
+        
+        IF NVL(pTaskId, -1) > 0 THEN
+            RETURN TRUE;
+        ELSE
+            pTaskId := NULL;
+            RETURN FALSE;
+        END IF;
+    EXCEPTION
+        WHEN no_data_found THEN
+            write_log(G_log_type, 'Exception in validTask('||pProjectId||','||pTaskNum||'): '||sqlerrm);
+            RETURN FALSE;
+            
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in validTask: '||sqlerrm);
+            RETURN FALSE; 
+    END validTask;     
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getAgreementDesc(pRecoProjId IN NUMBER, pRetStatus OUT VARCHAR2) RETURN VARCHAR2 IS
+        CURSOR contTasks IS 
+        SELECT * FROM reco_contract_tasks
+        WHERE reco_project_id = pRecoProjId
+        ORDER BY task_name;
+        
+        lDesc   VARCHAR2(250);
+    BEGIN
+        write_log(G_log_type, 'In getAgreementDesc; pRecoProjId: '||pRecoProjId);
+        pRetStatus := 'S';
+        
+        lDesc := NULL;
+        FOR con IN contTasks LOOP
+            IF lDesc IS NOT NULL THEN
+                lDesc := lDesc||'; ';
+            END IF;
+            lDesc := lDesc ||con.task_name||'('||con.project_type||')';
+        END LOOP;
+        
+        RETURN lDesc;
+    EXCEPTION
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in getAgreementDesc: '||sqlerrm);
+            pRetStatus := 'E';
+            RETURN 'ERROR';
+    END getAgreementDesc; 
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getExpType(pTopTask IN VARCHAR2, pTaskNum IN VARCHAR2, pWallNum IN VARCHAR2,  pUOM IN VARCHAR2) RETURN VARCHAR2 IS
+        lExpType    VARCHAR2(250);
+    BEGIN
+        lExpType := NULL;
+        
+        SELECT expenditure_type
+        INTO lExpType
+        FROM pa_expenditure_types
+        WHERE REPLACE(REPLACE(DECODE(G_Org_id, 0, attribute2, 293, attribute4), '<TASKNUM>', pTopTask), '<WALLNUM>', pWallNum) = pTaskNum
+        --REPLACE(REPLACE(attribute2, '<TASKNUM>', pTopTask), '<WALLNUM>', pWallNum) = pTaskNum
+        AND (unit_of_measure = pUOM OR (unit_of_measure IN ('HOURS', 'HOUR', 'HR') AND pUOM= 'HOURS'));
+        
+        RETURN lExpType;
+    EXCEPTION
+        WHEN no_data_found THEN
+            --write_log(G_log_type, 'Exp Type not found: '||pTopTask||','||pTaskNum||','||pWallNum||', '||pUOM);
+            RETURN NULL;
+        WHEN others THEN
+            write_log(G_log_type, 'Err in getExpType: '||sqlerrm);
+            write_log(G_log_type, 'Err in getExpType: '||pTopTask||','||pTaskNum||','||pWallNum||', '||pUOM);
+            RETURN NULL;
+    END getExpType;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getResourceId(pExpType IN VARCHAR2) RETURN NUMBER IS
+        lResourceId     NUMBER;
+    BEGIN
+        lResourceId := NULL;
+        
+        SELECT resource_list_member_id
+        INTO lResourceId
+        FROM apps.pa_resource_list_members lm, apps.pa_resource_lists rl
+        WHERE rl.resource_list_id = G_RESOURCE_LIST_ID
+        AND lm.resource_list_id = rl.resource_list_id
+        AND lm.expenditure_type = pExpType;
+        
+        RETURN lResourceId;
+    EXCEPTION
+        WHEN no_data_found THEN
+            write_log(G_log_type, 'Resource not found for: '||pExpType);
+            RETURN NULL;
+        WHEN others THEN
+            write_log(G_log_type, 'Err in getResourceId: '||sqlerrm);
+            RETURN NULL;
+    END getResourceId;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getProjCustomer(pProjId IN NUMBER, pCustNum OUT VARCHAR2, pRetStatus OUT VARCHAR2) RETURN NUMBER IS
+        lCustomerId     NUMBER;
+        
+    BEGIN
+        write_log(G_log_type, 'In getProjCustomer; pProjId: '||pProjId);
+        pRetStatus := 'S';
+        
+        SELECT pc.customer_id, ca.account_number
+        INTO lCustomerId, pCustNum
+        FROM apps.pa_project_customers pc, apps.hz_cust_accounts ca
+        WHERE pc.project_id = pProjId
+        AND pc.customer_id = ca.cust_account_id
+        AND pc.project_relationship_code = 'PRIMARY';
+        
+        RETURN lCustomerId;
+    EXCEPTION
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in getProjCustomer: '||sqlerrm);
+            pRetStatus := 'E';
+            RETURN -1;
+    END getProjCustomer;
+    ----------------------------------------------------------------------------
+        
+    FUNCTION getProjJCAdmin(pProjId IN NUMBER, pRetStatus OUT VARCHAR2)RETURN NUMBER IS
+        lAdminId    NUMBER;
+        
+    BEGIN
+        write_log(G_log_type, 'In getProjCustomer; pProjId: '||pProjId);
+        pRetStatus := 'S';
+        
+        SELECT person_id
+        INTO lAdminId
+        FROM pa_project_players 
+        WHERE project_id = pProjId
+        AND project_role_type = G_JC_ADMIN_ROLE
+        AND TRUNC(SYSDATE) BETWEEN start_date_active AND NVL(end_date_active, SYSDATE+1);
+        
+        RETURN lAdminId;
+    EXCEPTION
+        WHEN others THEN
+            write_log(G_log_type, 'Exception in getProjJCAdmin: '||sqlerrm);
+            pRetStatus := 'E';
+            RETURN -1;
+    END getProjJCAdmin;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getStructureId(pProductId IN NUMBER, pStructName IN VARCHAR2) RETURN NUMBER IS
+        CURSOR takeOffStruct IS
+        SELECT toff_struct_id
+        FROM reco_toff_structs ts, reco_toff_jobs tj
+        WHERE tj.product_id = pProductId
+        AND tj.toff_job_id = ts.toff_job_id
+        AND structure_name = pStructName;
+        
+        lStructId NUMBER;
+    BEGIN
+        OPEN takeOffStruct;
+        FETCH takeOffStruct INTO lStructId;
+        CLOSE TakeOffStruct;
+        
+        RETURN lStructId;
+    EXCEPTION
+        WHEN others THEN
+            RETURN NULL;
+    END getStructureId;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getTemplateId(pProjectId IN NUMBER, pRetStatus OUT VARCHAR2) RETURN NUMBER IS
+        CURSOR cTemplate IS
+        SELECT created_from_project_id
+        FROM pa_projects
+        WHERE project_id = pProjectId;
+        
+        lTemplateId     NUMBER;
+    BEGIN
+        OPEN cTemplate;
+        FETCH cTemplate INTO lTemplateId;
+        CLOSE cTemplate;
+        
+        IF NVL(lTemplateId , -1) NOT IN (G_UP_TEMPLATE_ID, G_LS_TEMPLATE_ID) THEN
+            SELECT DECODE(project_type, 'CONTRACT - UNIT PRIC', G_UP_TEMPLATE_ID, 'CONTRACT - LUMP SUM',  G_LS_TEMPLATE_ID)
+            INTO lTemplateId
+            FROM pa_projects 
+            WHERE project_id = pProjectId;
+        END IF;
+        
+        RETURN lTemplateId;
+    EXCEPTION 
+        WHEN others THEN
+            pRetStatus := 'E';
+            RETURN NULL;
+    END getTemplateId;
+    ----------------------------------------------------------------------------
+    FUNCTION getProjectStartDate(pProjectId IN NUMBER) RETURN DATE IS
+        lStartDate DATE;
+    BEGIN
+        SELECT start_date
+        INTO lStartDate 
+        FROM pa_projects
+        WHERE project_id = pProjectId;
+        
+        RETURN lStartDate;
+    EXCEPTION
+        WHEN others THEN
+            RETURN NULL;
+    END;
+    ----------------------------------------------------------------------------
+    
+    PROCEDURE create_project(
+        errbuf OUT VARCHAR2, 
+        retcode OUT NUMBER,
+        pProjNum IN VARCHAR2--, 
+        --pProjId OUT NUMBER
+        ) IS
+        
+        -- Variables needed for API standard parameters
+        l_api_version_number    NUMBER := 1.0;
+        l_commit            	VARCHAR2(1) := 'F';
+        l_return_status         VARCHAR2(1);
+        l_init_msg_list         VARCHAR2(1) := 'F';
+        l_msg_count             NUMBER;
+        l_msg_index_out         NUMBER;
+        l_msg_data              VARCHAR2(2000);
+        l_data            	    VARCHAR2(2000);
+        l_workflow_started      VARCHAR2(1) := 'Y';
+        
+        --variables
+        l_template_id           NUMBER;
+        l_user_id               NUMBER;
+        l_responsibility_id     NUMBER;
+        l_wall_num              NUMBER;
+        l_no_of_walls           NUMBER;
+        l_person_id             NUMBER;
+        l_pm_person_id          NUMBER;
+        l_structure_id          NUMBER;
+        l_inv_format_id         NUMBER;  
+        l_contact_id            NUMBER;      
+        indx                    INTEGER;
+        errIndx                 INTEGER;
+        l_task_number           VARCHAR2(25);
+        l_wall_task_number      VARCHAR2(25);
+        l_task_name             VARCHAR2(250);
+        l_wall_task_name        VARCHAR2(250);
+        l_parent_task_number    VARCHAR2(25);
+        l_task_billing_type     VARCHAR2(15);
+        l_project_type          VARCHAR2(10);
+        l_project_billing       VARCHAR2(50);
+        l_inv_format_desc       VARCHAR2(50);
+        l_inv_comment           VARCHAR2(250); 
+        l_mem_user_name         VARCHAR2(25);
+        fmt                     VARCHAR2(10);
+        poolTask                BOOLEAN;
+         -- Added by Rafi Syed 2/5/2025.
+        l_l_cnt 				NUMBER:=0;
+        l_b_layount				VARCHAR2(250):=fnd_profile.value('RECO_BUDGET_LAYOUT');  
+        --
+        
+        -- Predefined Composit data types
+        l_project_in          apps.PA_PROJECT_PUB.PROJECT_IN_REC_TYPE;
+        l_project_out         apps.PA_PROJECT_PUB.PROJECT_OUT_REC_TYPE;
+        l_key_members         apps.PA_PROJECT_PUB.PROJECT_ROLE_TBL_TYPE;
+        l_class_categories    apps.PA_PROJECT_PUB.CLASS_CATEGORY_TBL_TYPE;
+        l_tasks_in_rec        apps.PA_PROJECT_PUB.TASK_IN_REC_TYPE;
+        l_tasks_in            apps.PA_PROJECT_PUB.TASK_IN_TBL_TYPE;
+        l_tasks_out_rec       apps.PA_PROJECT_PUB.TASK_OUT_REC_TYPE;
+        l_tasks_out           apps.PA_PROJECT_PUB.TASK_OUT_TBL_TYPE;
+        l_cust_rec            apps.PA_PROJECT_PUB.CUSTOMER_IN_REC_TYPE;
+        l_cust_tbl            apps.PA_PROJECT_PUB.CUSTOMER_TBL_TYPE;
+        l_err_tbl             ERR_TBL_TYPE;        
+        
+        INVALID_PARAMETER     EXCEPTION;
+        INVALID_CONTRACT      EXCEPTION;
+        API_ERROR             EXCEPTION;
+        RECO_PROJ_API_ERROR   EXCEPTION;
+       
+
+
+        
+        CURSOR contractInfo IS
+        SELECT  * FROM reco_contracts
+        WHERE project_number = pProjNum
+        AND org_id = G_org_id;  --APK CA changes
+        
+        CURSOR contractTaskInfo(pRecoProjId NUMBER) IS
+        SELECT * FROM reco_contract_tasks
+        WHERE reco_project_id = pRecoProjId
+        AND crm_status_code = 'Won'
+        ORDER BY task_number;
+        
+        CURSOR templateTaskInfo(pTemplateId NUMBER, POverHead CHAR) IS
+        SELECT project_id,            
+                task_id,
+                task_number,
+                task_name,           
+                (SELECT task_number
+                FROM pa_tasks
+                WHERE task_id = a.parent_task_id) parent_task_number,
+                wbs_level,
+                parent_task_id,
+                billable_flag,
+                chargeable_flag
+        FROM pa_tasks A
+        WHERE project_id = pTemplateId
+        AND task_number LIKE DECODE(pOverHead, 'Y', '001%', '<TASKNUM>%')
+        ORDER BY task_number, wbs_level;
+        
+        CURSOR contractWallInfo(pProductId NUMBER, pTaskName VARCHAR2, pByWall VARCHAR2, pDesignBuild VARCHAR2) IS
+        SELECT product_id, wall_name, wall_order 
+        FROM reco_task_walls 
+        WHERE product_id = pProductId 
+        AND pByWall = 'Y'
+        UNION
+        SELECT pProductId, pTaskName ||' WALL', 1 
+        FROM dual
+        WHERE pByWall = 'N'
+        UNION
+        SELECT pProductId, pTaskName||' POOL TASK', 1000000
+        FROM dual
+        WHERE pDesignBuild = 'Y'
+        ORDER BY 3;   
+
+        /*SELECT product_id, DECODE(pByWall, 'Y', wall_name, 'N', pTaskName) AS wall_name, wall_order FROM reco_task_walls 
+        WHERE product_id = pProductId 
+        AND DECODE(pByWall, 'N', 1, wall_order) = wall_order 
+        UNION
+        SELECT pProductId, pTaskName||' POOL TASK', 1000000
+        FROM dual
+        WHERE pDesignBuild = 'Y'
+        AND pByWall = 'Y'
+        ORDER BY wall_order; */
+
+        CURSOR cInvFormat(pProjType VARCHAR2, pProjBilling VARCHAR2) IS
+        SELECT master_value AS invoice_format_id, master_description AS invoice_format_desc 
+        FROM RECO_INVOICE_BILLING_FORMAT 
+        WHERE VALUE = pProjType 
+        AND DESCRIPTION = pProjBilling;        
+        
+    FUNCTION taskExists(pTaskNum IN VARCHAR2, pTaskTbl IN apps.PA_PROJECT_PUB.TASK_IN_TBL_TYPE) RETURN BOOLEAN IS
+    BEGIN
+        FOR idx IN pTaskTbl.first.. pTaskTbl.last LOOP
+            IF pTaskTbl(idx).pa_task_number = pTaskNum THEN
+                write_log(G_log_type,'Task '||pTaskNum||' already added');
+                RETURN TRUE;
+            END IF;
+        END LOOP;
+        
+        write_log(G_log_type, 'Task '||pTaskNum||' not added yet');
+        RETURN FALSE;
+    END taskExists;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getMemName(pPersonId IN NUMBER) RETURN VARCHAR2 IS
+        lName VARCHAR2(50);
+    BEGIN
+        SELECT full_name
+        INTO lName 
+        FROM per_people_f
+        WHERE person_id = pPersonId
+        AND ROWNUM = 1; 
+        
+        RETURN lName;
+    EXCEPTION
+        WHEN others THEN
+            RETURN 'X';
+    END getMemName;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getCustomerName(pCustId IN NUMBER) RETURN VARCHAR2 IS
+        lCustName VARCHAR2(50);
+    BEGIN
+        SELECT customer_name
+        INTO lCustName
+        FROM apps.ar_customers
+        WHERE customer_id = pCustId;
+        
+        RETURN lCustName;
+    EXCEPTION
+        WHEN others THEN
+            RETURN 'X';
+    END getCustomerName;
+    ----------------------------------------------------------------------------
+    
+    FUNCTION getAddress(pAddrId IN NUMBER) RETURN VARCHAR2 IS
+        lAddr VARCHAR2(100);
+    BEGIN
+        SELECT SUBSTR(address1||' , '||city||' , '||NVL(STATE, province)||' '||postal_code||' , '||county, 1, 100) 
+        INTO lAddr
+        FROM apps.hz_cust_acct_sites cas, apps.hz_party_sites ps, apps.hz_locations loc
+        WHERE cust_acct_site_id = pAddrId
+        AND cas.party_site_id = ps.party_site_id
+        AND ps.location_id = loc.location_id;
+        
+        RETURN lAddr;
+    EXCEPTION
+        WHEN others THEN
+            RETURN 'X';
+    END getAddress;
+    ----------------------------------------------------------------------------
+    
+    PROCEDURE warningMsg(pMsg1 IN VARCHAR2, pMsg2 IN VARCHAR2) IS
+    BEGIN
+        errIndx := errIndx + 1;
+        l_err_tbl(errIndx).task_num := pMsg1;
+        l_err_tbl(errIndx).message := pMsg2;
+    END warningMsg;
+    ----------------------------------------------------------------------------
+    
+    BEGIN
+        G_log_type := 'LOG';
+        write_log(G_log_type, 'Begin reco_project_api.create_project; pProjNum: '||pProjNum);
+        write_log(G_log_type, 'Initializing return status to SUCCESS');
+        errbuf := G_CONC_PROG_SUCC_MSG;
+        retcode := G_CONC_PROG_SUCC_CODE;
+        
+        initialize_global_vars;
+        errIndx := 0;
+        
+        write_log(G_log_type, 'Refresh template ids');
+        refreshTemplateIds(l_return_status);
+        IF l_return_status <> 'S' THEN
+            RAISE RECO_PROJ_API_ERROR;
+        END IF;
+        write_log(G_log_type, 'UP templateId: '||G_UP_TEMPLATE_ID);
+        write_log(G_log_type, 'LS templateId: '||G_LS_TEMPLATE_ID);
+        
+        --validate parameter
+        write_log(G_log_type, 'Validate parameter');
+        IF pProjNum IS NULL THEN
+            RAISE INVALID_PARAMETER;
+        END IF;        
+        
+        write_log(G_log_type, 'Check if contract exists');
+        IF NOT contractExists(pProjNum) THEN
+            RAISE INVALID_CONTRACT;
+        END IF;        
+        
+        FOR contractRec IN contractInfo LOOP
+            write_log(G_log_type, 'Populate project rec');
+            
+            l_template_id := getProjectTemplateId(contractRec.reco_project_id, l_project_type, l_project_billing, l_return_status);
+            IF l_return_status <> 'S' THEN
+                RAISE RECO_PROJ_API_ERROR;
+            END IF;
+            
+            write_log(G_log_type, 'Project Type: '||l_project_type);
+            write_log(G_log_type, 'Project Billing: '||l_project_billing);
+            write_log(G_log_type, 'Template Id: '||l_template_id);
+            
+            l_inv_format_id := NULL;
+            l_inv_format_desc := NULL;
+            
+            OPEN cInvFormat(l_project_type, l_project_billing);
+            FETCH cInvFormat INTO l_inv_format_id, l_inv_format_desc;
+            CLOSE cInvFormat; 
+            
+            write_log(G_log_type, 'Invoice Format Id: '||l_inv_format_id);
+            write_log(G_log_type, 'Invoice Format Desc: '||l_inv_format_desc);
+            
+            IF l_inv_format_id IS NULL THEN
+                warningMsg('INAVLID INV FMT', 'Unable to get invoice format for project type '||l_project_type||' and billing condt. '||l_project_billing);                
+            END IF;
+            
+            l_inv_comment := contractRec.po_number||' dd '||contractRec.po_date||CHR(10)||
+                             contractRec.owner_cont_no||CHR(10)||
+                             contractRec.owner_proj_no||CHR(10)||
+                             UPPER(contractRec.county);
+            write_log(G_log_type, 'Invoice Comment: '||l_inv_comment);
+            
+            l_project_in.pa_project_number          := contractRec.project_number;
+            l_project_in.project_name               := UPPER(SUBSTR(contractRec.project_name, 1,26)||', '||contractRec.state);
+            l_project_in.long_name                  := UPPER(contractRec.project_name ||', '||contractRec.city||', '||contractRec.county||', '||contractRec.state);
+            l_project_in.pm_project_reference       := contractRec.project_number;
+            --l_project_in.description                := contractRec.project_desc;
+            l_project_in.project_status_code        := 'UNAPPROVED';
+            l_project_in.start_date                 := TRUNC(SYSDATE, 'MONTH'); --NVL(contractRec.est_start_date, SYSDATE); 
+            --l_project_in.completion_date            := contractRec.est_completion_date;
+            l_project_in.attribute_category         := 'Billing Information';
+            l_project_in.attribute1                 := contractRec.billing_date;
+            l_project_in.attribute4                 := contractRec.ebilling_type;
+            SELECT DECODE(contractRec.notify_pm_ebilling, 'Y', 'YES', NULL)
+            INTO l_project_in.attribute5
+            FROM dual;
+            l_project_in.attribute10                := contractRec.five_cubits;
+            l_project_in.created_from_project_id    := l_template_id;
+            
+            --populate key members
+            write_log(G_log_type, 'Populate key members');
+            
+            l_pm_person_id := getProjectMgrId(contractRec.project_manager, l_return_status);            
+            IF l_return_status <> 'S' THEN
+                RAISE RECO_PROJ_API_ERROR;
+            END IF;            
+            IF validEmployee(l_pm_person_id) THEN
+                indx := 1;
+                l_key_members(indx).person_id := l_pm_person_id;
+                l_key_members(indx).project_role_type := G_PROJ_MGR_ROLE; 
+                write_log(G_log_type, 'PM person_id: '||l_pm_person_id);
+            ELSE
+                write_log(G_log_type, 'Invalid PM person_id: '||l_person_id);
+                warningMsg('INVALID EMPLOYEE', 'Invalid employee in HR '||contractRec.project_manager);
+            END IF;
+            
+            
+            l_person_id := getProjMemId(contractRec.region, 'DM', l_pm_person_id, l_mem_user_name, l_return_status);
+            IF l_return_status <> 'S' THEN
+                RAISE RECO_PROJ_API_ERROR;
+            END IF;
+            IF validEmployee(l_person_id) THEN
+                indx := indx + 1;
+                l_key_members(indx).person_id := l_person_id;
+                l_key_members(indx).project_role_type := G_DIV_MGR_ROLE; 
+                write_log(G_log_type, 'DM person_id: '||l_person_id);
+            ELSE
+                write_log(G_log_type, 'Invalid DM person_id: '||l_person_id);
+                warningMsg('INVALID EMPLOYEE', 'Invalid employee in HR '||l_mem_user_name);
+            END IF;
+            
+            
+            l_person_id := getProjMemId(contractRec.region, 'RM', l_pm_person_id, l_mem_user_name, l_return_status);
+            IF l_return_status <> 'S' THEN
+                RAISE RECO_PROJ_API_ERROR;
+            END IF;
+            IF validEmployee(l_person_id) THEN
+                indx := indx + 1;
+                l_key_members(indx).person_id := l_person_id;
+                l_key_members(indx).project_role_type := G_REG_MGR_ROLE; 
+                write_log(G_log_type, 'RM person_id: '||l_person_id);
+            ELSE
+                write_log(G_log_type, 'Invalid RM person_id: '||l_person_id);
+                warningMsg('INVALID EMPLOYEE', 'Invalid employee in HR '||l_mem_user_name);
+            END IF;
+            
+            
+            l_person_id := getProjMemId(contractRec.region, 'PA', l_pm_person_id, l_mem_user_name, l_return_status);
+            IF l_return_status <> 'S' THEN
+                RAISE RECO_PROJ_API_ERROR;
+            END IF;
+            IF validEmployee(l_person_id) THEN
+                indx := indx + 1;
+                l_key_members(indx).person_id := l_person_id; 
+                l_key_members(indx).project_role_type := G_PROJ_ASST_ROLE; 
+                write_log(G_log_type, 'PA person_id: '||l_person_id);
+            ELSE
+                write_log(G_log_type, 'Invalid PA person_id: '||l_person_id);
+                warningMsg('INVALID EMPLOYEE', 'Invalid employee in HR '||l_mem_user_name);
+            END IF;
+            
+            l_person_id := getProjMemId(contractRec.region, 'JC', l_pm_person_id, l_mem_user_name, l_return_status);
+            IF l_return_status <> 'S' THEN
+                RAISE RECO_PROJ_API_ERROR;
+            END IF;
+            IF validEmployee(l_person_id) THEN
+                indx := indx + 1;
+                l_key_members(indx).person_id := l_person_id;
+                l_key_members(indx).project_role_type := G_JC_ADMIN_ROLE; 
+                write_log(G_log_type, 'JC person_id: '||l_person_id);
+            ELSE
+                write_log(G_log_type, 'Invalid JC person_id: '||l_person_id);
+                warningMsg('INVALID EMPLOYEE', 'Invalid employee in HR '||l_mem_user_name);
+            END IF; 
+            
+            --Added by Rafi Syed on 05/28/2025.-- Assistant Project Manager 
+--            IF contractRec.region IN ('CN','MA','MW','NE')THEN  
+--            IF contractRec.region IN ('CN','MA','MW','NE','SE','FL','GTP')THEN   --updated on 03/10/2026 
+            IF contractRec.region IN ('CN','MA','MW','NE','SE','FL','GTP','CE')THEN   --updated on 04/29/2026       
+	            l_person_id := getProjMemId(contractRec.region, 'APM', l_pm_person_id, l_mem_user_name, l_return_status);
+	            IF l_return_status <> 'S' THEN
+	                RAISE RECO_PROJ_API_ERROR;
+	            END IF;
+	            IF validEmployee(l_person_id) THEN
+	                indx := indx + 1;
+	                l_key_members(indx).person_id := l_person_id;
+	                l_key_members(indx).project_role_type := G_ASST_PRJ_MGR_ROLE; 
+	                write_log(G_log_type, 'APM person_id: '||l_person_id);
+	            ELSE
+	                write_log(G_log_type, 'Invalid APM person_id: '||l_person_id);
+	                warningMsg('INVALID EMPLOYEE', 'Invalid employee in HR '||l_mem_user_name);
+	            END IF;
+            END IF;
+            
+            --populate class categories    
+            write_log(G_log_type, 'Populate class categories');        
+            indx := 1;
+            l_class_categories(indx).class_category := 'REGION';
+            l_class_categories(indx).class_code := contractRec.region;
+            write_log(G_log_type, 'Category REGION: '||contractRec.region);
+                        
+            indx := indx + 1;
+            l_class_categories(indx).class_category := 'MARKET SEGMENT';
+            l_class_categories(indx).class_code := UPPER(contractRec.market_segment);
+            write_log(G_log_type, 'Category MARKET SEGMENT: '||contractRec.market_segment);
+            
+            --populate customer
+            write_log(G_log_type, 'Populate customer');
+            write_log(G_log_type, 'Customer Id: '||contractRec.customer_id);
+            indx := 1;
+            l_cust_rec.customer_id                      := contractRec.customer_id;
+            l_cust_rec.project_relationship_code        := 'PRIMARY'; 
+            l_cust_rec.bill_to_address_id               := getContractAddrId(contractRec.reco_project_id, 'BILLTO', l_return_status);
+            IF l_return_status <> 'S' THEN
+                RAISE RECO_PROJ_API_ERROR;
+            END IF;
+            l_cust_rec.ship_to_address_id               := getContractAddrId(contractRec.reco_project_id, 'SHIPTO', l_return_status);
+            IF l_return_status <> 'S' THEN
+                RAISE RECO_PROJ_API_ERROR;
+            END IF;
+            write_log(G_log_type, 'Got the address ids');
+            l_cust_rec.customer_bill_split              := 100;
+            
+            l_contact_id := getContactId(contractRec.reco_project_id, l_cust_rec.bill_to_address_id, l_return_status);
+            
+            IF l_return_status = 'W' THEN
+                warningMsg('INVALID CONTACT', 'Invalid Billing contact');
+                l_cust_rec.contact_id                   := NULL; 
+                l_cust_rec.project_contact_type_code    := NULL;
+            ELSIF l_return_status = 'E' THEN
+                RAISE RECO_PROJ_API_ERROR;
+            ELSIF l_return_status = 'S' THEN
+                write_log(G_log_type, 'Got the billing contact id');            
+                l_cust_rec.contact_id                   := l_contact_id; 
+                l_cust_rec.project_contact_type_code    := 'BILLING';
+            END IF;
+            
+            write_log(G_log_type, 'Adding to cust table for cust rec indx '||indx);
+            l_cust_tbl(indx) := l_cust_rec;
+            
+            
+            --populate task hierachy from the template            
+            write_log(G_log_type, 'Populate Overhead Task');
+            indx := 0;
+
+            FOR templateTask IN templateTaskInfo(l_template_id, 'Y') LOOP
+            
+                IF INSTR(templateTask.task_number, '<TASKNUM>') = 0 AND indx > 1 THEN
+                    CONTINUE WHEN taskExists(templateTask.task_number, l_tasks_in);
+                END IF;
+                
+                l_tasks_in_rec.task_start_date := NULL;
+                l_tasks_in_rec.task_completion_date := NULL;
+                
+                IF INSTR(templateTask.task_number, '<TASKNUM>') > 0 THEN
+                    FOR contractTaskRec IN contractTaskInfo(contractRec.reco_project_id) LOOP
+                        l_task_number           := REPLACE(templateTask.task_number, '<TASKNUM>', contractTaskRec.task_number);
+                        l_task_name             := REPLACE(templateTask.task_name, '<TASK>', contractTaskRec.task_name);
+                        l_parent_task_number    := REPLACE(templateTask.parent_task_number, '<TASKNUM>', contractTaskRec.task_number);
+                        
+                        l_tasks_in_rec.task_name                := l_task_name;
+                        l_tasks_in_rec.long_task_name           := l_task_name;          
+                        l_tasks_in_rec.task_description         := l_task_name;
+                        l_tasks_in_rec.pa_task_number           := l_task_number;                    
+                        l_tasks_in_rec.pm_task_reference        := l_task_number;
+                        l_tasks_in_rec.pm_parent_task_reference := l_parent_task_number;
+                        l_tasks_in_rec.billable_flag            := templateTask.billable_flag;
+                        l_tasks_in_rec.chargeable_flag          := templateTask.chargeable_flag;
+                        
+                        indx := indx + 1;
+                        l_tasks_in(indx) := l_tasks_in_rec;
+                    END LOOP;
+                ELSE
+                               
+                    l_task_number           := templateTask.task_number;
+                    l_task_name             := templateTask.task_name;
+                    l_parent_task_number    := templateTask.parent_task_number;
+                    
+                    l_tasks_in_rec.task_name                := l_task_name;
+                    l_tasks_in_rec.long_task_name           := l_task_name;          
+                    l_tasks_in_rec.task_description         := l_task_name;
+                    l_tasks_in_rec.pa_task_number           := l_task_number;                    
+                    l_tasks_in_rec.pm_task_reference        := l_task_number;
+                    l_tasks_in_rec.pm_parent_task_reference := l_parent_task_number;
+                    l_tasks_in_rec.billable_flag            := templateTask.billable_flag;
+                    l_tasks_in_rec.chargeable_flag          := templateTask.chargeable_flag;
+                    
+                    indx := indx + 1;                
+                    l_tasks_in(indx) := l_tasks_in_rec;
+                END IF;
+            END LOOP;
+            
+            FOR contractTaskRec IN contractTaskInfo(contractRec.reco_project_id) LOOP
+                write_log(G_log_type, RPAD('-', 15, '-'));
+                write_log(G_log_type, 'Set up task for product ('||contractTaskRec.product_id||'): '||contractTaskRec.task_name||' ('||contractTaskRec.task_number||') ' ||' - Type: '||contractTaskRec.project_type||' - BY Wall: '|| contractTaskRec.invoice_by_wall||' - Design BUILD: '|| contractRec.design_build);
+
+                /*byWall := 
+                    CASE UPPER(contractTaskRec.invoice_by_wall) 
+                        WHEN 'Y' THEN TRUE
+                        ELSE FALSE
+                    END;
+                l_wall_count := 1;
+
+                IF byWall THEN
+                    l_wall_count := getWallCount(contractTaskRec.product_id);
+                end if;
+                */
+                
+                FOR templateTask IN templateTaskInfo(l_template_id, 'N') LOOP
+                    --write_log(G_log_type, 'Template Task: '||templateTask.task_number);
+                    IF INSTR(templateTask.task_number, '<TASKNUM>') = 0 AND indx > 1 THEN
+                        CONTINUE WHEN taskExists(templateTask.task_number, l_tasks_in);
+                    END IF;
+            
+                    --indx := indx + 1;
+                    l_task_number           := REPLACE(templateTask.task_number, '<TASKNUM>', contractTaskRec.task_number);
+                    l_task_name             := REPLACE(templateTask.task_name, '<TASK>', contractTaskRec.task_name);
+                    l_parent_task_number    := REPLACE(templateTask.parent_task_number, '<TASKNUM>', contractTaskRec.task_number);
+                    
+                    l_tasks_in_rec.tasks_dff := 'N';
+                    l_tasks_in_rec.attribute_category := NULL;
+                    l_tasks_in_rec.attribute1 := NULL;
+                    l_tasks_in_rec.attribute2 := NULL;
+                    l_tasks_in_rec.attribute6 := NULL;
+                    l_tasks_in_rec.task_start_date := NULL;
+                    l_tasks_in_rec.task_completion_date := NULL;
+                    
+                    IF templateTask.parent_task_number IS NULL AND templateTask.wbs_level = 1 THEN
+                        l_tasks_in_rec.tasks_dff := 'Y';
+                        l_tasks_in_rec.attribute_category   := 'Billing Information';
+                        
+                        IF contractTaskRec.project_type = 'U' THEN
+                            l_task_billing_type     := 'Unit Price';
+                        ELSIF contractTaskRec.project_type = 'L' THEN
+                            l_task_billing_type     := 'Lump Sum';
+                        END IF;
+                        l_tasks_in_rec.attribute1           := l_task_billing_type;
+                        
+                        IF contractTaskRec.invoice_by_wall = 'Y' THEN
+                            l_tasks_in_rec.attribute2           := 'BY WALL';
+                        END IF;
+                    END IF;
+                    
+                    IF INSTR(l_task_number, 'WALL') > 0 THEN
+                        l_wall_num := 0;
+                        l_no_of_walls := 0;
+                        
+                        FOR wallRec IN contractWallInfo(contractTaskRec.product_id,  contractTaskRec.task_name, contractTaskRec.invoice_by_wall, contractRec.design_build) LOOP
+
+                            --IF l_wall_num > 0 THEN
+                            --    indx := indx + 1;
+                            --END IF;
+                            
+                            IF wallRec.wall_order = 1000000 AND wallRec.wall_name LIKE '%POOL TASK%' THEN
+                                l_wall_num := 0; --99;
+                                poolTask := TRUE;
+                            ELSE
+                                l_wall_num := l_wall_num + 1;
+                                poolTask := FALSE;
+                            END IF;
+                            l_no_of_walls := l_no_of_walls +1;
+                            
+                            SELECT DECODE(LENGTH(l_wall_num), 1, 'FM09', 'FM99999') INTO fmt FROM dual;
+                            
+                            l_wall_task_number           := REPLACE(l_task_number, '<WALLNUM>', TO_CHAR(l_wall_num, fmt));
+                            l_wall_task_name             := REPLACE(l_task_name, '<WALL>', wallRec.wall_name);
+                            
+                            l_tasks_in_rec.task_name                := l_wall_task_name;
+                            l_tasks_in_rec.long_task_name           := l_wall_task_name;          
+                            l_tasks_in_rec.task_description         := l_wall_task_name;
+                            l_tasks_in_rec.pa_task_number           := l_wall_task_number;                    
+                            l_tasks_in_rec.pm_task_reference        := l_wall_task_number;
+                            l_tasks_in_rec.pm_parent_task_reference := l_parent_task_number;
+                            IF poolTask THEN
+                                l_tasks_in_rec.billable_flag        := 'N';
+                                l_tasks_in_rec.chargeable_flag      := 'N';
+                            ELSE
+                                l_tasks_in_rec.billable_flag        := templateTask.billable_flag;
+                                l_tasks_in_rec.chargeable_flag      := templateTask.chargeable_flag;                                
+                            END IF;
+
+                            /*
+                            l_structure_id := getStructureId(contractTaskRec.product_id, wallRec.wall_name);
+                            
+                            IF l_structure_id IS NOT NULL THEN
+                                l_tasks_in_rec.tasks_dff := 'Y';
+                                l_tasks_in_rec.attribute_category   := 'Structure Information';
+                                l_tasks_in_rec.attribute6 := l_structure_id;
+                            ELSE
+                                l_tasks_in_rec.tasks_dff := 'N';
+                                l_tasks_in_rec.attribute_category   := NULL;
+                                l_tasks_in_rec.attribute6 := NULL;
+                                write_log(G_log_type, 'Unable to get takeoff structure id for '||wallRec.wall_name);
+                            END IF;
+                            */
+                            
+                            --write_log(G_log_type, indx||') '||l_tasks_in_rec.pa_task_number );
+                            indx := indx + 1;
+                            l_tasks_in(indx) := l_tasks_in_rec;
+                        END LOOP;
+                        
+                        IF l_no_of_walls = 0 THEN
+                            write_log(G_log_type, 'No walls defined in contracts. Unable to create WALL tasks' );
+                            warningMsg(contractTaskRec.task_number, 'No walls defined in contracts. Unable to create WALL task for TEMPLATE TASK '||templateTask.task_number);
+                        END IF;
+                    ELSE 
+                        l_tasks_in_rec.task_name                := l_task_name;
+                        l_tasks_in_rec.long_task_name           := l_task_name;          
+                        l_tasks_in_rec.task_description         := l_task_name;
+                        l_tasks_in_rec.pa_task_number           := l_task_number;                    
+                        l_tasks_in_rec.pm_task_reference        := l_task_number;
+                        l_tasks_in_rec.pm_parent_task_reference := l_parent_task_number;
+                        l_tasks_in_rec.billable_flag            := templateTask.billable_flag;
+                        l_tasks_in_rec.chargeable_flag          := templateTask.chargeable_flag;
+                    
+                        --write_log(G_log_type, indx||') '||l_tasks_in_rec.pa_task_number );
+                        indx := indx + 1;
+                        l_tasks_in(indx) := l_tasks_in_rec;
+                    END IF;
+                END LOOP; --templateTask
+                write_log(G_log_type, 'Done setting up task for product: '||contractTaskRec.task_name);
+                write_log(G_log_type, RPAD('-', 15, '-'));
+            END LOOP; --contractTaskRec
+            
+            FOR idx IN l_tasks_in.first.. l_tasks_in.last LOOP
+                write_log(G_log_type, idx||') '||l_tasks_in(idx).pa_task_number);
+            END LOOP;
+
+        
+            --INIT_CREATE_PROJECT
+            write_log(G_log_type, 'Initialize create project');
+            apps.pa_project_pub.init_project;
+            
+            
+            --CREATE_PROJECT
+            write_log(G_log_type, 'Create project');
+            apps.pa_project_pub.create_project(
+                l_api_version_number,
+                p_commit            => l_commit,
+                p_init_msg_list     => l_init_msg_list,
+                p_msg_count         => l_msg_count,
+                p_msg_data          => l_msg_data,
+                p_return_status     => l_return_status,
+                p_workflow_started  => l_workflow_started,
+                p_pm_product_code   => G_PM_PRODUCT_CODE,
+                p_project_in        => l_project_in,
+                p_project_out       => l_project_out,
+                p_key_members       => l_key_members,
+                p_class_categories  => l_class_categories,
+                p_tasks_in          => l_tasks_in,
+                p_tasks_out         => l_tasks_out,
+                p_customers_in      => l_cust_tbl);
+                
+            -- Check for errors
+            IF l_return_status != 'S' THEN
+                RAISE API_ERROR;
+            END IF;
+            
+            IF errIndx > 0 THEN
+                write_log(G_log_type, 'Created project with Warning(s): '||pProjNum||', projectId: '||l_project_out.pa_project_id);
+            ELSE
+                write_log(G_log_type, 'Successfully created project: '||pProjNum||', projectId: '||l_project_out.pa_project_id);
+            END IF;
+
+
+            UPDATE pa_projects 
+            SET NON_LABOR_INVOICE_FORMAT_ID = NVL(l_inv_format_id, NON_LABOR_INVOICE_FORMAT_ID),
+                invoice_comment = l_inv_comment 
+            WHERE project_id = l_project_out.pa_project_id;
+                
+            write_log(G_log_type, 'Updated project invoice-format-id to: '||l_inv_format_id);
+            write_log(G_log_type, 'Updated project invoice-comment: '||l_inv_comment);
+            
+            --Added by Rafi Syed on 2/5/2025
+			BEGIN
+				SELECT count(*) INTO l_l_cnt
+				FROM apps.pa_proj_fp_options
+				WHERE project_id=l_project_out.pa_project_id
+				AND fin_plan_option_level_code='PLAN_TYPE'
+				AND all_layout_code='NPE_BUDGET';
+			
+			EXCEPTION WHEN OTHERS THEN
+				l_l_cnt:=0;
+			END;
+            
+            IF l_l_cnt!=0 THEN
+				UPDATE apps.pa_proj_fp_options
+				SET all_layout_code=l_b_layount
+				WHERE project_id=l_project_out.pa_project_id
+				AND fin_plan_option_level_code='PLAN_TYPE'
+				AND all_layout_code='NPE_BUDGET';
+	
+				COMMIT;
+	                
+	            write_log(G_log_type, 'Updated plan type layout to: RECO Non-Periodic Budget Layout'); 
+	   		ELSE
+	   			write_log(G_log_type, 'NO update of plan type layout');
+            END IF;
+             
+            write_log(G_log_type, 'Write the Output file');
+            BEGIN
+                write_log('OUT', 'Project '||pProjNum||' was created and set to UNAPPROVED status');
+                write_log('OUT', 'Invoice Format: '||l_inv_format_desc);
+                write_log('OUT', 'Invoice Comment: '||l_inv_comment);
+                IF l_l_cnt!=0 THEN                 
+                	write_log('OUT', 'Plan Type Layout: '||'RECO Non-Periodic Budget Layout');
+		   		ELSE
+		   			write_log('OUT', 'NO update of plan type layout');
+	            END IF;
+                write_log('OUT', '   ');
+                write_log('OUT', '   ');
+            EXCEPTION 
+                WHEN others THEN
+                    write_log(G_log_type, 'Error in writing project output: '||sqlerrm);
+            END;
+             
+            BEGIN
+                write_log('OUT', 'Customer');
+                write_log('OUT', RPAD('Customer', 25, ' ')||RPAD(' ', 5, ' ')||RPAD('Bill-To Address', 50, ' ')||RPAD(' ', 5, ' ')||RPAD('Ship-To Address', 50, ' '));
+                FOR idx IN l_cust_tbl.first.. l_cust_tbl.last LOOP         
+                    write_log('OUT',
+                        RPAD(SUBSTR(getCustomerName(l_cust_tbl(idx).customer_id), 1,25), 25, ' ')||RPAD(' ', 5, ' ')||
+                        RPAD(SUBSTR(getAddress(l_cust_tbl(idx).bill_to_address_id), 1, 50), 50, ' ')||RPAD(' ', 5, ' ')||
+                        RPAD(SUBSTR(getAddress(l_cust_tbl(idx).ship_to_address_id), 1, 50), 50, ' ')
+                    );
+                END LOOP;
+                write_log('OUT', '   ');
+                write_log('OUT', '   ');
+            EXCEPTION 
+                WHEN others THEN
+                    write_log(G_log_type, 'Error in writing customer output: '||sqlerrm);
+            END;
+            
+            BEGIN
+                write_log('OUT', 'Key Members');
+                write_log('OUT', RPAD('Person', 30, ' ')||RPAD(' ', 5, ' ')||RPAD('Role', 30, ' '));
+                FOR idx IN l_key_members.first.. l_key_members.last LOOP         
+                    write_log('OUT',
+                        RPAD(getMemName(l_key_members(idx).person_id), 30, ' ')||RPAD(' ', 5, ' ')||
+                        RPAD((CASE UPPER(l_key_members(idx).project_role_type) 
+                                WHEN '1020' THEN 'DIVISION MANAGER'
+                                WHEN '1060' THEN 'JOBCOST ADMINISTRATOR'
+                                ELSE l_key_members(idx).project_role_type
+                              END), 30, ' ')
+                    );
+                END LOOP;
+                write_log('OUT', '   ');
+                write_log('OUT', '   ');
+            EXCEPTION 
+                WHEN others THEN
+                    write_log(G_log_type, 'Error in writing key members output: '||sqlerrm);
+            END; 
+            
+            BEGIN             
+                write_log('OUT', 'Class Categories');
+                write_log('OUT', RPAD('Category', 25, ' ')||RPAD('Value', 30, ' '));
+                FOR idx IN l_class_categories.first.. l_class_categories.last LOOP         
+                    write_log('OUT',
+                        RPAD(l_class_categories(idx).class_category, 25, ' ')||
+                        RPAD(l_class_categories(idx).class_code, 30, ' ')
+                    );
+                END LOOP;
+                write_log('OUT', '   ');
+                write_log('OUT', '   ');
+            EXCEPTION 
+                WHEN others THEN
+                    write_log(G_log_type, 'Error in writing class categories output: '||sqlerrm);
+            END;
+            
+            BEGIN
+                write_log('OUT', RPAD('Task', 25, ' ')||RPAD('Task Name', 30, ' '));
+                FOR idx IN l_tasks_in.first.. l_tasks_in.last LOOP         
+                    write_log('OUT',
+                        RPAD(l_tasks_in(idx).pa_task_number, 25, ' ')||
+                        RPAD(l_tasks_in(idx).task_name, 30, ' ')
+                    );
+                END LOOP;
+            EXCEPTION 
+                WHEN others THEN
+                    write_log(G_log_type, 'Error in writing task output: '||sqlerrm);
+            END;
+            
+            BEGIN
+                IF errIndx > 0 THEN
+                    write_log('OUT',' ');
+                    write_log('OUT',' ');
+                    write_log('OUT', RPAD('Warnings', 8, ' '));
+                    write_log('OUT',RPAD('-', 8, '-'));
+                    
+                    write_log('OUT',
+                        RPAD('Error Code/Task #', 25, ' ')||
+                        RPAD('Error Message', 250, ' ')
+                    );
+                    FOR idx IN l_err_tbl.first.. l_err_tbl.last LOOP        
+                        write_log('OUT',
+                        RPAD(l_err_tbl(idx).task_num, 25, ' ')||
+                        RPAD(l_err_tbl(idx).message, 250, ' ')
+                        );
+                    END LOOP;
+                END IF;
+            EXCEPTION 
+                WHEN others THEN
+                    write_log(G_log_type, 'Error in writing warnings: '||sqlerrm);
+            END;
+            
+            --pProjId := l_project_out.pa_project_id;
+            IF errIndx > 0 THEN
+                write_log(G_log_type, 'errIndx > 0; setting the return status to WARNING');
+                retcode  := G_CONC_PROG_WARN_CODE;
+                errbuf  := G_CONC_PROG_WARN_MSG;
+            END IF;
+            
+            write_log(G_log_type, 'End reco_project_api.create_project');
+            
+        END LOOP; --contractRec                    
+        
+    EXCEPTION
+        WHEN INVALID_PARAMETER THEN
+            ROLLBACK;
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;            
+            write_log(G_log_type, 'Invalid parameter: '||pProjNum);
+            fnd_file.CLOSE;
+            
+        WHEN INVALID_CONTRACT THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Invalid contract for: '||pProjNum);
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+            
+        WHEN RECO_PROJ_API_ERROR THEN
+            ROLLBACK;
+            write_log(G_log_type, 'RECO PROJECT API Error');
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+            
+        WHEN API_ERROR THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Project API Error');
+            
+            IF l_msg_count >= 1 THEN
+                FOR I IN 1..l_msg_count LOOP
+                    apps.pa_interface_utils_pub.get_messages(
+                        p_msg_data      => l_msg_data,
+                        p_encoded       => 'F',
+                        p_data          => l_data,
+                        p_msg_count     => l_msg_count,
+                        p_msg_index     => l_msg_count,   
+                        p_msg_index_out => l_msg_index_out);
+                    
+                    write_log(G_log_type, 'API Error Msg: '||l_data);
+                END LOOP;
+            END IF;
+            
+            retcode := G_CONC_PROG_ERR_CODE;   
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+        WHEN OTHERS THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Project API Other exception: '||sqlerrm);
+            
+            IF l_msg_count >= 1 THEN
+                FOR I IN 1..l_msg_count LOOP
+                    apps.pa_interface_utils_pub.get_messages(
+                        p_msg_count     => l_msg_count,
+                        p_encoded       => 'F',
+                        p_msg_data      => l_msg_data,
+                        p_data          => l_data,
+                        p_msg_index     => l_msg_count,    
+                        p_msg_index_out => l_msg_index_out);
+                    
+                    write_log(G_log_type, 'Other Exception Msg: '||l_data);
+                END LOOP;
+            END IF;
+            retcode := G_CONC_PROG_ERR_CODE;   
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+    END create_project;
+    ----------------------------------------------------------------------------    
+    
+    PROCEDURE create_agreement(
+        errbuf OUT VARCHAR2, 
+        retcode OUT NUMBER,
+        pProjNum IN VARCHAR2 
+        --pAgreementId OUT NUMBER
+        ) IS
+        
+        l_api_version_number        NUMBER :=1.0;
+        l_commit                    VARCHAR2(1):= 'F';
+        l_return_status             VARCHAR2(1);
+        l_init_msg_list             VARCHAR2(1) := 'F';
+        l_msg_count                 NUMBER;
+        l_msg_data                  VARCHAR2(2000);
+        l_data                      VARCHAR2(2000);
+        l_msg_index                 NUMBER;
+        l_msg_index_out             NUMBER;
+
+        l_pm_funding_reference      VARCHAR2(25);
+        
+        l_agreement_in_rec          apps.pa_agreement_pub.agreement_rec_in_type;
+        l_agreement_out_rec         apps.pa_agreement_pub.agreement_rec_out_type;
+        l_funding_in_rec            apps.pa_agreement_pub.funding_rec_in_type;
+        l_funding_in                apps.pa_agreement_pub.funding_in_tbl_type;
+        l_funding_out_rec           apps.pa_agreement_pub.funding_rec_out_type;
+        l_funding_out               apps.pa_agreement_pub.funding_out_tbl_type;
+        
+        l_project_id                NUMBER;
+        l_agreement_reference       VARCHAR2(25);
+        l_agreement_amount          NUMBER;
+        l_description               VARCHAR2(240);
+        l_agreement_type            VARCHAR2(30);
+        l_customer_id               NUMBER;
+        l_admin_id                  NUMBER;
+        l_customer_num              VARCHAR2(30);
+        indx                        NUMBER;
+        l_agreement_num 			VARCHAR2(50);
+        l_user_id                   NUMBER;
+        l_responsibility_id         NUMBER;
+         
+        contractRec                 reco_contracts%ROWTYPE;
+        
+        INVALID_PARAMETER           EXCEPTION;
+        API_ERROR                   EXCEPTION;
+        RECO_PROJ_API_ERROR         EXCEPTION;
+        INVALID_CONTRACT            EXCEPTION;
+        INVALID_AGREEMENT           EXCEPTION;
+        
+        CURSOR contractInfo(pProjNum VARCHAR2) IS
+        SELECT * FROM reco_contracts
+        WHERE project_number = pProjNum
+        AND org_id = G_org_id; --APK CA changes
+        
+        
+        CURSOR contractTasks (pRecoProjId NUMBER) IS
+        SELECT t.task_number, t.task_id AS top_task_id, ct.contract_amount 
+        FROM reco_contract_tasks ct, reco_contracts rc,pa_projects P, pa_tasks T
+        WHERE ct.reco_project_id = pRecoProjId
+        AND ct.reco_project_id = rc.reco_project_id
+        AND rc.project_number = p.segment1
+        AND p.project_id = t.project_id
+        AND ct.task_number = t.task_number
+        AND ct.crm_status_code = 'Won'
+        ORDER BY t.task_number;
+        /*
+        SELECT rtt.task_number, rtt.top_task_id, ct.contract_amount 
+        FROM reco_contract_tasks ct, reco_top_tasks rtt
+        WHERE ct.reco_project_id = pRecoProjId
+        AND ct.reco_project_id = rtt.reco_project_id
+        AND ct.product_id = rtt.product_id
+        ORDER BY rtt.task_number; 
+        */
+        
+    BEGIN
+        G_log_type := 'LOG';
+        write_log(G_log_type, 'Begin reco_project_api.create_agreement; pProjNum: '||pProjNum);
+        errbuf := G_CONC_PROG_SUCC_MSG;
+        retcode := G_CONC_PROG_SUCC_CODE;
+        initialize_global_vars;
+        
+        write_log(G_log_type, 'Validate parameter');
+        IF NOT validProject(pProjNum, l_project_id) THEN
+            RAISE invalid_parameter;
+        END IF;
+        
+        write_log(G_log_type, 'Get contract info');
+        OPEN contractInfo(pProjNum);
+        FETCH contractInfo INTO contractRec;
+        CLOSE contractInfo;
+
+        IF contractRec.contract_type IS NULL OR contractRec.po_number IS NULL THEN
+            RAISE INVALID_AGREEMENT;
+        END IF;  
+
+        IF contractRec.contract_type IN ('P', 'R') THEN
+            l_agreement_type := 'PURCHASE ORDER';
+        ELSIF contractRec.contract_type = 'Q' THEN
+            l_agreement_type := 'RECO QUOTATION CONTRACT';
+        END IF;
+        write_log(G_log_type, 'Agreement Type: '||l_agreement_type);
+             
+        l_agreement_reference   := SUBSTR(ltrim(rtrim(contractRec.po_number)), 1, 25);
+        write_log(G_log_type, 'Agreement Ref: '||l_agreement_reference);
+        
+        l_agreement_num         := ltrim(rtrim(contractRec.po_number)); --||' DD '||TO_CHAR(contractRec.po_date, 'MM/DD/YYYY');
+        write_log(G_log_type, 'Agreement Num: '||l_agreement_num);
+        
+        l_agreement_amount      := contractRec.contract_amount;
+        l_description           := ltrim(rtrim(contractRec.project_number ||' - '||getAgreementDesc(contractRec.reco_project_id, l_return_status))); 
+        write_log(G_log_type, 'Agreement Desc: '||l_description);
+        IF l_return_status <> 'S' THEN
+            RAISE RECO_PROJ_API_ERROR;
+        END IF;
+                
+        l_customer_id := getProjCustomer(l_project_id, l_customer_num, l_return_status);
+        IF l_return_status <> 'S' THEN
+            RAISE RECO_PROJ_API_ERROR;
+        END IF;
+        write_log(G_log_type, 'Got the customer');
+        
+        l_admin_id  := getProjJCAdmin(l_project_id, l_return_status);
+        IF l_return_status <> 'S' THEN
+            RAISE RECO_PROJ_API_ERROR;
+        END IF;
+        write_log(G_log_type, 'Got the admin');
+        
+        l_agreement_in_rec.pm_agreement_reference       := l_agreement_reference;
+        l_agreement_in_rec.customer_id                  := l_customer_id;
+        l_agreement_in_rec.customer_num                 := l_customer_num;
+        l_agreement_in_rec.agreement_num                := l_agreement_num;
+        l_agreement_in_rec.agreement_type               := l_agreement_type;
+        l_agreement_in_rec.amount                       := l_agreement_amount;
+        l_agreement_in_rec.term_id                      := 1000;    --NET 30
+        l_agreement_in_rec.owned_by_person_id           := l_admin_id;
+        l_agreement_in_rec.revenue_limit_flag           := 'Y';
+        l_agreement_in_rec.invoice_limit_flag           := 'Y';
+        l_agreement_in_rec.start_date                   := NVL(getProjectStartDate(l_project_id), SYSDATE);
+        l_agreement_in_rec.template_flag                := NULL;
+        l_agreement_in_rec.owning_organization_id       := G_org_id; -- APK CA changes 0; --RECo
+        l_agreement_in_rec.description                  := l_description;
+        
+        indx := 0;
+        write_log(G_log_type, 'Populate funding record');
+        FOR conTaskRec IN contractTasks(contractRec.reco_project_id) LOOP
+            indx := indx +1;
+            
+            l_funding_in_rec.pm_funding_reference   := contractRec.project_number||'-'||conTaskRec.task_number;
+            l_funding_in_rec.project_id             := l_project_id;
+            l_funding_in_rec.task_id                := conTaskRec.top_task_id;
+            l_funding_in_rec.date_allocated         := SYSDATE;
+            l_funding_in_rec.allocated_amount       := conTaskRec.contract_amount;
+            l_funding_in_rec.funding_category       := 'ORIGINAL';
+            
+            l_funding_in(indx) := l_funding_in_rec;
+        END LOOP;
+        write_log(G_log_type, 'Populated '||indx||' funding records');
+        
+        FOR idx IN l_funding_in.first.. l_funding_in.last LOOP        
+            write_log(G_log_type,
+                idx||'. '||l_funding_in(idx).pm_funding_reference||'; '||l_funding_in(idx).funding_category||': '||l_funding_in(idx).allocated_amount
+                );
+        END LOOP;
+
+        write_log(G_log_type, 'call create agreement');
+        apps.pa_agreement_pub.create_agreement(
+            p_api_version_number    => l_api_version_number,
+            p_commit                => l_commit,
+            p_init_msg_list         => l_init_msg_list,
+            p_msg_count             => l_msg_count,
+            p_msg_data              => l_msg_data,
+            p_return_status         => l_return_status,
+            p_pm_product_code       => G_PM_PRODUCT_CODE,
+            p_agreement_in_rec      => l_agreement_in_rec,
+            p_agreement_out_rec     => l_agreement_out_rec,
+            p_funding_in_tbl        => l_funding_in,
+            p_funding_out_tbl       => l_funding_out);
+            
+        IF l_return_status != 'S' THEN
+            RAISE API_ERROR;
+        END IF;
+        
+        write_log(G_log_type, 'Successfully created agreement '||l_agreement_out_rec.agreement_id);
+        
+        --pAgreementId := l_agreement_out_rec.agreement_id;
+        BEGIN 
+            write_log(G_log_type, 'Write the Output file');
+            write_log('OUT', 'Project: '||pProjNum);
+            write_log('OUT',  RPAD('Agreement #', 50, ' ')||RPAD('Amount', 15, ' '));
+            write_log('OUT', RPAD(l_agreement_in_rec.agreement_num, 50, ' ')||
+                             RPAD(l_agreement_in_rec.amount, 15, ' '));
+                             
+            write_log('OUT', ' ');
+            write_log('OUT', ' ');
+            
+            write_log('OUT', RPAD('Proj-Task', 15, ' ')||RPAD('Amount', 15, ' '));
+            FOR idx IN l_funding_in.first.. l_funding_in.last LOOP         
+                write_log('OUT',
+                    RPAD(l_funding_in(idx).pm_funding_reference, 15, ' ')||
+                    RPAD(l_funding_in(idx).allocated_amount, 15, ' ')
+                );
+            END LOOP;
+        EXCEPTION 
+            WHEN others THEN
+                write_log(G_log_type, 'Error in writing output: '||sqlerrm);
+        END;
+
+        write_log(G_log_type, 'End reco_project_api.create_agreement');
+        
+        
+    EXCEPTION
+        WHEN INVALID_PARAMETER THEN
+            ROLLBACK;
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;
+            write_log(G_log_type, 'Invalid parameter: '||pProjNum);
+            fnd_file.CLOSE;
+            
+        WHEN INVALID_CONTRACT THEN
+            ROLLBACK;
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;
+            write_log(G_log_type, 'Invalid contract for: '||pProjNum);
+            fnd_file.CLOSE;
+            
+        WHEN INVALID_AGREEMENT THEN
+            ROLLBACK;
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;
+            write_log(G_log_type, 'Invalid agreement for: '||pProjNum);
+            fnd_file.CLOSE;
+            
+        WHEN RECO_PROJ_API_ERROR THEN
+            ROLLBACK;
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;
+            write_log(G_log_type, 'RECO AGREEMENT API Error');
+            fnd_file.CLOSE;
+            
+        WHEN API_ERROR THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Agreement API Error');
+            
+            IF l_msg_count >= 1 THEN
+                FOR I IN 1..l_msg_count LOOP
+                    apps.pa_interface_utils_pub.get_messages(
+                        p_msg_data      => l_msg_data,
+                        p_encoded       => 'F',
+                        p_data          => l_data,
+                        p_msg_count     => l_msg_count,
+                        p_msg_index     => l_msg_count,   
+                        p_msg_index_out => l_msg_index_out);
+                    
+                    write_log(G_log_type, 'API Error Msg: '||l_data);
+                END LOOP;
+            END IF;
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;
+            fnd_file.CLOSE;
+            
+        WHEN OTHERS THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Agreement API Other exception: '||sqlerrm);
+            
+            IF l_msg_count >= 1 THEN
+                FOR I IN 1..l_msg_count LOOP
+                    apps.pa_interface_utils_pub.get_messages(
+                        p_msg_count     => l_msg_count,
+                        p_encoded       => 'F',
+                        p_msg_data      => l_msg_data,
+                        p_data          => l_data,
+                        p_msg_index     => l_msg_count,    
+                        p_msg_index_out => l_msg_index_out);
+                    
+                    write_log(G_log_type, 'Other Exception Msg: '||l_data);
+                END LOOP;
+            END IF; 
+            
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;
+            fnd_file.CLOSE;  
+    END create_agreement;
+    ---------------------------------------------------------------------------- 
+    
+    PROCEDURE create_budget(
+        errbuf OUT VARCHAR2, 
+        retcode OUT NUMBER,
+        pProjNum IN VARCHAR2 
+        --pBudgetVerId OUT NUMBER
+        ) IS
+        
+        l_api_version_number        NUMBER :=1.0;
+        l_commit                    VARCHAR2(1):= 'F';
+        l_return_status             VARCHAR2(1);
+        l_init_msg_list             VARCHAR2(1);
+        l_msg_count                 NUMBER;
+        l_msg_data                  VARCHAR2(2000);
+        l_data                      VARCHAR2(2000);
+        l_msg_index                 NUMBER;
+        l_msg_index_out             NUMBER;
+        l_responsibility_id	        NUMBER;
+        l_user_id		            NUMBER;
+        
+        indx                        NUMBER;
+        errIndx                     NUMBER;
+        l_project_id                NUMBER;
+        l_task_id                   NUMBER;
+        l_top_task_id               NUMBER;
+        l_qty                       NUMBER;
+        l_cost_amt                  NUMBER;
+        l_rev_amt                   NUMBER;
+        
+        l_budget_version_name       VARCHAR2(250);
+        l_description               VARCHAR2(500);
+        l_top_task_num              VARCHAR2(25);
+        l_billing                   VARCHAR2(50);
+        l_task_num                  VARCHAR2(25);
+        l_wall_num                  VARCHAR2(15);
+        l_cost_uom                  VARCHAR2(25);
+        l_rev_uom                   VARCHAR2(25);
+        l_uom                       VARCHAR2(25);
+        l_exp_type                  VARCHAR2(150);
+        l_pre_exp_type              VARCHAR2(150);
+        l_rev_exp_type              VARCHAR2(150);
+        l_responsibility_name       VARCHAR2(150);
+
+        l_attribute_category        VARCHAR2(30);
+        l_attribute1                VARCHAR2(150);
+        l_version_type              apps.pa_budget_versions.version_type%TYPE ;
+        
+        addBudgetLine               BOOLEAN;
+        sameUOM                     BOOLEAN;
+        
+        l_budget_lines_in_rec       apps.pa_budget_pub.budget_line_in_rec_type;
+        l_budget_lines_in           apps.pa_budget_pub.budget_line_in_tbl_type;
+        l_budget_lines_out          apps.pa_budget_pub.budget_line_out_tbl_type;
+
+        INVALID_PARAMETER           EXCEPTION;
+        INVALID_ACCESS              EXCEPTION;
+        INVALID_PRODUCT             EXCEPTION;
+        INVALID_BILLING             EXCEPTION;
+        INVALID_TASK                EXCEPTION;
+        EXP_NOT_FOUND               EXCEPTION;
+        API_ERROR                   EXCEPTION;
+        RECO_PROJ_API_ERROR         EXCEPTION;
+        
+        l_budget_err_tbl            ERR_TBL_TYPE;
+        
+        
+        CURSOR conProj IS
+        SELECT rc.project_number, rc.reco_project_id
+        FROM reco_contracts rc
+        WHERE rc.project_number = pProjNum
+        AND org_id = G_org_id;
+        
+        CURSOR conProd(pRecoProjId NUMBER) IS
+        SELECT rct.task_number AS top_task_number, 
+               rct.invoice_on_prod, rct.invoice_on_del, rct.bill_split_freight, rct.bill_condition, 
+               rct.product_id,
+               CASE WHEN rct.invoice_on_prod = 'Y' AND rct.invoice_on_del = 'N' THEN 'ON PRODUCTION' 
+                    WHEN rct.invoice_on_prod = 'Y' AND rct.invoice_on_del = 'Y' THEN 'ON PROD + FREIGHT'
+                    WHEN rct.invoice_on_prod = 'N' AND rct.invoice_on_del = 'Y' THEN 'ON DELIVERY'
+                    ELSE NULL
+                END AS billing
+        FROM reco_contract_tasks rct
+        WHERE rct.reco_project_id = pRecoProjId
+        AND crm_status_code = 'Won'
+        ORDER BY rct.task_number;
+        
+        CURSOR conBudget(pProductId  NUMBER) IS
+        SELECT *
+        FROM reco_budget_lines rbl
+        WHERE product_id = pProductId
+        AND (cost_qty IS NOT NULL OR COST IS NOT NULL OR revenue_qty IS NOT NULL OR revenue IS NOT NULL)
+        ORDER BY task_number;
+        
+        
+        FUNCTION getTaskNumber(pTaskId IN NUMBER) RETURN VARCHAR2 IS
+            lTaskNum    VARCHAR2(30);
+        BEGIN
+            SELECT task_number 
+            INTO lTaskNum 
+            FROM pa_tasks 
+            WHERE task_id = pTaskId;
+            
+            RETURN lTaskNum;
+        EXCEPTION
+            WHEN others THEN
+                RETURN 'X';
+        END getTaskNumber;
+        ------------------------------------------------------------------------
+        
+        FUNCTION getResourceExpType(pResourceListMemId IN NUMBER) RETURN VARCHAR2 IS
+            lResourceExp    VARCHAR2(250);
+        BEGIN
+            SELECT lm.expenditure_type
+            INTO lResourceExp
+            FROM apps.pa_resource_list_members lm
+            WHERE lm.resource_list_id = G_RESOURCE_LIST_ID
+            AND lm.resource_list_member_id = pResourceListMemId;
+            
+            RETURN lResourceExp;
+        EXCEPTION
+            WHEN others THEN
+                RETURN 'X';
+        END getResourceExpType;
+        ------------------------------------------------------------------------
+        
+    BEGIN
+        G_log_type := 'LOG';
+        write_log(G_log_type, 'Begin reco_project_api.create_budget; pProjNum: '||pProjNum);
+        errbuf := G_CONC_PROG_SUCC_MSG;
+        retcode := G_CONC_PROG_SUCC_CODE;
+        initialize_global_vars;
+        
+        write_log(G_log_type, 'Refresh Resource List Id');
+        refreshResourceListId(l_return_status);
+        IF l_return_status <> 'S' THEN
+            RAISE RECO_PROJ_API_ERROR;
+        END IF;
+        write_log(G_log_type, 'ResourceListId: '||G_RESOURCE_LIST_ID);
+        
+        SELECT DECODE(G_org_id, 0, 'Project Super User', 293, 'Project Super User - Canada', 'X')
+        INTO l_responsibility_name
+        FROM dual;
+        
+        BEGIN
+            SELECT user_id, responsibility_id
+            INTO  l_user_id, l_responsibility_id
+            FROM apps.pa_user_resp_v
+            WHERE user_id = G_user_id	
+            AND responsibility_name = l_responsibility_name; --'Project Super User';
+        EXCEPTION
+            WHEN no_data_found THEN
+                write_log(G_log_type, 'No data found in user-resp view');
+                RAISE INVALID_ACCESS;
+        END;	
+        
+        -- SET GLOBAL VALUES
+        apps.pa_interface_utils_pub.set_global_info(
+            p_api_version_number    => 1.0,
+            p_responsibility_id     => l_responsibility_id,
+            p_user_id        	    => l_user_id,  
+            p_msg_count             => l_msg_count,
+            p_msg_data              => l_msg_data,
+            p_return_status         => l_return_status);
+        
+        IF l_return_status <> 'S' THEN
+            RAISE INVALID_ACCESS;
+        END IF;
+        
+        
+        IF NOT validProject(pProjNum, l_project_id) THEN
+            RAISE INVALID_PARAMETER;
+        END IF;
+        write_log(G_log_type, 'Project #: '||pProjNum||', ProjectId: '||l_project_id);
+
+        l_budget_version_name  := pProjNum ||' CONTRACT DD '||TO_CHAR(SYSDATE, 'MM/DD/YYYY');
+        l_attribute_category := G_BUDGET_CATEGORY; 
+        l_attribute1 := G_BUDGET_TYPE; 
+        l_version_type := G_VERSION_TYPE; 
+        
+        write_log(G_log_type, 'Budget version: '||l_budget_version_name);  
+              
+        FOR proj IN conProj LOOP
+
+            l_description := pProjNum ||' CONTRACT DD '||TO_CHAR(SYSDATE, 'MM/DD/YYYY')||' - '||getAgreementDesc(proj.reco_project_id, l_return_status); 
+            IF l_return_status <> 'S' THEN
+                write_log(G_log_type, 'getAgreementDesc returns error');
+                RAISE RECO_PROJ_API_ERROR;
+            END IF;
+              
+            indx := 0; 
+            errIndx := 0;
+                         
+            FOR tsk IN conProd(proj.reco_project_id) LOOP 
+            BEGIN
+                l_top_task_num := tsk.top_task_number;
+                IF NOT validTask(l_project_id, l_top_task_num, l_top_task_id) THEN
+                    RAISE INVALID_PRODUCT;
+                END IF;
+            
+                l_billing := tsk.billing;
+                IF NVL(l_billing, 'X') NOT IN ('ON DELIVERY', 'ON PROD + FREIGHT', 'ON PRODUCTION') THEN
+                    RAISE INVALID_BILLING;
+                END IF;
+                
+                write_log(G_log_type,RPAD('-', 80, '-'));
+                write_log(G_log_type,'Top Task: '||l_top_task_num||', Billing: '||l_billing||', Top Task Id: '||l_top_task_id||', ProductId: '||tsk.product_id);
+                write_log(G_log_type,RPAD('-', 80, '-'));
+
+                FOR bdgt IN conBudget(tsk.product_id) LOOP
+                BEGIN
+                    addBudgetLine := TRUE;
+                    l_task_num := bdgt.task_number;
+                    IF NOT validTask(l_project_id, l_task_num, l_task_id) THEN
+                        RAISE INVALID_TASK;
+                    END IF;
+                    
+                    l_wall_num := NULL;
+                    IF LENGTH(l_task_num)>=12 THEN
+                        SELECT  REGEXP_SUBSTR(l_task_num, '[^.]*$') INTO l_wall_num FROM dual;
+                    END IF;
+
+                    write_log(G_log_type,'Task Num: '||l_task_num||', Wall Num: '||l_wall_num||', Task Id: '||l_task_id);
+                    
+                    IF bdgt.cost_uom = bdgt.revenue_uom THEN
+                        sameUOM := TRUE;
+                        write_log(G_log_type,'Same UOM: Cost UOM-'||bdgt.cost_uom||', Rev UOM-'||bdgt.revenue_uom);
+                    ELSE
+                        sameUOM := FALSE;
+                        write_log(G_log_type,'Different UOM: Cost UOM-'||bdgt.cost_uom||', Rev UOM-'||bdgt.revenue_uom);
+                    END IF;
+                                            
+                    SELECT DECODE(bdgt.cost_uom, '$', 'DOLLARS', 'SF', 'SQUARE FEET', 'RL', 'ROLLS', 'HR', 'HOURS', bdgt.cost_uom),
+                           DECODE(bdgt.revenue_uom, '$', 'DOLLARS', 'SF', 'SQUARE FEET', 'RL', 'ROLLS', 'HR', 'HOURS', bdgt.revenue_uom)
+                    INTO l_cost_uom, l_rev_uom
+                    FROM dual; 
+                    
+                    l_uom := l_cost_uom;
+                    l_qty := bdgt.cost_qty;
+                    l_cost_amt := bdgt.cost;
+                    l_rev_amt := bdgt.revenue;
+                    
+                    write_log(G_log_type,'UOM:'||l_uom||', Qty:'||l_qty||', Cost:'||l_cost_amt||', Rev:'||l_rev_amt);
+
+                    l_budget_lines_in_rec.pa_task_id := l_task_id;
+                    l_budget_lines_in_rec.budget_start_date := TRUNC(SYSDATE);
+                    l_budget_lines_in_rec.budget_end_date := ADD_MONTHS(TRUNC(SYSDATE), 12*10);
+                    
+                    IF l_task_num LIKE l_top_task_num||'.01.01%' THEN
+                        write_log(G_log_type,'Precast Production budget line');
+                        
+                        l_uom := NVL(l_cost_uom, l_rev_uom);
+                        l_qty := NVL(bdgt.cost_qty, bdgt.revenue_qty);
+                        l_exp_type := getExpType(l_top_task_num, l_task_num, l_wall_num, l_uom);
+                        IF l_exp_type IS NOT NULL THEN
+                            l_budget_lines_in_rec.resource_list_member_id := getResourceId(l_exp_type);                                
+                            
+                            IF l_billing IN ('ON PROD + FREIGHT', 'ON PRODUCTION') THEN
+                                write_log(G_log_type, l_billing);
+                                l_budget_lines_in_rec.quantity := l_qty;
+                                l_budget_lines_in_rec.raw_cost := NVL(l_cost_amt, 0);
+                                l_budget_lines_in_rec.revenue := NVL(l_rev_amt, 0);
+
+                            ELSIF l_billing = 'ON DELIVERY' THEN
+                                write_log(G_log_type, l_billing);
+                                l_budget_lines_in_rec.quantity := l_qty;
+                                l_budget_lines_in_rec.raw_cost := NVL(l_cost_amt, 0);
+                                l_budget_lines_in_rec.revenue := 0; --NULL;
+                                
+                            END IF;
+                            write_log(G_log_type,'Precast Exp:'||l_exp_type||', Qty:'||l_budget_lines_in_rec.quantity||', Cost:'||l_budget_lines_in_rec.raw_cost||', Rev:'||l_budget_lines_in_rec.revenue);
+                        ELSE
+                            addBudgetLine := FALSE;
+                            write_log(G_log_type, 'Expenditure Type Not Identified for '||l_task_num||' UOM '||l_uom);
+                            RAISE EXP_NOT_FOUND;
+                        END IF;
+                        
+                    ELSIF l_task_num LIKE l_top_task_num||'.01.02%' THEN
+                        write_log(G_log_type,'Precast Delivery budget line');
+                        l_uom := NVL(l_cost_uom, l_rev_uom);
+                        l_qty := NVL(bdgt.cost_qty, bdgt.revenue_qty);
+                        
+                        IF l_billing = 'ON DELIVERY' THEN
+                            l_pre_exp_type := getExpType(l_top_task_num, l_top_task_num||'.01.01.'||l_wall_num, l_wall_num, l_uom);
+                            write_log(G_log_type, '01.02 ON DELIVERY Precast Expenditure Type '|| l_pre_exp_type);
+                            
+                            IF l_pre_exp_type IS NOT NULL  THEN
+                                l_budget_lines_in_rec.resource_list_member_id := getResourceId(l_pre_exp_type); 
+                                
+                                l_budget_lines_in_rec.quantity := l_qty;
+                                l_budget_lines_in_rec.raw_cost := NVL(l_cost_amt, 0);
+                                l_budget_lines_in_rec.revenue := NVL(l_rev_amt, 0);
+                                
+                                write_log(G_log_type,'Prec-Del '||l_billing||' Exp:'||l_pre_exp_type||', Qty:'||l_budget_lines_in_rec.quantity||', Cost:'||l_budget_lines_in_rec.raw_cost||', Rev:'||l_budget_lines_in_rec.revenue);
+                            ELSE
+                                addBudgetLine := FALSE;
+                                write_log(G_log_type, 'Expenditure Type (Precast) Not Identified for '||l_task_num||' UOM '||l_uom);
+                                RAISE EXP_NOT_FOUND;
+                            END IF;
+                        END IF;
+                        
+                        IF l_billing IN ( 'ON PRODUCTION', 'ON PROD + FREIGHT') THEN
+                            l_exp_type := getExpType(l_top_task_num, l_task_num, l_wall_num, l_uom);
+                            write_log(G_log_type, '01.02 '||l_billing||' Freight Expenditure Type '||l_exp_type);
+                            
+                            IF l_exp_type IS NOT NULL THEN
+                                l_budget_lines_in_rec.resource_list_member_id := getResourceId(l_exp_type);
+                                
+                                IF l_billing = 'ON PRODUCTION' THEN
+                                    l_budget_lines_in_rec.quantity := l_qty;
+                                    l_budget_lines_in_rec.raw_cost := NVL(l_cost_amt, 0);
+                                    l_budget_lines_in_rec.revenue := 0; --NULL;
+                                ELSIF l_billing = 'ON PROD + FREIGHT' THEN
+                                    l_budget_lines_in_rec.quantity := l_qty;
+                                    l_budget_lines_in_rec.raw_cost := NVL(l_cost_amt, 0);
+                                    l_budget_lines_in_rec.revenue := NVL(l_rev_amt, 0);
+                                END IF;  
+                                
+                                write_log(G_log_type,'Prec-Del '||l_billing||' Exp:'||l_exp_type||', Qty:'||l_budget_lines_in_rec.quantity||', Cost:'||l_budget_lines_in_rec.raw_cost||', Rev:'||l_budget_lines_in_rec.revenue);                  
+                            ELSE
+                                addBudgetLine := FALSE;
+                                write_log(G_log_type, 'Expenditure Type Not Identified for '||l_task_num||' UOM '||l_uom);
+                                RAISE EXP_NOT_FOUND;
+                            END IF;
+                        END IF;
+                        
+                    ELSE
+                        write_log(G_log_type,'Other Budget Line');
+                        
+                        l_exp_type := getExpType(l_top_task_num, l_task_num, l_wall_num, l_cost_uom);
+                        write_log(G_log_type,'Cost Exp Type:'||l_exp_type);  
+                                       
+                        IF NOT sameUOM THEN
+                            l_rev_exp_type := getExpType(l_top_task_num, l_task_num, l_wall_num, l_rev_uom);
+                            write_log(G_log_type,'Rev Exp Type:'||l_rev_exp_type); 
+                        END IF; 
+                        
+                        IF sameUOM THEN
+                            IF l_exp_type IS NOT NULL THEN 
+                                l_budget_lines_in_rec.resource_list_member_id := getResourceId(l_exp_type);
+                                l_budget_lines_in_rec.quantity := NVL(bdgt.cost_qty, bdgt.revenue_qty);
+                                l_budget_lines_in_rec.raw_cost := NVL(l_cost_amt, 0);
+                                l_budget_lines_in_rec.revenue := NVL(l_rev_amt, 0);
+                                write_log(G_log_type,'Same UOM Exp:'||l_exp_type||', Qty:'||l_budget_lines_in_rec.quantity||', Cost:'||l_budget_lines_in_rec.raw_cost||', Rev:'||l_budget_lines_in_rec.revenue);
+                            ELSE
+                                addBudgetLine := FALSE;
+                                write_log(G_log_type, 'Expenditure Type Not Identified for '||l_task_num||' UOM '||l_uom);
+                                RAISE EXP_NOT_FOUND;
+                            END IF;   
+                        ELSE
+                            IF l_cost_uom IS NOT NULL AND NVL(l_cost_amt, 0)<> 0 THEN
+                                IF l_exp_type IS NOT NULL THEN
+                                    l_budget_lines_in_rec.resource_list_member_id := getResourceId(l_exp_type);
+                                    
+                                    l_budget_lines_in_rec.quantity := l_qty;
+                                    l_budget_lines_in_rec.raw_cost := NVL(l_cost_amt, 0);
+                                    l_budget_lines_in_rec.revenue := 0; --NULL;
+                                    write_log(G_log_type,'Diff UOM Cost Exp:'||l_exp_type||', Qty:'||l_budget_lines_in_rec.quantity||', Cost:'||l_budget_lines_in_rec.raw_cost||', Rev:'||l_budget_lines_in_rec.revenue);
+                                    indx := indx + 1;
+                                    write_log(G_log_type, indx||'. Add COST budget line for '||l_task_num);
+                                    l_budget_lines_in(indx) := l_budget_lines_in_rec;
+                                    addBudgetLine := FALSE;
+                                ELSE
+                                    --addBudgetLine := FALSE;
+                                    write_log(G_log_type, 'Expenditure Type Not Identified for '||l_task_num||' Cost UOM '||l_uom);
+                                    RAISE EXP_NOT_FOUND;
+                                END IF;
+                            END IF;
+                            
+                            IF l_rev_uom IS NOT NULL AND NVL(bdgt.revenue, 0) <> 0 THEN
+                                IF l_rev_exp_type IS NOT NULL THEN  
+                                    l_budget_lines_in_rec.resource_list_member_id := getResourceId(l_rev_exp_type);
+                                    
+                                    l_budget_lines_in_rec.quantity := bdgt.revenue_qty;
+                                    l_budget_lines_in_rec.raw_cost := 0; --NULL;
+                                    l_budget_lines_in_rec.revenue := NVL(bdgt.revenue, 0);
+                                    write_log(G_log_type,'Diff UOM Rev Exp:'||l_rev_exp_type||', Qty:'||l_budget_lines_in_rec.quantity||', Cost:'||l_budget_lines_in_rec.raw_cost||', Rev:'||l_budget_lines_in_rec.revenue);
+                                    addBudgetLine := TRUE;
+                                ELSE
+                                    addBudgetLine := FALSE;
+                                    write_log(G_log_type, 'Expenditure Type Not Identified for '||l_task_num||' Rev UOM '||l_rev_uom);
+                                    RAISE EXP_NOT_FOUND;
+                                END IF;
+                            END IF;
+                            
+                        END IF;
+                    END IF;                        
+                    write_log(G_log_type,RPAD('~', 80, '~'));
+                    IF addBudgetLine THEN
+                        IF NVL(l_budget_lines_in_rec.quantity, 0) <> 0 OR NVL(l_budget_lines_in_rec.raw_cost , 0)<> 0 OR NVL(l_budget_lines_in_rec.revenue , 0) <> 0 THEN 
+                            indx := indx + 1;
+                            --write_log(G_log_type, indx||'. Add budget line for '||l_task_num);
+                            l_budget_lines_in(indx) := l_budget_lines_in_rec;
+                        END IF;
+                    END IF;    
+                EXCEPTION
+                    WHEN INVALID_TASK THEN
+                        write_log(G_log_type, l_task_num||' not set up for project '||pProjNum);
+                        
+                        errIndx := errIndx +1;
+                        l_budget_err_tbl(errIndx).task_num := l_task_num;
+                        l_budget_err_tbl(errIndx).message := 'TASK NOT SET UP FOR THE PROJECT';
+                        
+                    WHEN EXP_NOT_FOUND THEN
+                        write_log(G_log_type, 'Expenditure Type Not Found for '||l_task_num||' UOM '||l_uom);
+                        
+                        errIndx := errIndx +1;
+                        l_budget_err_tbl(errIndx).task_num := l_task_num;
+                        l_budget_err_tbl(errIndx).message := 'EXPENDITURE TYPE NOT FOUND FOR UOM '||l_uom;
+                END;
+                END LOOP; --Bdgt
+            EXCEPTION
+                WHEN INVALID_PRODUCT THEN
+                    write_log(G_log_type, l_top_task_num||' not set up for project '||pProjNum);
+                    
+                    errIndx := errIndx +1;
+                    l_budget_err_tbl(errIndx).task_num := l_top_task_num;
+                    l_budget_err_tbl(errIndx).message := 'TOP TASK NOT SET UP FOR THE PROJECT';
+                WHEN INVALID_BILLING THEN
+                    write_log(G_log_type, l_top_task_num||' has invalid bill condition');
+                    
+                    errIndx := errIndx +1;
+                    l_budget_err_tbl(errIndx).task_num := l_top_task_num;
+                    l_budget_err_tbl(errIndx).message := 'TOP TASK HAS INVALID BILL CONDITION';
+            END;
+            END LOOP;   --Prod
+        END LOOP; -- Proj 
+        
+        write_log(G_log_type, 'Populated Budget Lines');
+        FOR idx IN l_budget_lines_in.first.. l_budget_lines_in.last LOOP        
+            write_log(G_log_type,
+                idx||'. '||getTaskNumber(l_budget_lines_in(idx).pa_task_id)||' - '||
+                getResourceExpType(l_budget_lines_in(idx).resource_list_member_id)||': '||
+                l_budget_lines_in(idx).quantity||', '||
+                l_budget_lines_in(idx).raw_cost||', '||
+                l_budget_lines_in(idx).revenue
+            );
+        END LOOP;
+        
+        IF errIndx > 0 THEN
+            write_log(G_log_type,RPAD('~', 80, '~'));
+            write_log(G_log_type, 'Warnings');
+            FOR idx IN l_budget_err_tbl.first.. l_budget_err_tbl.last LOOP        
+                write_log(G_log_type,
+                l_budget_err_tbl(idx).task_num||' - '||
+                l_budget_err_tbl(idx).message
+                );
+            END LOOP;
+        END IF;
+        
+        write_log(G_log_type,RPAD('-', 80, '-'));
+        write_log(G_log_type, 'Call API to create budget');
+        apps.pa_budget_pub.init_budget;
+        
+        apps.pa_budget_pub.create_draft_budget(
+            p_api_version_number    => l_api_version_number,
+            p_commit                =>  l_commit,
+            p_msg_count             => l_msg_count,
+            p_msg_data              => l_msg_data,
+            p_return_status         => l_return_status,
+            p_pm_product_code       => G_PM_PRODUCT_CODE,
+            p_pa_project_id         => l_project_id,
+            p_budget_version_name   => l_budget_version_name,
+            p_description           => l_description,
+            p_resource_list_id      => G_RESOURCE_LIST_ID,
+            p_attribute_category    => G_BUDGET_CATEGORY,
+            p_attribute1            => G_BUDGET_TYPE,                   
+            p_budget_lines_in       => l_budget_lines_in,
+            p_budget_lines_out      => l_budget_lines_out,
+            p_fin_plan_type_id      => G_FIN_PLAN_TYPE_ID,
+            p_version_type          => G_VERSION_TYPE,
+            p_raw_cost_flag         => 'Y',
+            p_revenue_flag          => 'Y',
+            p_all_qty_flag          => 'Y'         		
+        );
+        
+        IF l_return_status != 'S' THEN
+            RAISE API_ERROR;
+        END IF;
+        
+        write_log(G_log_type, 'Successfully created budget version: '||l_budget_version_name);
+        
+        BEGIN 
+            write_log(G_log_type, 'Write the Output file');
+            write_log('OUT', 'Project: '||pProjNum);
+            write_log('OUT', 'CONTRACT Budget Version Name: '||l_budget_version_name);
+            write_log('OUT',' ');
+            write_log('OUT',' ');
+            
+            write_log('OUT', RPAD('Task', 15, ' ')||RPAD('Exp. Type', 30, ' ')||RPAD('Qty.', 15, ' ')||RPAD('Cost', 15, ' ')||RPAD('Revenue', 15, ' '));
+            FOR idx IN l_budget_lines_in.first.. l_budget_lines_in.last LOOP        
+                write_log('OUT',
+                    RPAD(getTaskNumber(l_budget_lines_in(idx).pa_task_id), 15, ' ')||
+                    RPAD(getResourceExpType(l_budget_lines_in(idx).resource_list_member_id), 30, ' ')||
+                    RPAD(NVL(TO_CHAR(l_budget_lines_in(idx).quantity), '-'), 15, ' ')||
+                    RPAD(NVL(TO_CHAR(l_budget_lines_in(idx).raw_cost), '-'), 15, ' ')||
+                    RPAD(NVL(TO_CHAR(l_budget_lines_in(idx).revenue), '-'), 15, ' ')
+                );
+            END LOOP;
+            
+            IF errIndx > 0 THEN
+                write_log('OUT',' ');
+                write_log('OUT',' ');
+                write_log('OUT', RPAD('Warnings', 8, ' '));
+                write_log('OUT',RPAD('-', 8, '-'));
+                
+                write_log('OUT',
+                    RPAD('Task Number', 25, ' ')||
+                    RPAD('Error Message', 250, ' ')
+                );
+                FOR idx IN l_budget_err_tbl.first.. l_budget_err_tbl.last LOOP        
+                    write_log('OUT',
+                    RPAD(l_budget_err_tbl(idx).task_num, 25, ' ')||
+                    RPAD(l_budget_err_tbl(idx).message, 250, ' ')
+                    );
+                END LOOP;
+            END IF;
+
+        EXCEPTION 
+            WHEN others THEN
+                write_log(G_log_type, 'Error in writing output: '||sqlerrm);
+        END;
+        
+        IF errIndx > 0 THEN
+            retcode := G_CONC_PROG_WARN_CODE;
+            errbuf  := G_CONC_PROG_WARN_MSG;
+        END IF;
+
+        write_log(G_log_type, 'End reco_project_api.create_budget');       
+        
+        
+    EXCEPTION
+        WHEN INVALID_ACCESS THEN
+            ROLLBACK;
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;  
+            write_log(G_log_type, 'User '||G_user_id|| ' is not authorized to execute this process');
+            fnd_file.CLOSE;
+            
+        WHEN INVALID_PARAMETER THEN
+            ROLLBACK;
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;  
+            write_log(G_log_type, 'Invalid parameter/Project not setup in job cost: '||pProjNum);
+            fnd_file.CLOSE;
+            
+        WHEN RECO_PROJ_API_ERROR THEN
+            ROLLBACK;
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;  
+            write_log(G_log_type, 'RECO BUDGET API Error');
+            fnd_file.CLOSE;
+            
+        WHEN API_ERROR THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Budget API Error');
+            
+            IF l_msg_count >= 1 THEN
+                FOR I IN 1..l_msg_count LOOP
+                    apps.pa_interface_utils_pub.get_messages(
+                        p_msg_data      => l_msg_data,
+                        p_encoded       => 'F',
+                        p_data          => l_data,
+                        p_msg_count     => l_msg_count,
+                        p_msg_index     => l_msg_count,   
+                        p_msg_index_out => l_msg_index_out);
+                    
+                    write_log(G_log_type, 'API Error Msg: '||l_data);
+                END LOOP;
+            END IF;
+            
+            retcode := G_CONC_PROG_ERR_CODE;   
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+        WHEN OTHERS THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Budget API Other exception: '||sqlerrm);
+            
+            IF l_msg_count >= 1 THEN
+                FOR I IN 1..l_msg_count LOOP
+                    apps.pa_interface_utils_pub.get_messages(
+                        p_msg_count     => l_msg_count,
+                        p_encoded       => 'F',
+                        p_msg_data      => l_msg_data,
+                        p_data          => l_data,
+                        p_msg_index     => l_msg_count,    
+                        p_msg_index_out => l_msg_index_out);
+                    
+                    write_log(G_log_type, 'Other Exception Msg: '||l_data);
+                END LOOP;
+            END IF;
+            
+            retcode := G_CONC_PROG_ERR_CODE;   
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;   
+    END create_budget;
+    ----------------------------------------------------------------------------
+    
+    PROCEDURE add_product(
+        errbuf OUT VARCHAR2, 
+        retcode OUT NUMBER,
+        pProjNum IN VARCHAR2, 
+        pTaskNum IN VARCHAR2, 
+        pByWall IN VARCHAR2, 
+        pNoOfWalls IN NUMBER, 
+        pDesignBuild IN VARCHAR2
+    ) IS
+    
+        CURSOR projectInfo IS
+        SELECT  * FROM reco_projects
+        WHERE project_number = pProjNum
+        AND org_id = G_org_id;
+        
+        CURSOR taskInfo(pRecoProjectId NUMBER) IS
+        SELECT * FROM reco_top_tasks
+        WHERE reco_project_id = pRecoProjectId
+        AND task_number = pTaskNum
+        AND osc_status_code = 'Won'
+        ORDER BY task_number;
+        
+        CURSOR wallInfo(pTaskName VARCHAR2, pWalls NUMBER) IS     
+        SELECT pTaskName ||' WALL '||LEVEL AS wall_name, LEVEL AS wall_order
+        FROM DUAL
+        WHERE pByWall = 'Y'        
+        CONNECT BY LEVEL <= pWalls
+        UNION
+        SELECT pTaskName ||' WALL', 1 
+        FROM dual
+        WHERE pByWall = 'N'
+        UNION
+        SELECT pTaskName||' POOL TASK', 1000000
+        FROM dual
+        WHERE pDesignBuild = 'Y'
+        ORDER BY 2;
+        
+        CURSOR templateTaskInfo(pTemplateId NUMBER, POverHead CHAR) IS
+        SELECT project_id,            
+                task_id,
+                task_number,
+                task_name,           
+                (SELECT task_number
+                FROM pa_tasks
+                WHERE task_id = a.parent_task_id) parent_task_number,
+                wbs_level,
+                parent_task_id,
+                billable_flag,
+                chargeable_flag
+        FROM pa_tasks A
+        WHERE project_id = pTemplateId
+        AND task_number LIKE DECODE(pOverHead, 'Y', '001%<TASKNUM>', '<TASKNUM>%')
+        ORDER BY task_number, wbs_level;
+        
+        idx                     NUMBER;
+        l_project_id            NUMBER;
+        l_template_id           NUMBER;
+        l_top_task_id           NUMBER;
+        l_no_of_walls           NUMBER;
+        l_wall_num              NUMBER;
+        
+        l_task_number           VARCHAR2(25);
+        l_task_name             VARCHAR2(250);
+        l_wall_task_number      VARCHAR2(25);
+        l_wall_task_name        VARCHAR2(250);
+        l_parent_task_number    VARCHAR2(25);        
+        l_task_billing_type     VARCHAR2(25);
+        fmt                     VARCHAR2(10);
+        
+        poolTask                BOOLEAN;
+        
+        l_api_version_number    NUMBER := 1;
+        l_commit            	VARCHAR2(1) := 'F';
+        l_return_status         VARCHAR2(1);
+        l_init_msg_list         VARCHAR2(1) := 'F';
+        l_msg_count             NUMBER;
+        l_msg_index_out         NUMBER;
+        l_msg_data              VARCHAR2(2000);
+        l_data            	    VARCHAR2(2000);
+        l_workflow_started      VARCHAR2(10);
+        
+        INVALID_PARAMETER       EXCEPTION;
+        INVALID_PROJECT         EXCEPTION;
+        INVALID_TASK            EXCEPTION;
+        INVALID_PROD            EXCEPTION;
+        INVALID_RECO_PROJECT    EXCEPTION;
+        INVALID_ACCESS          EXCEPTION;
+        API_ERROR               EXCEPTION;
+        
+        l_project_in            apps.PA_PROJECT_PUB.PROJECT_IN_REC_TYPE;
+        l_project_out           apps.PA_PROJECT_PUB.PROJECT_OUT_REC_TYPE;
+        l_tasks_out_rec         apps.PA_PROJECT_PUB.TASK_OUT_REC_TYPE;
+        l_tasks_out             apps.PA_PROJECT_PUB.TASK_OUT_TBL_TYPE;
+        l_task_rec              apps.PA_PROJECT_PUB.TASK_IN_REC_TYPE;
+        l_tasks                 apps.PA_PROJECT_PUB.TASK_IN_TBL_TYPE;
+        
+        projectRec              reco_projects%ROWTYPE;
+        taskRec                 reco_top_tasks%ROWTYPE;
+        l_start                 date; -- bug 34700329  patch 34858347
+    BEGIN
+        G_log_type := 'LOG';
+        
+        write_log(G_log_type, 'Parameters');
+        write_log(G_log_type, RPAD('-', 10, '-'));
+        write_log(G_log_type, 'pProjNum: '||pProjNum);
+        write_log(G_log_type, 'pTaskNum: '||pTaskNum);
+        write_log(G_log_type, 'pByWall: '||pByWall);
+        write_log(G_log_type, 'pNoOfWalls: '||pNoOfWalls);
+        write_log(G_log_type, 'pDesignBuild: '||pDesignBuild);
+        write_log(G_log_type, RPAD('-', 15, '-'));
+        
+        write_log(G_log_type, 'Begin reco_project_api.add_product; pProjNum: '||pProjNum);
+        write_log(G_log_type, 'Initializing return status to SUCCESS');
+        errbuf := G_CONC_PROG_SUCC_MSG;
+        retcode := G_CONC_PROG_SUCC_CODE;
+        
+        initialize_global_vars;
+        
+        write_log(G_log_type, 'Validate Parameters');
+        IF pProjNum IS NULL OR pTaskNum IS NULL THEN
+            RAISE INVALID_PARAMETER;
+        END IF;
+        
+        OPEN projectInfo;
+        FETCH projectInfo INTO projectRec;
+        IF projectInfo%NOTFOUND THEN
+            CLOSE projectInfo;
+            RAISE INVALID_RECO_PROJECT;
+        END IF;
+        CLOSE projectInfo;
+        
+        OPEN taskInfo(projectRec.reco_project_id);
+        FETCH taskInfo INTO taskRec;
+        IF taskInfo%notfound THEN
+            CLOSE taskInfo;
+            RAISE INVALID_PROD;
+        END IF;
+        CLOSE taskInfo;
+
+        
+        l_project_id        := NULL;
+        l_template_id       := NULL;
+        l_top_task_id       := NULL;
+        
+        write_log(G_log_type, 'Validate project exists and get project_id and template_id');
+        BEGIN
+            SELECT project_id, created_from_project_id, start_date
+            INTO l_project_id, l_template_id, l_start
+            FROM pa_projects
+            WHERE segment1 = projectRec.project_number;
+        EXCEPTION
+            WHEN no_data_found THEN
+                RAISE INVALID_PROJECT;
+        END;
+        
+        l_project_in.pa_project_id := l_project_id;
+        l_project_in.start_date := l_start;
+        
+        write_log(G_log_type,'validate task does not exist for the project');
+        BEGIN
+            SELECT task_id
+            INTO l_top_task_id
+            FROM pa_tasks
+            WHERE project_id = l_project_id
+            AND task_number = pTaskNum;
+        EXCEPTION
+            WHEN no_data_found THEN
+                NULL;
+        END;
+        IF l_top_task_id IS NOT NULL THEN
+            RAISE INVALID_TASK;
+        END IF;
+        
+        l_no_of_walls := 1;
+         
+        IF pByWall = 'Y' THEN
+            l_no_of_walls := NVL(pNoOfWalls, NVL(taskRec.pg_walls, 1));
+        END IF;
+        
+
+        idx := 0;
+        
+        FOR templateTask IN templateTaskInfo(l_template_id, 'Y') LOOP
+            l_task_number           := REPLACE(templateTask.task_number, '<TASKNUM>', taskRec.task_number);
+            l_task_name             := REPLACE(templateTask.task_name, '<TASK>', taskRec.task_name);
+            
+            l_task_rec.task_name                := l_task_name;
+            l_task_rec.long_task_name           := l_task_name;          
+            l_task_rec.task_description         := l_task_name;
+            l_task_rec.pa_task_number           := l_task_number;                    
+            l_task_rec.pm_task_reference        := l_task_number;
+            l_task_rec.pm_parent_task_reference := templateTask.parent_task_number;
+            l_task_rec.billable_flag            := templateTask.billable_flag;
+            l_task_rec.chargeable_flag          := templateTask.chargeable_flag;
+            
+            idx := idx + 1;
+            l_tasks(idx) := l_task_rec;
+        END LOOP;
+        
+        FOR templateTask IN templateTaskInfo(l_template_id, 'N') LOOP
+        
+            l_task_number           := REPLACE(templateTask.task_number, '<TASKNUM>', taskRec.task_number);
+            l_task_name             := REPLACE(templateTask.task_name, '<TASK>', taskRec.task_name);
+            l_parent_task_number    := REPLACE(templateTask.parent_task_number, '<TASKNUM>', taskRec.task_number);
+            
+            l_task_rec.tasks_dff               := 'N';
+            l_task_rec.attribute_category      := NULL;
+            l_task_rec.attribute1              := NULL;
+            l_task_rec.attribute2              := NULL;
+            l_task_rec.attribute6              := NULL;
+            l_task_rec.task_start_date         := NULL;
+            l_task_rec.task_completion_date    := NULL;
+            
+            IF templateTask.parent_task_number IS NULL AND templateTask.wbs_level = 1 THEN
+                l_task_rec.tasks_dff := 'Y';
+                l_task_rec.attribute_category   := 'Billing Information';
+                
+                IF taskRec.award_contract_type = 'U' THEN
+                    l_task_billing_type     := 'Unit Price';
+                ELSIF taskRec.award_contract_type = 'L' THEN
+                    l_task_billing_type     := 'Lump Sum';
+                END IF;
+                l_task_rec.attribute1           := l_task_billing_type;
+                
+                IF pByWall = 'Y' THEN
+                    l_task_rec.attribute2           := 'BY WALL';
+                END IF;
+            END IF;
+                
+            IF INSTR(l_task_number, 'WALL') > 0 THEN
+                l_wall_num := 0;
+                
+                FOR wallRec IN wallInfo(taskRec.task_name, l_no_of_walls) LOOP
+                
+                    IF wallRec.wall_order = 1000000 AND wallRec.wall_name LIKE '%POOL TASK%' THEN
+                        l_wall_num := 0; --99;
+                        poolTask := TRUE;
+                    ELSE
+                        l_wall_num := l_wall_num + 1;
+                        poolTask := FALSE;
+                    END IF;
+                    
+                    SELECT DECODE(LENGTH(l_wall_num), 1, 'FM09', 'FM99999') INTO fmt FROM dual;
+                    
+                    l_wall_task_number           := REPLACE(l_task_number, '<WALLNUM>', TO_CHAR(l_wall_num, fmt));
+                    l_wall_task_name             := REPLACE(l_task_name, '<WALL>', wallRec.wall_name);
+                    
+                    l_task_rec.task_name                := l_wall_task_name;
+                    l_task_rec.long_task_name           := l_wall_task_name;          
+                    l_task_rec.task_description         := l_wall_task_name;
+                    l_task_rec.pa_task_number           := l_wall_task_number;                    
+                    l_task_rec.pm_task_reference        := l_wall_task_number;
+                    l_task_rec.pm_parent_task_reference := l_parent_task_number;
+                    
+                    IF poolTask THEN
+                        l_task_rec.billable_flag        := 'N';
+                        l_task_rec.chargeable_flag      := 'N';
+                    ELSE
+                        l_task_rec.billable_flag        := templateTask.billable_flag;
+                        l_task_rec.chargeable_flag      := templateTask.chargeable_flag;                                
+                    END IF;
+
+                    idx := idx + 1;
+                    l_tasks(idx) := l_task_rec;
+                END LOOP;
+            ELSE 
+                l_task_rec.task_name                := l_task_name;
+                l_task_rec.long_task_name           := l_task_name;          
+                l_task_rec.task_description         := l_task_name;
+                l_task_rec.pa_task_number           := l_task_number;                    
+                l_task_rec.pm_task_reference        := l_task_number;
+                l_task_rec.pm_parent_task_reference := l_parent_task_number;
+                l_task_rec.billable_flag            := templateTask.billable_flag;
+                l_task_rec.chargeable_flag          := templateTask.chargeable_flag;
+
+                idx := idx + 1;
+                l_tasks(idx) := l_task_rec;
+                
+            END IF;                        
+        END LOOP;
+        
+        FOR tsk IN l_tasks.first.. l_tasks.last LOOP
+            write_log(G_log_type, LPAD(tsk, 3, ' ')||') '||RPAD(l_tasks(tsk).pa_task_number, 20, ' ')||RPAD(l_tasks(tsk).task_name, 30, ' ')||RPAD(l_tasks(tsk).pm_parent_task_reference, 20, ' '));
+        END LOOP;
+        
+        
+        apps.pa_project_pub.UPDATE_project(
+            p_api_version_number    => l_api_version_number,
+            p_commit                => l_commit,
+            p_init_msg_list         => l_init_msg_list,
+            p_msg_count             => l_msg_count,
+            p_msg_data              => l_msg_data,
+            p_return_status         => l_return_status,
+            p_workflow_started      => l_workflow_started,
+            p_pm_product_code       => G_PM_PRODUCT_CODE,
+            p_project_in            => l_project_in,
+            p_project_out           => l_project_out,
+            p_tasks_in              => l_tasks,
+            p_tasks_out             => l_tasks_out);
+            --p_update_mode           => 'PA_UPD_WBS_ATTR');
+            
+        IF l_return_status != 'S' THEN
+            RAISE API_ERROR;
+        END IF;
+        
+        FOR tsk IN l_tasks.first.. l_tasks.last LOOP
+            write_log('OUT', LPAD(tsk, 3, ' ')||') '||RPAD(l_tasks(tsk).pa_task_number, 20, ' ')||RPAD(l_tasks(tsk).task_name, 30, ' ')||RPAD(l_tasks(tsk).pm_parent_task_reference, 20, ' '));
+        END LOOP;
+        
+        write_log(G_log_type, 'Sucessfully updated the project');
+    EXCEPTION     
+        WHEN INVALID_PARAMETER THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Invalid input parameters');
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+            
+        WHEN INVALID_PROJECT THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Invalid PROJECT. Project should exist in JC');
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+            
+        WHEN INVALID_TASK THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Invalid TASK. Task should not exist for the project in JC');
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+        
+        WHEN INVALID_RECO_PROJECT THEN
+            ROLLBACK;
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            write_log(G_log_type, 'Invalid RECO-PROJECT. Project should exist in RECO-PROJECTS table');
+               
+        WHEN INVALID_PROD THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Invalid RECO-TOP-TASK. Product should exist in RECO-TOP-TASKS table');
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+        
+        WHEN INVALID_ACCESS THEN
+            ROLLBACK;
+            write_log(G_log_type, 'User is not authorized to execute this process');
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+        
+        WHEN API_ERROR THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Project API Error');
+            
+            IF l_msg_count >= 1 THEN
+                FOR I IN 1..l_msg_count LOOP
+                    apps.pa_interface_utils_pub.get_messages(
+                        p_msg_data      => l_msg_data,
+                        p_encoded       => 'F',
+                        p_data          => l_data,
+                        p_msg_count     => l_msg_count,
+                        p_msg_index     => l_msg_count,   
+                        p_msg_index_out => l_msg_index_out);
+                    
+                    write_log(G_log_type, 'API Error Msg: '||l_data);
+                END LOOP;
+            END IF; 
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;   
+    END add_product;
+    
+    ----------------------------------------------------------------------------
+      
+    PROCEDURE add_wall_task(
+            errbuf OUT VARCHAR2, 
+            retcode OUT NUMBER,
+            pProjNum IN VARCHAR2, 
+            pTopTaskNum IN VARCHAR2, 
+            pWallTaskName IN VARCHAR2) IS
+
+        l_api_version_number    NUMBER := 1;
+        l_commit            	VARCHAR2(1) := 'F';
+        l_return_status         VARCHAR2(1);
+        l_init_msg_list         VARCHAR2(1) := 'F';
+        l_msg_count             NUMBER;
+        l_msg_index_out         NUMBER;
+        l_msg_data              VARCHAR2(2000);
+        l_data            	    VARCHAR2(2000);
+
+        l_project_id            NUMBER;
+        l_top_task_id           NUMBER;
+        l_template_id           NUMBER;
+        l_parent_task_id        NUMBER;
+        l_task_id               NUMBER;
+        o_project_id            NUMBER;
+        l_task_cnt              NUMBER;  
+        l_responsibility_id	    NUMBER;
+        l_user_id		        NUMBER;     
+        o_proj_num              VARCHAR2(15);      
+        l_task_number           VARCHAR2(25);
+        l_task_name             VARCHAR2(250);
+        l_responsibility_name       VARCHAR2(150);
+        fmt                     VARCHAR2(10);
+        
+        INVALID_PROJECT     EXCEPTION;
+        INVALID_PRODUCT     EXCEPTION;
+        INVALID_ACCESS      EXCEPTION;
+        INVALID_BILL_TYPE   EXCEPTION;
+        TEMPLATE_ERROR      EXCEPTION;        
+        API_ERROR           EXCEPTION;
+    
+        CURSOR wallTasks(pProjTemplateId NUMBER) IS
+        SELECT REPLACE(t.task_number, '<TASKNUM>', pTopTaskNum) AS task_number, 
+               t.task_name, t.billable_flag, t.chargeable_flag,
+               REPLACE(pt.task_number, '<TASKNUM>', pTopTaskNum) AS parent_task_number
+        FROM pa_tasks T, pa_tasks pt
+        WHERE t.project_id = pProjTemplateId 
+        AND t.task_number LIKE '%<WALLNUM>'
+        AND t.parent_task_id = pt.task_id;
+        
+        FUNCTION billByWall(pTopTaskId IN NUMBER) RETURN BOOLEAN IS
+            lByWall CHAR(1) := 'N';
+        BEGIN                
+            SELECT 'Y'
+            INTO lByWall
+            FROM pa_tasks 
+            WHERE task_id = l_top_task_id
+            AND attribute_category = 'Billing Information'
+            AND attribute2 = 'BY WALL';
+            IF lByWall = 'Y' THEN 
+                RETURN TRUE;
+            ELSE 
+                RETURN FALSE;
+            END IF;
+        END billByWall;
+        ------------------------------------------------------------------------
+        
+    BEGIN
+        G_log_type := 'LOG';
+        write_log(G_log_type, 'Parameters');
+        write_log(G_log_type, RPAD('-', 10, '-'));
+        write_log(G_log_type, 'pProjNum: '||pProjNum);
+        write_log(G_log_type, 'pTopTaskNum: '||pTopTaskNum);
+        write_log(G_log_type, RPAD('-', 15, '-'));
+        
+        write_log(G_log_type, 'Begin reco_project_api.add_wall_task; pProjNum: '||pProjNum);
+        
+        write_log(G_log_type, 'Initializing return status to SUCCESS');
+        errbuf := G_CONC_PROG_SUCC_MSG;
+        retcode := G_CONC_PROG_SUCC_CODE;
+        
+        initialize_global_vars;
+        
+        write_log(G_log_type, 'Validate Parameters');
+        
+        IF NOT validProject(pProjNum, l_project_id) THEN
+            RAISE INVALID_PROJECT;
+        END IF;
+        
+        write_log(G_log_type, 'ProjectId: '||l_project_id);
+        IF (NOT validTask(l_project_id, pTopTaskNum, l_top_task_id) OR pTopTaskNum = '001') THEN
+            RAISE INVALID_PRODUCT;
+        END IF;
+        
+        IF NOT billByWall(l_top_task_id) THEN
+            RAISE INVALID_BILL_TYPE;
+        END IF;
+        
+        l_template_id := getTemplateId(l_project_id, l_return_status);
+        IF l_return_status = 'E' THEN
+            RAISE TEMPLATE_ERROR;
+        END IF;
+        
+        SELECT DECODE(G_org_id, 0, 'Project Super User', 293, 'Project Super User - Canada', 'X')
+        INTO l_responsibility_name
+        FROM dual;
+        write_log(G_log_type, 'Responsibility: '||l_responsibility_name);
+        
+        BEGIN
+            SELECT user_id, responsibility_id
+            INTO  l_user_id, l_responsibility_id
+            FROM apps.pa_user_resp_v
+            WHERE user_id = G_user_id	
+            AND responsibility_name = l_responsibility_name; --'Project Super User';
+        EXCEPTION
+            WHEN no_data_found THEN
+                write_log(G_log_type, 'No data found in user-resp view');
+                RAISE INVALID_ACCESS;
+        END;
+        
+        write_log(G_log_type, 'set global info: user_id = '||l_user_id||' responsibility_id: '||l_responsibility_id);
+        -- SET GLOBAL VALUES
+        apps.pa_interface_utils_pub.set_global_info(
+            p_api_version_number    => 1.0,
+            p_responsibility_id     => l_responsibility_id,
+            p_user_id        	    => l_user_id,  
+            p_msg_count             => l_msg_count,
+            p_msg_data              => l_msg_data,
+            p_return_status         => l_return_status);
+        
+        IF l_return_status <> 'S' THEN
+            RAISE INVALID_ACCESS;
+        END IF;
+        
+        write_log(G_log_type,'done with setting global info');
+        
+        FOR tmplt IN wallTasks(l_template_id) LOOP
+            SELECT task_id
+            INTO l_parent_task_id
+            FROM pa_tasks
+            WHERE project_id = l_project_id
+            AND task_number = tmplt.parent_task_number;
+            
+            SELECT COUNT(*) INTO l_task_cnt
+            FROM pa_tasks 
+            WHERE parent_task_id = l_parent_task_id;
+            l_task_cnt := l_task_cnt + 1;
+            
+            write_log(G_log_type, 'Task cnt: '||l_task_cnt);
+            
+            SELECT DECODE(LENGTH(l_task_cnt), 1, 'FM09', 'FM99999') INTO fmt FROM dual;
+            l_task_number := REPLACE(tmplt.task_number, '<WALLNUM>', TO_CHAR(l_task_cnt, fmt));
+            l_task_name   := REPLACE(tmplt.task_name, '<WALL>', pWallTaskName);
+            
+            write_log(G_log_type, 'Adding task '||l_task_number||' for parent task '||tmplt.parent_task_number);
+            
+            --CHECK_UNIQUE_TASK_NUMBER
+            /*
+            apps.pa_project_pub.check_unique_task_number(
+                p_api_version_number    =>l_api_version_number,
+                p_init_msg_list         => l_init_msg_list,
+                p_return_status         => l_return_status,
+                p_msg_count             => l_msg_count,
+                p_msg_data              => l_msg_data,
+                p_project_id            => l_project_id,
+                p_task_number           => l_task_number,
+                p_unique_task_number    => l_unique_task_num
+                );
+            */
+        
+            write_log(G_log_type,'call ps_project_pub.add_task');
+            --PA_PROJECT_PUB.CHECK_ADD_SUBTASK_OK
+            apps.PA_PROJECT_PUB.ADD_TASK(
+                p_api_version_number    => l_api_version_number,
+                p_commit                => l_commit,
+                p_init_msg_list         => l_init_msg_list,
+                p_msg_count             => l_msg_count,
+                p_msg_data              => l_msg_data,
+                p_return_status         => l_return_status,
+                p_pm_product_code       => G_PM_PRODUCT_CODE,
+                p_pa_project_id         => l_project_id,
+                p_pm_task_reference     => l_task_number,
+                p_pa_task_number        => l_task_number,
+                p_task_name             => l_task_name,
+                p_long_task_name        => l_task_name,
+                p_task_description      => l_task_name,
+                p_billable_flag         => tmplt.billable_flag,
+                p_chargeable_flag       => tmplt.chargeable_flag,
+                p_pa_parent_task_id     => l_parent_task_id,
+                p_structure_type        => 'FINANCIAL',
+                p_structure_updates_flag => 'N', 
+                    -- Y runs Process Structure Updates; causes performance issue 
+                    -- Pass N and once tasks are added run the process "PRC: Process Project Structure Updates" for the project.
+                p_pa_project_id_out     => o_project_id,
+                p_pa_project_number_out => o_proj_num,
+                p_task_id               => l_task_id
+            );
+            
+            write_log(G_log_type,'oProjectId: '||o_project_id);
+            write_log(G_log_type,'oProjNum: '||o_proj_num);
+            IF l_return_status != 'S' THEN
+                RAISE API_ERROR;
+            END IF;
+            
+            write_log(G_log_type,'oTaskId: '||l_task_id);
+        END LOOP;
+    EXCEPTION
+        WHEN INVALID_PROJECT THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Invalid parameter: '||pProjNum);
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+            
+        WHEN INVALID_PRODUCT THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Invalid product: '||pProjNum||' - '||pTopTaskNum);
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+        
+        WHEN INVALID_BILL_TYPE THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Cannot add wall task for bill BY PRODUCT task: '||pProjNum||' - '||pTopTaskNum);
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+            
+        WHEN TEMPLATE_ERROR THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Error in getting template-id for: '||pProjNum);
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+            
+        WHEN INVALID_ACCESS THEN
+            ROLLBACK;
+            write_log(G_log_type, 'User is not authorized to execute this process');
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+            
+        WHEN API_ERROR THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Add Task API Error');
+            
+            IF l_msg_count >= 1 THEN
+                FOR I IN 1..l_msg_count LOOP
+                    apps.pa_interface_utils_pub.get_messages(
+                        p_msg_data      => l_msg_data,
+                        p_encoded       => 'F',
+                        p_data          => l_data,
+                        p_msg_count     => l_msg_count,
+                        p_msg_index     => l_msg_count,   
+                        p_msg_index_out => l_msg_index_out);
+                    
+                    write_log(G_log_type, 'API Error Msg: '||l_data);
+                END LOOP;
+            END IF;
+                
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG; 
+            fnd_file.CLOSE;
+    END add_wall_task; 
+    ----------------------------------------------------------------------------
+    
+    PROCEDURE populate_bill_rate(
+        errbuf              OUT VARCHAR2, 
+        retcode             OUT NUMBER,
+        pProjectId          IN  number
+        ) IS   
+          
+        l_bill_rate_id      number;
+        l_bill_rate         number;    
+        l_bdgt_rate         number;
+        l_bill_rate_round   number;  
+        l_budget_version_id number;
+        l_bill_type         varchar2(5);
+        l_start_date        date;
+        bill_rate_found     BOOLEAN;
+        idx                 number;
+        
+        CURSOR budgetRate IS
+        SELECT p.segment1, p.start_date proj_start_date, t.task_number, ra.expenditure_type, bl.txn_bill_rate_override bill_rate, 
+                bl.quantity, bl.revenue, t.task_id, t.top_task_id, bv.project_id,bl.revenue/bl.txn_bill_rate_override, bv.baselined_date, version_name
+        FROM apps.pa_budget_versions bv, apps.pa_budget_lines bl, apps.pa_resource_assignments ra, apps.pa_tasks T, pa_projects P
+        WHERE bv.budget_version_id = bl.budget_version_id
+        AND bl.resource_assignment_id = ra.resource_assignment_id
+        AND t.task_id = ra.task_id
+        AND p.project_id = bv.project_id
+        AND bv.budget_version_id = l_budget_version_id 
+        AND bl.revenue <> 0;       
+        
+        
+        TYPE BILLRATE_REC_TYPE IS record(
+            proj_num    varchar2(15),
+            proj_date   date,
+            task_num    VARCHAR2(25),
+            bill_type   varchar2(5),
+            exp_type    varchar2(50),
+            bdgt_name   varchar2(50),
+            bdgt_date   date,
+            bdgt_qty    number,
+            bdgt_rev    number,
+            bdgt_rate   number,
+            old_rate    number,
+            new_rate    number,
+            start_date  date,
+            end_date    date,
+            message     VARCHAR2(500)
+        );  
+              
+        TYPE BILLRATE_TBL_TYPE IS TABLE OF BILLRATE_REC_TYPE INDEX BY BINARY_INTEGER;
+        
+        l_rate_tbl  BILLRATE_TBL_TYPE; 
+        
+        INVALID_PARAMETER   EXCEPTION;
+        BUDGET_NOT_FOUND    EXCEPTION;   
+               
+    BEGIN
+        G_log_type := 'LOG';
+        write_log(G_log_type, 'Begin reco_project_api.populate_bill_rate; project-id: '||pProjectId);
+        errbuf := G_CONC_PROG_SUCC_MSG;
+        retcode := G_CONC_PROG_SUCC_CODE;
+        initialize_global_vars;
+                 
+        IF pProjectId IS NULL THEN
+            write_log(G_log_type, 'pProjectIs is null; exception: invalid_parameter');
+            RAISE INVALID_PARAMETER;
+        END IF;
+                
+        --get the current baselineversionid
+        l_budget_version_id := NULL;
+        BEGIN   
+            SELECT budget_version_id 
+            INTO l_budget_version_id 
+            FROM pa_budget_versions
+            WHERE project_id = pProjectId
+            AND budget_status_code = 'B'
+            AND current_flag = 'Y';             
+        EXCEPTION
+            WHEN no_data_found THEN
+                RAISE BUDGET_NOT_FOUND;
+        END;
+        write_log(G_log_type, 'l_budget_version_id: '||l_budget_version_id);
+        
+        idx := 0;
+        FOR cb IN budgetRate LOOP
+        BEGIN
+            write_log(G_log_type, 'bdgt-proj-num: '||cb.segment1);
+            write_log(G_log_type, 'bdgt-task-num: '||cb.task_number);
+            write_log(G_log_type, 'bdgt-exp-type: '||cb.expenditure_type);
+            write_log(G_log_type, 'bdgt-bill-rate: '||cb.bill_rate);
+            write_log(G_log_type, 'bdgt-baselined: '||cb.baselined_date);
+        
+            idx := idx +1;
+            l_rate_tbl(idx).proj_num := cb.segment1;
+            l_rate_tbl(idx).proj_date := cb.proj_start_date;
+            l_rate_tbl(idx).task_num := cb.task_number;
+            l_rate_tbl(idx).exp_type := cb.expenditure_type;
+            l_rate_tbl(idx).bdgt_name := cb.version_name;
+            l_rate_tbl(idx).bdgt_date := cb.baselined_date;
+            l_rate_tbl(idx).bdgt_qty := cb.quantity;
+            l_rate_tbl(idx).bdgt_rev := cb.revenue;
+            l_rate_tbl(idx).bdgt_rate := cb.bill_rate;
+            l_rate_tbl(idx).message := '';
+            
+            l_bill_rate_round := NULL;            
+
+            SELECT DECODE(attribute1, 'Unit Price', 2, 'Lump Sum', 5, 3),
+                DECODE(attribute1, 'Unit Price', 'UP', 'Lump Sum', 'LS', NULL)
+            INTO l_bill_rate_round, l_bill_type
+            FROM pa_tasks 
+            WHERE task_id = cb.top_task_id;
+            
+            l_rate_tbl(idx).bill_type := l_bill_type;            
+            l_bdgt_rate := ROUND(cb.bill_rate, l_bill_rate_round);
+            
+            -- check if active bill rate exists
+            l_bill_rate_id := NULL;
+            l_bill_rate := NULL;
+            BEGIN
+                SELECT nl_bill_rate_override_id, bill_rate --, LENGTH(bill_rate - FLOOR(bill_rate))-1
+                INTO l_bill_rate_id, l_bill_rate --, l_bill_rate_round
+                FROM APPS.pa_nl_bill_rate_overrides
+                WHERE task_id = cb.task_id
+                AND expenditure_type = cb.expenditure_type
+                AND TRUNC(SYSDATE) BETWEEN TRUNC(start_date_active) AND TRUNC(NVL(end_date_active, SYSDATE))
+                AND ROWNUM = 1
+                ORDER BY start_date_active;
+                
+                bill_rate_found := TRUE;
+            EXCEPTION
+                WHEN no_data_found THEN
+                    bill_rate_found := FALSE;                
+            END;
+    
+            write_log(G_log_type,'l_bill_rate_id: '||l_bill_rate_id);
+            write_log(G_log_type,'l_bill_rate: '||l_bill_rate);
+            
+            --if bill-rate does not exist, insert
+            IF NOT bill_rate_found THEN
+                write_log(G_log_type,'bill-rate not found; insert bill-rate');
+                l_rate_tbl(idx).message := l_rate_tbl(idx).message||'bill-rate not found; insert bill-rate; ';
+                
+                BEGIN
+                    SELECT GREATEST(NVL(MAX(end_date_active+1), cb.baselined_date), cb.baselined_date)
+                    INTO l_start_date
+                    FROM APPS.pa_nl_bill_rate_overrides
+                    WHERE task_id = cb.task_id
+                    AND expenditure_type = cb.expenditure_type; 
+                EXCEPTION
+                WHEN no_data_found THEN
+                    l_start_date := cb.baselined_date ;           
+                END;
+                
+                INSERT INTO apps.pa_nl_bill_rate_overrides (
+                    nl_bill_rate_override_id,
+                    expenditure_type,
+                    task_id,
+                    start_date_active,
+                    bill_rate, --as per the table definition it is number(22, 5); rounds to 5 decimal places
+                    rate_currency_code,
+                    rate_disc_reason_code,
+                    record_version_number,
+                    creation_date,
+                    created_by,
+                    last_update_date,
+                    last_updated_by,
+                    last_update_login)
+                VALUES(
+                    apps.pa_nl_bill_rate_overrides_s.NEXTVAL,
+                    cb.expenditure_type,
+                    cb.task_id,
+                    l_start_date, --cb.baselined_date,
+                    l_bdgt_rate,
+                    'USD',
+                    'BUDGET',
+                    1,
+                    SYSDATE,
+                    G_user_id,
+                    SYSDATE,
+                    G_user_id,
+                    G_login_id);
+                    
+                l_rate_tbl(idx).old_rate := NULL;    
+                l_rate_tbl(idx).new_rate := l_bdgt_rate;
+                    
+            ELSE
+                -- bill rate found
+                -- same rate then no updates
+                -- different rate then end date existing one and insert new rate
+                write_log(G_log_type,'bill-rate found; update-insert if different rate');
+                
+                IF (l_bill_rate = l_bdgt_rate) THEN
+                    write_log(G_log_type,'same bill-rate; no action needed');
+                    l_rate_tbl(idx).message := l_rate_tbl(idx).message||'same bill-rate; no action needed; ';                    
+                    l_rate_tbl(idx).old_rate := l_bdgt_rate; --ROUND(cb.bill_rate, l_bill_rate_round); --cb.bill_rate;
+                    l_rate_tbl(idx).new_rate := l_bill_rate;
+
+                ELSE
+                    write_log(G_log_type,'different bill-rate; update-insert');
+                    l_rate_tbl(idx).message := l_rate_tbl(idx).message||'different bill-rate; end-date existing one; add new rate';
+                    l_rate_tbl(idx).old_rate := l_bill_rate;
+                    l_rate_tbl(idx).new_rate := l_bdgt_rate; --ROUND(cb.bill_rate, l_bill_rate_round); --cb.bill_rate;
+                     
+                    UPDATE apps.pa_nl_bill_rate_overrides
+                    set end_date_active = GREATEST(start_date_active+1, cb.baselined_date-1),
+                        last_updated_by = G_user_id,
+                        last_update_date = SYSDATE,
+                        last_update_login = G_login_id
+                    WHERE nl_bill_rate_override_id = l_bill_rate_id;
+                    
+                    BEGIN
+                        SELECT GREATEST(NVL(MAX(end_date_active+1), cb.baselined_date), cb.baselined_date)
+                        INTO l_start_date
+                        FROM APPS.pa_nl_bill_rate_overrides
+                        WHERE task_id = cb.task_id
+                        AND expenditure_type = cb.expenditure_type; 
+                    EXCEPTION
+                        WHEN no_data_found THEN
+                            l_start_date := cb.baselined_date ;           
+                        END;
+                    
+                    INSERT INTO apps.pa_nl_bill_rate_overrides (
+                        nl_bill_rate_override_id,
+                        expenditure_type,
+                        task_id,
+                        start_date_active,
+                        bill_rate,
+                        rate_currency_code,
+                        rate_disc_reason_code,
+                        record_version_number,
+                        creation_date,
+                        created_by,
+                        last_update_date,
+                        last_updated_by,
+                        last_update_login)
+                    VALUES(
+                        apps.pa_nl_bill_rate_overrides_s.NEXTVAL,
+                        cb.expenditure_type,
+                        cb.task_id,
+                        l_start_date, --cb.baselined_date,
+                        l_bdgt_rate,
+                        --ROUND(cb.bill_rate, l_bill_rate_round),                        
+                        'USD',
+                        'BUDGET',
+                        1,
+                        SYSDATE,
+                        G_user_id,
+                        SYSDATE,
+                        G_user_id,
+                        G_login_id);
+                    
+                END IF; 
+            END IF;
+            write_log(G_log_type,'----------------------');
+        EXCEPTION
+            WHEN others THEN
+                l_rate_tbl(idx).message := 'Error: '||sqlerrm||': '||l_rate_tbl(idx).message; 
+                write_log(G_log_type, 'Error: '||sqlerrm);
+                retcode := G_CONC_PROG_WARN_CODE;  
+                errbuf := G_CONC_PROG_WARN_MSG;  
+        END;
+        END LOOP;
+        
+        -- write output
+        BEGIN 
+            IF idx > 0 THEN
+                write_log(G_log_type, 'Write the Output file');
+                write_log('OUT', 'Project: '||l_rate_tbl(1).proj_num);
+                write_log('OUT', 'Proj Start Date: '||l_rate_tbl(1).proj_date);
+                write_log('OUT', 'Budget Version: '||l_rate_tbl(1).bdgt_name);
+                write_log('OUT', 'Baselined Date: '||l_rate_tbl(1).bdgt_date);
+                write_log('OUT', ' ');
+                write_log('OUT', ' ');
+                
+                write_log('OUT', RPAD('-', 15, '-')||
+                                 RPAD('-', 10, '-')||
+                                 RPAD('-', 25, '-')||
+                                 RPAD('-', 15, '-')||
+                                 RPAD('-', 15, '-')||
+                                 RPAD('-', 25, '-')||
+                                 RPAD('-', 15, '-')||
+                                 RPAD('-', 15, '-')||
+                                 RPAD('-', 75, '-')); 
+                     
+                
+                write_log('OUT', RPAD('Task', 15, ' ')||
+                                 RPAD('Billing', 10, ' ')||
+                                 RPAD('Exp Type', 25, ' ')||
+                                 RPAD('Quantity', 15, ' ')||
+                                 RPAD('Revenue', 15, ' ')||
+                                 RPAD('Bdgt Rate', 25, ' ')||
+                                 RPAD('Old Rate', 15, ' ')||
+                                 RPAD('New Rate', 15, ' ')||
+                                 RPAD('Message', 75, ' '));
+                                 
+                write_log('OUT', RPAD('-', 15, '-')||
+                                 RPAD('-', 10, '-')||
+                                 RPAD('-', 25, '-')||
+                                 RPAD('-', 15, '-')||
+                                 RPAD('-', 15, '-')||
+                                 RPAD('-', 25, '-')||
+                                 RPAD('-', 15, '-')||
+                                 RPAD('-', 15, '-')||
+                                 RPAD('-', 75, '-'));    
+                                             
+                FOR idx IN l_rate_tbl.first.. l_rate_tbl.last LOOP         
+                    write_log('OUT', RPAD(l_rate_tbl(idx).task_num, 15, ' ')||
+                                     RPAD(l_rate_tbl(idx).bill_type, 10, ' ')||
+                                     RPAD(l_rate_tbl(idx).exp_type, 25, ' ')||
+                                     RPAD(l_rate_tbl(idx).bdgt_qty, 15, ' ')||
+                                     RPAD(l_rate_tbl(idx).bdgt_rev, 15, ' ')||
+                                     RPAD(ROUND(l_rate_tbl(idx).bdgt_rate, 10), 25, ' ')||
+                                     RPAD(NVL(l_rate_tbl(idx).old_rate, 0), 15, ' ')||
+                                     RPAD(l_rate_tbl(idx).new_rate, 15, ' ')||
+                                     RPAD(l_rate_tbl(idx).message, 150, ' ')
+                    );
+                END LOOP;
+            ELSE
+                write_log(G_log_type, 'No Output to display');
+            END IF;
+            
+        EXCEPTION 
+            WHEN others THEN
+                write_log(G_log_type, 'Error in writing output: '||sqlerrm);
+                retcode := G_CONC_PROG_WARN_CODE;  
+                errbuf := G_CONC_PROG_WARN_MSG;   
+        END;
+        
+        write_log(G_log_type, 'End reco_project_api.populate_bill_rate');
+        fnd_file.CLOSE;
+    EXCEPTION
+        WHEN INVALID_PARAMETER THEN
+            ROLLBACK;
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;  
+            write_log(G_log_type, 'Invalid parameter project-id: '||pProjectId);
+            fnd_file.CLOSE;
+            
+        WHEN BUDGET_NOT_FOUND THEN
+            ROLLBACK;
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;  
+            write_log(G_log_type, 'Unable to find Current Baselined budget for project-id: '||pProjectId);
+            fnd_file.CLOSE;
+            
+        WHEN others THEN
+            ROLLBACK;
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;  
+            write_log(G_log_type, 'Populate Bill Rate Error: '||sqlerrm);
+            fnd_file.CLOSE;
+    END populate_bill_rate;
+    ----------------------------------------------------------------------------
+    
+    PROCEDURE close_pc_projects(
+        errbuf OUT VARCHAR2, 
+        retcode OUT NUMBER,
+        pCompletionDate IN VARCHAR2
+        )IS
+        
+        CURSOR PCProjects IS
+        SELECT p.segment1 project_num, p.name project_name, p.project_id 
+        	  ,p.start_date --Added by Rafi Syed on 01/02/2025
+        FROM pa_projects P
+        WHERE p.project_status_code = 'PENDING_CLOSE'
+        --AND p.segment1 = '17885'--'16972' 
+        ORDER BY p.segment1;
+        
+        l_api_version_number    NUMBER := 1.0;
+        l_commit            	VARCHAR2(1) := 'F';
+        l_return_status         VARCHAR2(1);
+        l_init_msg_list         VARCHAR2(1) := 'F';
+        l_msg_count             NUMBER;
+        l_msg_index_out         NUMBER;
+        l_msg_data              VARCHAR2(2000);
+        l_data            	    VARCHAR2(2000);
+        l_workflow_started      VARCHAR2(1) := 'Y';
+        l_completion_date       date;
+        idx                     integer;
+        
+        l_project_in            apps.PA_PROJECT_PUB.PROJECT_IN_REC_TYPE;
+        l_project_out           apps.PA_PROJECT_PUB.PROJECT_OUT_REC_TYPE;
+        l_tasks_in              apps.PA_PROJECT_PUB.TASK_IN_TBL_TYPE;
+        l_tasks_out             apps.PA_PROJECT_PUB.TASK_OUT_TBL_TYPE;       
+        
+        UPDATE_API_ERR          EXCEPTION;
+        
+        TYPE PROJ_REC_TYPE IS record(
+            proj_num    varchar2(15),
+            proj_date   date,
+            status      varchar2(2),
+            message     VARCHAR2(500)
+        );  
+              
+        TYPE PROJ_TBL_TYPE IS TABLE OF PROJ_REC_TYPE INDEX BY BINARY_INTEGER;        
+        l_proj_tbl  PROJ_TBL_TYPE; 
+        
+    BEGIN
+        G_log_type := 'LOG';
+        write_log(G_log_type, 'BEGIN reco_project_api.close_pc_projects: '||pCompletionDate);
+        errbuf := G_CONC_PROG_SUCC_MSG;
+        retcode := G_CONC_PROG_SUCC_CODE;
+        initialize_global_vars;
+        
+        l_completion_date := FND_DATE.CANONICAL_TO_DATE(pCompletionDate);
+        
+        idx := 0;
+        FOR pcp IN PCProjects LOOP
+        BEGIN
+            idx := idx + 1;
+            
+            l_project_in.pa_project_number          := pcp.project_num;  
+            l_project_in.pa_project_id              := pcp.project_id;        
+            l_project_in.project_status_code        := 'CLOSED';   
+            l_project_in.completion_date            := l_completion_date;
+            l_project_in.start_date                 := pcp.start_date; --Added by Rafi Syed on 01/02/2025
+            
+            write_log(G_log_type,l_project_in.pa_project_id||'-'||l_project_in.pa_project_number);
+            
+            apps.pa_project_pub.UPDATE_project(
+                p_api_version_number    => l_api_version_number,
+                p_commit                => l_commit,
+                p_init_msg_list         => l_init_msg_list,
+                p_msg_count             => l_msg_count,
+                p_msg_data              => l_msg_data,
+                p_return_status         => l_return_status,
+                p_workflow_started      => l_workflow_started,
+                p_pm_product_code       => G_PM_PRODUCT_CODE,
+                p_project_in            => l_project_in,
+                p_project_out           => l_project_out,
+                p_tasks_in              => l_tasks_in,
+                p_tasks_out             => l_tasks_out);
+                
+            --write_log(G_log_type,l_return_status||'-'||l_msg_data);
+            
+            l_proj_tbl(idx).proj_num := pcp.project_num;
+            l_proj_tbl(idx).proj_date := l_completion_date;
+            l_proj_tbl(idx).status := l_return_status;
+            
+            IF l_return_status != 'S' THEN
+                RAISE UPDATE_API_ERR;
+            END IF;
+            
+            l_proj_tbl(idx).message := NULL;
+        EXCEPTION
+            WHEN UPDATE_API_ERR THEN
+            ROLLBACK;
+            write_log(G_log_type,'Update Project API Error');
+            
+            IF l_msg_count >= 1 THEN
+                FOR I IN 1..l_msg_count LOOP
+                    apps.pa_interface_utils_pub.get_messages(
+                        p_msg_data      => l_msg_data,
+                        p_encoded       => 'F',
+                        p_data          => l_data,
+                        p_msg_count     => l_msg_count,
+                        p_msg_index     => l_msg_count,   
+                        p_msg_index_out => l_msg_index_out);
+                    
+                    write_log(G_log_type, 'Update Project API Error Msg: '||l_data);
+                END LOOP;
+            END IF;
+            
+            l_proj_tbl(idx).message := l_data;
+            errbuf := G_CONC_PROG_WARN_MSG;
+            retcode := G_CONC_PROG_WARN_CODE;        
+        END;
+        END LOOP; 
+        
+        BEGIN 
+            IF idx > 0 THEN
+                write_log(G_log_type, 'Write the Output file');
+                
+                write_log('OUT', RPAD('Project', 15, ' ')||
+                                 RPAD('Completion Date', 25, ' ')||
+                                 RPAD('Status', 15, ' ')||
+                                 RPAD('Message', 150, ' '));
+                                 
+                write_log('OUT', RPAD('-', 15, '-')||
+                                 RPAD('-', 25, '-')||
+                                 RPAD('-', 15, '-')||
+                                 RPAD('-', 150, '-'));    
+                                             
+                FOR idx IN l_proj_tbl.first.. l_proj_tbl.last LOOP         
+                    write_log('OUT', RPAD(l_proj_tbl(idx).proj_num, 15, ' ')||
+                                     RPAD(l_proj_tbl(idx).proj_date, 25, ' ')||
+                                     RPAD(l_proj_tbl(idx).status, 15, ' ')||
+                                     RPAD(l_proj_tbl(idx).message, 150, ' ')
+                    );
+                END LOOP;
+            ELSE
+                write_log(G_log_type, 'No Output to display');
+            END IF;
+        EXCEPTION 
+            WHEN others THEN
+                write_log(G_log_type, 'Error in writing output: '||sqlerrm);
+                retcode := G_CONC_PROG_WARN_CODE;  
+                errbuf := G_CONC_PROG_WARN_MSG;
+        END;
+
+        write_log(G_log_type, 'End reco_project_api.close_pc_projects');
+        fnd_file.CLOSE;  
+    EXCEPTION
+        WHEN OTHERS THEN
+            ROLLBACK;
+            write_log(G_log_type, 'Update PC Projects API Other exception: '||sqlerrm);
+            
+            IF l_msg_count >= 1 THEN
+                FOR I IN 1..l_msg_count LOOP
+                    apps.pa_interface_utils_pub.get_messages(
+                        p_msg_count     => l_msg_count,
+                        p_encoded       => 'F',
+                        p_msg_data      => l_msg_data,
+                        p_data          => l_data,
+                        p_msg_index     => l_msg_count,    
+                        p_msg_index_out => l_msg_index_out);
+                    
+                    write_log(G_log_type, 'Other Exception Msg: '||l_data);
+                END LOOP;
+            END IF; 
+            
+            retcode := G_CONC_PROG_ERR_CODE;  
+            errbuf := G_CONC_PROG_ERR_MSG;
+            fnd_file.CLOSE;       
+    END close_pc_projects;
+    ----------------------------------------------------------------------------
+BEGIN
+   --get_reco_organization('0');
+   G_user_id       := NULL;
+   G_resp_id       := NULL;  
+   G_resp_appl_id  := NULL;   
+   G_conc_req_id   := NULL;
+   G_conc_prog_id  := NULL;
+   G_login_id      := NULL;
+   G_log_type      := 'DBMS';
+   
+   --PA_FP_NO_PLAN_AMT_CHECKED
+END reco_project_api;
