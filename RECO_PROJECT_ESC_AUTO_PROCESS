@@ -240,7 +240,7 @@ BEGIN
 								p_msg_count => L_MSG_COUNT,
 								p_msg_data => L_MSG_DATA,
 								p_return_status => L_RETURN_STATUS,
-								p_pm_product_code => 'RECO_ESC',
+								p_pm_product_code => 'RECO_CONTRACTS',
 								p_pa_project_id => P_PROJECT_ID,
 								p_pm_task_reference => P_TASK_NUMBER,
 								p_pa_task_number => P_TASK_NUMBER,
@@ -361,7 +361,8 @@ BEGIN
 		INTO  l_user_id, l_responsibility_id
 		FROM apps.pa_user_resp_v
 		WHERE user_id = l_user_id
-		AND responsibility_name = 'Project Super User';
+--		AND responsibility_name = 'Project Super User';    
+		AND responsibility_name = 'Project Billing Super User';   
 		
 		SET_PROJECT_CONTEXT(l_user_id,l_responsibility_id);
 		
@@ -946,7 +947,8 @@ BEGIN
 		INTO  l_user_id, l_responsibility_id
 		FROM apps.pa_user_resp_v
 		WHERE user_id = l_user_id
-		AND responsibility_name = 'Project Super User';
+--		AND responsibility_name = 'Project Super User';
+		AND responsibility_name = 'Project Billing Super User';
 		
 		SET_PROJECT_CONTEXT(l_user_id,l_responsibility_id);
 		
@@ -1246,7 +1248,8 @@ BEGIN
 		SELECT user_id,responsibility_id INTO L_USER_ID,L_RESPONSIBILITY_ID
 		FROM apps.pa_user_resp_v
 		WHERE user_id = L_USER_ID
-		AND responsibility_name = 'Project Super User';   
+--		AND responsibility_name = 'Project Super User';  
+		AND responsibility_name = 'Project Billing Super User'; 
 		
 		SET_PROJECT_CONTEXT(L_USER_ID,L_RESPONSIBILITY_ID);
 		
@@ -1535,7 +1538,8 @@ BEGIN
 		SELECT user_id,responsibility_id INTO L_USER_ID,L_RESPONSIBILITY_ID
 		FROM apps.pa_user_resp_v
 		WHERE user_id = L_USER_ID
-		AND responsibility_name = 'Project Super User';   
+--		AND responsibility_name = 'Project Super User';   
+		AND responsibility_name = 'Project Billing Super User';
 		
 		SET_PROJECT_CONTEXT(L_USER_ID,L_RESPONSIBILITY_ID);
 		
@@ -1777,7 +1781,8 @@ BEGIN
 		INTO  l_user_id, l_responsibility_id
 		FROM apps.pa_user_resp_v
 		WHERE user_id = l_user_id
-		AND responsibility_name = 'Project Super User';   
+--		AND responsibility_name = 'Project Super User';
+		AND responsibility_name = 'Project Billing Super User';   
 	
 		L_PROJECT_COUNT := L_PROJECT_COUNT + 1;
 		L_PROJECT_INDEX := L_PROJECT_INDEX + 1;
@@ -2020,7 +2025,8 @@ BEGIN
 		INTO  l_user_id, l_responsibility_id
 		FROM apps.pa_user_resp_v
 		WHERE user_id = l_user_id
-		AND responsibility_name = 'Project Super User'; 
+--		AND responsibility_name = 'Project Super User'; 
+		AND responsibility_name = 'Project Billing Super User';
 		
 		BEGIN
 			SELECT MAX(BATCH_NAME) INTO L_BATCH_NAME
@@ -2259,7 +2265,8 @@ BEGIN
 		INTO  l_user_id, l_responsibility_id
 		FROM apps.pa_user_resp_v
 		WHERE user_id = l_user_id
-		AND responsibility_name = 'Project Super User';    
+--		AND responsibility_name = 'Project Super User';
+		AND responsibility_name = 'Project Billing Super User';    
 		
 		LOG_MSG('USER_ID=' || L_USER_ID);
 		LOG_MSG('RESPONSIBILITY_ID=' || L_RESPONSIBILITY_ID); 
@@ -2454,7 +2461,8 @@ BEGIN
 		SELECT user_id,responsibility_id INTO L_USER_ID,L_RESPONSIBILITY_ID
 		FROM apps.pa_user_resp_v
 		WHERE user_id = L_USER_ID
-		AND responsibility_name = 'Project Super User';   
+--		AND responsibility_name = 'Project Super User';  
+		AND responsibility_name = 'Project Billing Super User'; 
 		
 		APPS.FND_GLOBAL.APPS_INITIALIZE(USER_ID => L_USER_ID,RESP_ID => L_RESPONSIBILITY_ID,RESP_APPL_ID => 275);
 		
@@ -2619,7 +2627,8 @@ BEGIN
 		SELECT user_id,responsibility_id INTO L_USER_ID,L_RESPONSIBILITY_ID
 		FROM apps.pa_user_resp_v
 		WHERE user_id = L_USER_ID
-		AND responsibility_name = 'Project Super User';
+--		AND responsibility_name = 'Project Super User';  
+		AND responsibility_name = 'Project Billing Super User';
 		
 		APPS.FND_GLOBAL.APPS_INITIALIZE(USER_ID => L_USER_ID,RESP_ID => L_RESPONSIBILITY_ID,RESP_APPL_ID => 275);
 		
@@ -2833,7 +2842,8 @@ BEGIN
 		SELECT USER_ID,RESPONSIBILITY_ID INTO L_USER_ID,L_RESPONSIBILITY_ID
 		FROM APPS.PA_USER_RESP_V
 		WHERE USER_ID = L_USER_ID
-		AND RESPONSIBILITY_NAME ='Project Super User';     
+--		AND RESPONSIBILITY_NAME ='Project Super User'; 
+		AND responsibility_name = 'Project Billing Super User';    
 		
 		APPS.FND_GLOBAL.APPS_INITIALIZE(USER_ID => L_USER_ID,RESP_ID => L_RESPONSIBILITY_ID,RESP_APPL_ID => 275);
 		
