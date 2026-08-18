@@ -1948,6 +1948,7 @@ BEGIN
 										P_PROGRAM => 'PAXTRTRX',
 										P_ARG1 => 'RECO Billing Units',
 										P_ARG2 => P_BATCH_NAME,
+                                        P_ARG3        => CHR(0),  -- Komal 18-AUG-2026: Terminates concurrent request arguments after Batch Name
 										X_REQUEST_ID => X_REQUEST_ID
 										); 
 	LOG_MSG('Request Id : ' || X_REQUEST_ID);
