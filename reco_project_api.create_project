@@ -890,6 +890,14 @@ create or replace PACKAGE BODY      reco_project_api IS
             l_project_in.attribute10                := contractRec.five_cubits;
             l_project_in.created_from_project_id    := l_template_id;
             
+            -- Added by Komal 17-AUG-2026
+            -- Default Job Cost Steel Freeze Date from Contract Package.
+            -- Job Cost may override this value later if required.
+            IF contractRec.steel_freeze_date IS NOT NULL THEN
+               l_project_in.attribute7 :=
+                   TO_CHAR(contractRec.steel_freeze_date, 'YYYY/MM/DD');
+            END IF;
+            
             --populate key members
             write_log(G_log_type, 'Populate key members');
             
