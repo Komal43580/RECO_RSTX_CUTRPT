@@ -33,6 +33,7 @@ BEGIN
 END LOG_MSG;  
 
 --Version 2.0
+/*
 PROCEDURE LOG_API_MESSAGES
 (
     P_MSG_COUNT NUMBER,
@@ -83,7 +84,90 @@ BEGIN
         G_LAST_API_ERROR := SUBSTR(P_MSG_DATA, 1, 4000);
     END IF;
 
-END LOG_API_MESSAGES;    
+END LOG_API_MESSAGES;*/    
+
+PROCEDURE LOG_API_MESSAGES
+(
+    P_MSG_COUNT NUMBER,
+    P_MSG_DATA  VARCHAR2
+)
+IS
+    L_DATA      VARCHAR2(4000);
+    L_INDEX_OUT NUMBER;
+BEGIN
+    G_LAST_API_ERROR := NULL;
+
+    LOG_MSG('API MESSAGE COUNT : ' || NVL(P_MSG_COUNT,0));
+    LOG_MSG('API MESSAGE DATA : '  || NVL(P_MSG_DATA,'NULL'));
+
+    FOR I IN 1 .. NVL(P_MSG_COUNT,0)
+    LOOP
+        L_DATA := NULL;
+
+        BEGIN
+            APPS.PA_INTERFACE_UTILS_PUB.GET_MESSAGES
+            (
+                P_MSG_DATA      => P_MSG_DATA,
+                P_ENCODED       => 'F',
+                P_DATA          => L_DATA,
+                P_MSG_COUNT     => P_MSG_COUNT,
+                P_MSG_INDEX     => I,
+                P_MSG_INDEX_OUT => L_INDEX_OUT
+            );
+
+            LOG_MSG(
+                'API MESSAGE ' || I || ' : ' ||
+                NVL(L_DATA,'NULL')
+            );
+
+        EXCEPTION
+            WHEN OTHERS THEN
+                L_DATA :=
+                    'Unable to retrieve detailed API message: ' ||
+                    SQLERRM;
+
+                LOG_MSG(L_DATA);
+        END;
+
+        IF L_DATA IS NOT NULL THEN
+            IF G_LAST_API_ERROR IS NULL THEN
+                G_LAST_API_ERROR := L_DATA;
+            ELSE
+                G_LAST_API_ERROR :=
+                    SUBSTR(
+                        G_LAST_API_ERROR || ' | ' || L_DATA,
+                        1,
+                        4000
+                    );
+            END IF;
+        END IF;
+    END LOOP;
+
+    IF G_LAST_API_ERROR IS NULL THEN
+        G_LAST_API_ERROR :=
+            SUBSTR(
+                NVL(P_MSG_DATA,'Oracle Projects API returned an error.'),
+                1,
+                4000
+            );
+    END IF;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        G_LAST_API_ERROR :=
+            SUBSTR(
+                NVL(P_MSG_DATA,'API Error') ||
+                ' | Message logging error: ' || SQLERRM,
+                1,
+                4000
+            );
+
+        BEGIN
+            LOG_MSG('LOG_API_MESSAGES Exception: ' || SQLERRM);
+        EXCEPTION
+            WHEN OTHERS THEN NULL;
+        END;
+END LOG_API_MESSAGES;
 
 PROCEDURE ADD_ERROR(P_MSG VARCHAR2)IS  
 BEGIN
