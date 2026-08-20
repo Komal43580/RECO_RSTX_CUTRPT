@@ -1,0 +1,9287 @@
+SELECT DBMS_METADATA.GET_DDL(
+           'TRIGGER',
+           'PREC_DOCUMENT_BI',
+           USER
+       )
+FROM dual;
+
+"
+  CREATE OR REPLACE EDITIONABLE TRIGGER "PRECASTCA"."PREC_DOCUMENT_BI" 
+BEFORE INSERT ON prec_document
+FOR EACH ROW
+BEGIN
+  IF :NEW.uploaded_on IS NULL THEN
+    :NEW.uploaded_on := SYSDATE;
+  END IF;
+
+  IF :NEW.uploaded_by IS NULL THEN
+    :NEW.uploaded_by := NVL(SYS_CONTEXT('APEX$SESSION','APP_USER'), USER);
+  END IF;
+END;
+ALTER TRIGGER "PRECASTCA"."PREC_DOCUMENT_BI" ENABLE"
+
+
+SELECT DBMS_METADATA.GET_DDL(
+           'TABLE',
+           'PREC_DOCUMENT',
+           USER
+       )
+FROM dual;
+
+
+"
+  CREATE TABLE "PRECASTCA"."PREC_DOCUMENT" 
+   (	"DOCUMENT_ID" NUMBER NOT NULL ENABLE, 
+	"PRECASTER_ID" NUMBER, 
+	"DOCUMENT_DESC" VARCHAR2(100), 
+	"DOCUMENT_NAME" VARCHAR2(200) NOT NULL ENABLE, 
+	"INTERNAL_ID" NUMBER, 
+	"MIME_TYPE" VARCHAR2(4000), 
+	"BLOB_CONTENT" BLOB, 
+	"STATUS_CODE" VARCHAR2(20) DEFAULT 'NEW', 
+	"UPLOADED_ON" DATE, 
+	"UPLOADED_BY" VARCHAR2(100), 
+	 CONSTRAINT "WEB_RE_DOCUMENT_FK" FOREIGN KEY ("PRECASTER_ID")
+	  REFERENCES "PRECASTCA"."PREC_PRECASTER" ("PRECASTER_ID") ENABLE
+   ) SEGMENT CREATION IMMEDIATE 
+  PCTFREE 10 PCTUSED 40 INITRANS 1 MAXTRANS 255 
+ NOCOMPRESS LOGGING
+  STORAGE(INITIAL 65536 NEXT 1048576 MINEXTENTS 1 MAXEXTENTS 2147483645
+  PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1
+  BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT)
+  TABLESPACE "RECODATA" 
+ LOB ("BLOB_CONTENT") STORE AS SECUREFILE (
+  TABLESPACE "RECODATA" ENABLE STORAGE IN ROW CHUNK 8192
+  NOCACHE LOGGING  NOCOMPRESS  KEEP_DUPLICATES 
+  STORAGE(INITIAL 106496 NEXT 1048576 MINEXTENTS 1 MAXEXTENTS 2147483645
+  PCTINCREASE 0
+  BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT)) 
+  CREATE UNIQUE INDEX "PRECASTCA"."WEB_RE_DOCUMENT_PK" ON "PRECASTCA"."PREC_DOCUMENT" ("DOCUMENT_ID") 
+  PCTFREE 10 INITRANS 2 MAXTRANS 255 COMPUTE STATISTICS 
+  STORAGE(INITIAL 65536 NEXT 1048576 MINEXTENTS 1 MAXEXTENTS 2147483645
+  PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1
+  BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT)
+  TABLESPACE "RECODATA" 
+ALTER TABLE "PRECASTCA"."PREC_DOCUMENT" ADD CONSTRAINT "WEB_RE_DOCUMENT_PK" PRIMARY KEY ("DOCUMENT_ID")
+  USING INDEX "PRECASTCA"."WEB_RE_DOCUMENT_PK"  ENABLE"
+  
+  
+  SELECT text
+FROM user_source
+WHERE name = 'PREC_TAKEOFF'
+  AND type = 'PACKAGE BODY'
+ORDER BY line;
+
+
+"PACKAGE BODY PREC_TAKEOFF
+"
+"AS
+"
+"
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- PRIVATE CURSOR
+"
+"--
+"
+"-- Cursor to get an inventory_item_id based on a part name
+"
+"CURSOR cur_InventoryItemId(pi_PartName varchar2)
+"
+"IS
+"
+"  SELECT part_code
+"
+"  FROM prec_parts
+"
+"  WHERE part_code LIKE pi_PartName;
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- PRIVATE METHOD
+"
+"--
+"
+"--------------------------------------------------------------------------------
+"
+"-- PRIVATE METHOD
+"
+"--
+"
+"-- Satisfy Upgrade Script
+"
+"-- CONTINUE HERE
+"
+"-- CRM is coming, and we cannot be certain RECO_ESTIMATION package
+"
+"-- will be available for the Takeoff UpgradeScript to run.
+"
+"-- As such, we are hard-coding two methods from RECO_ESTIMATION into this pkg
+"
+"function convert_to(in_val in number,
+"
+"                    in_units in varchar2,
+"
+"                    out_units in varchar2 )
+"
+"                    return number
+"
+"IS
+"
+"-- pass in uom_code
+"
+"tostd number;
+"
+"toout number;
+"
+"newnum number;
+"
+"  cursor getfactor is
+"
+"     select conversion_factor from prec_conversions c, prec_conversion_measure cm, prec_conversion_measure cm2
+"
+"      where cm.conversion_measure = in_units and cm2.conversion_measure = out_units
+"
+"        and c.source_measure_id = cm.conversion_measure_id and c.destination_measure_id = cm2.conversion_measure_id;
+"
+"begin
+"
+"  open getfactor;
+"
+"  fetch getfactor into toout;
+"
+"  close getfactor;
+"
+"  newnum := in_val * toout;
+"
+"  return newnum;
+"
+"end; -- convert_to
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- completed
+"
+"function completed return boolean
+"
+"is
+"
+"begin
+"
+"  return did_complete;
+"
+"end; -- completed
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- get_struct_update_dates
+"
+"--
+"
+"-- Retrieve a list of LAST_UPDATE_DATEs for given structures ids in csv-format
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : pi_GivenStructIds is a comma-delimited list of numbers, preferably
+"
+"--   toff_struct_ids
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : When method fails, return and error message
+"
+"-- : When method succeeds, return 'DONE'
+"
+"-- : When this method succeeds, then po_OutUpdateDates is set to a corresponding
+"
+"--   comma delimited list of dates in form DDMMYYYYHH24MISS
+"
+"-- : The po_OutUpdateDates may not contain all dates, and instead of a date
+"
+"--   the value DELETED may exist. This means that for the given toff_struct_id,
+"
+"--   that value does not exist in the reco_toff_structs table
+"
+"function get_struct_update_dates (pi_givenstructids in varchar2,
+"
+"                                  po_outupdatedates out varchar2)
+"
+"return varchar2
+"
+"is
+"
+"  vn_stringindex number;
+"
+"  vc_currentidstring varchar2(10);
+"
+"begin -- get_struct_update_dates
+"
+"  if pi_givenstructids is null
+"
+"  or length(pi_givenstructids) = 0
+"
+"  then return 'Internal Error 0041 - Invalid Parameters. Contact MIS';
+"
+"  end if;
+"
+"
+"
+"  po_outupdatedates := '';
+"
+"
+"
+"  vn_stringindex := 1;
+"
+"  vc_currentidstring := '';
+"
+"
+"
+"  loop
+"
+"    vc_currentidstring :=
+"
+"      vc_currentidstring||substr(pi_givenstructids,vn_stringindex,1);
+"
+"
+"
+"    if vn_stringindex = length(pi_givenstructids)
+"
+"    then
+"
+"      if length(vc_currentidstring) = 0
+"
+"      or substr(vc_currentidstring,length(vc_currentidstring),1) = ','
+"
+"      then return 'Internal Error 0046 - Invalid Parameters. Contact MIS';
+"
+"      end if;
+"
+"      declare
+"
+"        vd_currentdate date;
+"
+"      begin
+"
+"        select last_update_date into vd_currentdate from reco_toff_structs
+"
+"        where toff_struct_id =
+"
+"                  to_number(substr(vc_currentidstring,1,length(vc_currentidstring)));
+"
+"        po_outupdatedates := po_outupdatedates||to_char(vd_currentdate,'DDMMYYYYHH24MISS');
+"
+"        vc_currentidstring := '';
+"
+"        exit;
+"
+"      exception
+"
+"        when value_error then
+"
+"          return 'Internal Error 0047 - Number is wrong. Contact MIS.';
+"
+"        when invalid_number then
+"
+"          return 'Internal Error 0048 - Number is wrong. Contact MIS.';
+"
+"        when no_data_found then
+"
+"          po_outupdatedates := po_outupdatedates||'DELETED';
+"
+"          vc_currentidstring := '';
+"
+"          exit;
+"
+"        when others then
+"
+"          return 'Internal Error 0049 - Unknown error. Contact MIS.';
+"
+"      end;
+"
+"    elsif substr(pi_givenstructids,vn_stringindex,1) = ','
+"
+"    then
+"
+"      if length(vc_currentidstring) = 1
+"
+"      then return 'Internal Error 0045 - Invalid Parameters. Contact MIS';
+"
+"      end if;
+"
+"      declare
+"
+"        vd_currentdate date;
+"
+"      begin
+"
+"        select last_update_date into vd_currentdate from reco_toff_structs
+"
+"        where toff_struct_id =
+"
+"                  to_number(substr(vc_currentidstring,1,length(vc_currentidstring)-1));
+"
+"        po_outupdatedates := po_outupdatedates||to_char(vd_currentdate,'DDMMYYYYHH24MISS')||',';
+"
+"        vc_currentidstring := '';
+"
+"      exception
+"
+"        when value_error then
+"
+"          return 'Internal Error 0042 - Number is wrong. Contact MIS.';
+"
+"        when invalid_number then
+"
+"          return 'Internal Error 0043 - Number is wrong. Contact MIS.';
+"
+"        when no_data_found then
+"
+"          po_outupdatedates := po_outupdatedates||'DELETED'||',';
+"
+"          vc_currentidstring := '';
+"
+"        when others then
+"
+"          return 'Internal Error 0044 - Unknown error. Contact MIS.';
+"
+"      end;
+"
+"    end if;
+"
+"
+"
+"    vn_stringindex := vn_stringindex+1;
+"
+"  end loop;
+"
+"
+"
+"  return 'DONE';
+"
+"end; -- get_struct_update_dates
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- get_struct_names
+"
+"--
+"
+"-- Retrieve a list of STRUCTURE_NAMEs for given structures ids in csv-format
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : pi_GivenStructIds is a comma-delimited list of numbers, preferably
+"
+"--   toff_struct_ids
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : When method fails, return and error message
+"
+"-- : When method succeeds, return 'DONE'
+"
+"-- : When this method succeeds, then po_OutStructNames is set to a corresponding
+"
+"--   comma delimited list of names
+"
+"-- : The po_OutStructNames may not contain all names, and instead of a name
+"
+"--   the value DELETED may exist. This means that for the given toff_struct_id,
+"
+"--   that value does not exist in the reco_toff_structs table
+"
+"function get_struct_names ( pi_givenstructids in varchar2,
+"
+"                            po_outstructnames out varchar2)
+"
+"return varchar2
+"
+"is
+"
+"  vn_stringindex number;
+"
+"  vc_currentidstring varchar2(10);
+"
+"begin -- get_struct_names
+"
+"  if pi_givenstructids is null
+"
+"  or length(pi_givenstructids) = 0
+"
+"  then return 'Internal Error 0066 - Invalid Parameters. Contact MIS';
+"
+"  end if;
+"
+"
+"
+"  po_outstructnames := '';
+"
+"
+"
+"  vn_stringindex := 1;
+"
+"  vc_currentidstring := '';
+"
+"
+"
+"  loop
+"
+"    vc_currentidstring :=
+"
+"      vc_currentidstring||substr(pi_givenstructids,vn_stringindex,1);
+"
+"
+"
+"    if vn_stringindex = length(pi_givenstructids)
+"
+"    then
+"
+"      if length(vc_currentidstring) = 0
+"
+"      or substr(vc_currentidstring,length(vc_currentidstring),1) = ','
+"
+"      then return 'Internal Error 0067 - Invalid Parameters. Contact MIS';
+"
+"      end if;
+"
+"      declare
+"
+"        vc_currentname reco_toff_structs.structure_name%type;
+"
+"      begin
+"
+"        select structure_name into vc_currentname from reco_toff_structs
+"
+"        where toff_struct_id =
+"
+"                to_number(substr(vc_currentidstring,1,length(vc_currentidstring)));
+"
+"        po_outstructnames := po_outstructnames||vc_currentname;
+"
+"        vc_currentidstring := '';
+"
+"        exit;
+"
+"      exception
+"
+"        when value_error then
+"
+"          return 'Internal Error 0068 - Number is wrong. Contact MIS.';
+"
+"        when invalid_number then
+"
+"          return 'Internal Error 0069 - Number is wrong. Contact MIS.';
+"
+"        when no_data_found then
+"
+"          po_outstructnames := po_outstructnames||'DELETED';
+"
+"          vc_currentidstring := '';
+"
+"          exit;
+"
+"        when others then
+"
+"          return 'Internal Error 0070 - Unknown error. Contact MIS.';
+"
+"      end;
+"
+"    elsif substr(pi_givenstructids,vn_stringindex,1) = ','
+"
+"    then
+"
+"      if length(vc_currentidstring) = 1
+"
+"      then return 'Internal Error 0071 - Invalid Parameters. Contact MIS';
+"
+"      end if;
+"
+"      declare
+"
+"        vc_currentname reco_toff_structs.structure_name%type;
+"
+"      begin
+"
+"        select structure_name into vc_currentname from reco_toff_structs
+"
+"        where toff_struct_id =
+"
+"                to_number(substr(vc_currentidstring,1,length(vc_currentidstring)-1));
+"
+"        po_outstructnames := po_outstructnames||vc_currentname||',';
+"
+"        vc_currentidstring := '';
+"
+"      exception
+"
+"        when value_error then
+"
+"          return 'Internal Error 0072 - Number is wrong. Contact MIS.';
+"
+"        when invalid_number then
+"
+"          return 'Internal Error 0073 - Number is wrong. Contact MIS.';
+"
+"        when no_data_found then
+"
+"          po_outstructnames := po_outstructnames||'DELETED'||',';
+"
+"          vc_currentidstring := '';
+"
+"        when others then
+"
+"          return 'Internal Error 0074 - Unknown error. Contact MIS.';
+"
+"      end;
+"
+"    end if;
+"
+"
+"
+"    vn_stringindex := vn_stringindex+1;
+"
+"  end loop;
+"
+"
+"
+"  return 'DONE';
+"
+"end; -- get_struct_names
+"
+"
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- part_is_active
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- This function determines if a given part is "active" in the RECo system.
+"
+"-- Simply, this determines if the PURCHASING_ENABLED_FLAG is set as 'Y or 'N'.
+"
+"--
+"
+"-- This function is overloaded. One version takes an INVENTORY_ITEM_ID as a
+"
+"-- number, and one version takes the PART_NAME as a string.
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : Given parameter should not be null
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Return 'YES' if we find the part, and it is active / enabled
+"
+"-- : Return 'NO' if we find the part, and it is inactive / disabled
+"
+"-- : If any error occurs, return an error message
+"
+"function part_is_active ( pi_partname in varchar2 )
+"
+"  return varchar2
+"
+"is
+"
+"  cursor cur_getpartexists (givenpartname varchar2)
+"
+"  is
+"
+"    select  active_flag
+"
+"    from  prec_parts
+"
+"    where  part_code like givenpartname;
+"
+"
+"
+"  tmpresult varchar2(50);
+"
+"
+"
+"begin -- part_is_active
+"
+"
+"
+"  if pi_partname is null
+"
+"  then return 'Error - partcode is null';
+"
+"  end if;
+"
+"
+"
+"  open cur_getpartexists(pi_partname);
+"
+"  fetch cur_getpartexists into tmpresult;
+"
+"  if cur_getpartexists%notfound
+"
+"  then
+"
+"    close cur_getpartexists;
+"
+"    return 'Error - Part name does not exist';
+"
+"  end if;
+"
+"  close cur_getpartexists;
+"
+"
+"
+"  if tmpresult = 'N'
+"
+"  then
+"
+"    return 'NO';
+"
+"  end if;
+"
+"
+"
+"  return 'YES';
+"
+"end part_is_active;
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- insert_struct_parts
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : Given parameters should not be null
+"
+"function insert_struct_parts(
+"
+"            p_structure_id in number, p_item in varchar2,
+"
+"            p_calc_quantity in number, p_adj_quantity in number,
+"
+"            p_quantity_required in number, pi_givenloginid in number,
+"
+"            pi_givenuserid in varchar2 )
+"
+"            return number
+"
+"is
+"
+"  vn_partidused number;
+"
+"begin
+"
+"
+"
+"  select reco_part_seq.nextval into vn_partidused from dual;
+"
+"
+"
+"  insert into reco_toff_parts
+"
+"    ( toff_part_id, toff_struct_id, part_code, calc_quantity,
+"
+"      adj_quantity, quantity_required, last_update_date, last_updated_by,
+"
+"      creation_date, created_by, last_update_login )
+"
+"  values (vn_partidused, p_structure_id, p_item,
+"
+"          nvl(p_calc_quantity,0), nvl(p_adj_quantity,0), nvl(p_quantity_required,0),
+"
+"          sysdate, pi_givenuserid, sysdate, pi_givenuserid, pi_givenloginid );
+"
+"
+"
+"  return vn_partidused;
+"
+"end; -- insert_struct_parts
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- fold_up_parts
+"
+"procedure fold_up_parts(pi_givenstructid in number,
+"
+"                        pi_givenloginid in number,
+"
+"                        pi_givenuserid in varchar2)
+"
+"is
+"
+"
+"
+"  cursor getmaxid
+"
+"  is
+"
+"    select max(toff_part_id) from reco_toff_parts
+"
+"    where toff_struct_id = pi_givenstructid;
+"
+"
+"
+"  cursor getparts
+"
+"  is
+"
+"    select  part_code,
+"
+"            sum(calc_quantity) calc,
+"
+"            sum(adj_quantity) adj,
+"
+"            sum(quantity_required) qty
+"
+"    from  reco_toff_parts
+"
+"    where   toff_struct_id = pi_givenstructid
+"
+"    group by  part_code;
+"
+"
+"
+"  mxid number;
+"
+"  tmpval number;
+"
+"begin
+"
+"  open getmaxid;
+"
+"  fetch getmaxid into mxid;
+"
+"  close getmaxid;
+"
+"
+"
+"  for eachfoldpart in getparts
+"
+"  loop
+"
+"      tmpval := insert_struct_parts(pi_givenstructid,
+"
+"                  eachfoldpart.part_code, ceil(eachfoldpart.calc),
+"
+"                  eachfoldpart.adj, ceil(eachfoldpart.qty),
+"
+"                  pi_givenloginid, pi_givenuserid);
+"
+"  end loop;
+"
+"
+"
+"  delete from reco_toff_parts
+"
+"  where toff_struct_id = pi_givenstructid
+"
+"  and toff_part_id <= mxid;
+"
+"end; -- fold_up_parts
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- added to provide clear warnings for changed panels
+"
+"
+"
+"procedure clear_messages is
+"
+"begin
+"
+"  messages := clr_msg;
+"
+"  nummsgs := 0;
+"
+"  msgctr := 0;
+"
+"end;
+"
+"
+"
+"function  message_count return number is
+"
+"begin
+"
+"  return nummsgs;
+"
+"end;
+"
+"
+"
+"function  first_message return varchar2 is
+"
+"begin
+"
+"  if nummsgs > 0 then
+"
+"     msgctr := 0;
+"
+"     return messages(msgctr);
+"
+"  end if;
+"
+"  return '';
+"
+"end;
+"
+"
+"
+"function  next_message return varchar2 is
+"
+"begin
+"
+"  if msgctr+1 >= nummsgs
+"
+"  then return '';
+"
+"  end if;
+"
+"
+"
+"  msgctr := msgctr + 1;
+"
+"  return messages(msgctr);
+"
+"end;
+"
+"
+"
+"procedure warning( msg_in in varchar2 ) is
+"
+"begin
+"
+"  messages(nummsgs) := substr(msg_in,1,80);
+"
+"  nummsgs := nummsgs + 1;
+"
+"end;
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- unit_of_measure
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- This function analyzes a product code and a E/M code, and determines a proper
+"
+"-- DEFAULT UOM for the given parameters.
+"
+"--
+"
+"-- NOTE: This function acts as a legacy function. This really only gives you A
+"
+"--       default value for the Product/JobType. For Backwards Compatability
+"
+"--       reasons, this function does not indicate whether the given product code
+"
+"--       can support MULTIPLE UOMs, as is the case with sound walls and other
+"
+"--       obscure product codes.
+"
+"--
+"
+"-- To determine if a product CAN be linear or square at all, you should use
+"
+"-- the related functions ProdCodeCanBeSquare and ProdCodeCanBeLinear
+"
+"--
+"
+"-- UPDATES
+"
+"-- : 05-MAY-2011 - DSM
+"
+"--   - Comments Added
+"
+"--   - Corrected for product codes  PEX / VCO / VHC / VPR / VTB
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : Product Code should be NOT NULL
+"
+"-- : JobType should really be 'E' or 'M'
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Analyzes the inputs and determines a 'default' UOM for given Prod/JType
+"
+"FUNCTION unit_of_measure( product IN varchar2, jobtype IN varchar2 ) RETURN varchar2
+"
+"IS
+"
+"BEGIN
+"
+"  IF product IN ('COP','HFC','PAR','PEX','PDB','PWL','TRB','TSP','VCO','VHC','VPR','VTB','CCP','CPB','CTS')
+"
+"  THEN
+"
+"     IF jobtype = 'E'
+"
+"     THEN RETURN 'LF';
+"
+"     END IF;
+"
+"
+"
+"     RETURN 'LM';
+"
+"  END IF;
+"
+"
+"
+"  IF jobtype = 'E'
+"
+"  THEN RETURN 'SF';
+"
+"  END IF;
+"
+"
+"
+"  RETURN 'SM';
+"
+"END;
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- ProdCodeCanBeLinear
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- Determines if a product code can be linear. For example, REW is always run
+"
+"-- as SF or SM, and will never be linear, so this function returns false value
+"
+"--
+"
+"-- Of course, some products can be run as BOTH linear or square, so this will
+"
+"-- still return true value for that product
+"
+"--
+"
+"-- UPDATES
+"
+"-- : 05-MAY-2011 - DSM
+"
+"--   - Created
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : Given value should not be null
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Return 'T' if the indicated product code can be Linear, or run as LF/LM
+"
+"-- : Return 'F' otherwise
+"
+"function ProdCodeCanBeLinear (givenProdCode in varchar2) return varchar2
+"
+"is
+"
+"begin
+"
+"  if givenProdCode in
+"
+"    ( 'COP','HFC','PAR','PDB','PEX','TRB','TSP','VCO','VHC','VPR','VTB',
+"
+"      'CIS','DBA','DYC','DYR','ENG','EWA','JEG','MOB','MTX','SNA','SNS',
+"
+"      'SRS','WKD','WRA','ROS','PWL','STC','DUR','SOU' )
+"
+"  then return 'T';
+"
+"  end if;
+"
+"
+"
+"  return 'F';
+"
+"end;
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- ProdCodeCanBeSquare
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- Determines if a product code can be linear. For example, REW is always run
+"
+"-- as SF or SM, and will always be square, so this function returns true value
+"
+"--
+"
+"-- Of course, some products can be run as BOTH linear or square, so this will
+"
+"-- still return true value for that product
+"
+"--
+"
+"-- UPDATES
+"
+"-- : 05-MAY-2011 - DSM
+"
+"--   - Created
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : Given value should not be null
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Return 'T' if the indicated product code can be Square, or run as SF/SM
+"
+"-- : Return 'F' otherwise
+"
+"function ProdCodeCanBeSquare (givenProdCode in varchar2) return varchar2
+"
+"is
+"
+"begin
+"
+"  if givenProdCode in
+"
+"    ( 'FAC','FWL','ORE','ORL','OSQ','OTL','OVH','OVL','OVS','PYC','PYR',
+"
+"      'REM','REW','REX','RLA','RLE','RLM','RLP','RLS','RLT','SLT','SQL',
+"
+"      'SQM','SQR','TRL','TWL','VHS','VHX','VRL','VRS','VRX','VSQ','VSS',
+"
+"      'VST','VTL','VTR','CIS','DBA','DYC','DYR','ENG','EWA','JEG','MOB',
+"
+"      'MTX','SNA','SNS','SRS','WKD','WRA','ROS','PWL','STC','DUR','SOU' )
+"
+"  then return 'T';
+"
+"  end if;
+"
+"
+"
+"  return 'F';
+"
+"end;
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- StructHasCosts
+"
+"--
+"
+"-- Find if a takeoff wall has any PCF/MO cost history
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : givenToffStrId is valid
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Return 'DONE' if everything works
+"
+"-- : Return an error if something fails
+"
+"-- : When completeing and 'DONE', this method sets the value of
+"
+"--   outCostsExist to 'Y' if costs found or 'N' if no costs found
+"
+"function StructHasCosts ( givenToffStrId in number,
+"
+"                          outCostsExist out varchar2)
+"
+"                          return varchar2
+"
+"is
+"
+"  vc_TmpErrMsg varchar2(100);
+"
+"  vn_TmpPCFQty number;
+"
+"  vn_TmpMOQty number;
+"
+"begin
+"
+"  vc_TmpErrMsg := prec_takeoff.GetStructPCFQty(givenToffStrId,vn_TmpPCFQty);
+"
+"  if vc_TmpErrMsg != 'DONE'
+"
+"  then
+"
+"    outCostsExist := null;
+"
+"    return vc_TmpErrMsg;
+"
+"  end if;
+"
+"
+"
+"  vc_TmpErrMsg := prec_takeoff.GetStructMOQty(givenToffStrId,vn_TmpMOQty);
+"
+"  if vc_TmpErrMsg != 'DONE'
+"
+"  then
+"
+"    outCostsExist := null;
+"
+"    return vc_TmpErrMsg;
+"
+"  end if;
+"
+"
+"
+"  if vn_TmpPCFQty > 0 or vn_TmpMOQty > 0
+"
+"  then outCostsExist := 'Y';
+"
+"  else outCostsExist := 'N';
+"
+"  end if;
+"
+"
+"
+"  return 'DONE';
+"
+"end; -- StructHasCosts
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- GetStructPCFQty
+"
+"--
+"
+"-- Find if a takeoff wall has any PCF history
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : givenToffStrId is valid
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Return 'DONE' if everything works
+"
+"-- : Return an error if something fails
+"
+"-- : When completeing and 'DONE', this method sets the value of
+"
+"--   outPCFQty to the number of PCF/History records found for the structure
+"
+"function GetStructPCFQty (givenToffStrId in number,
+"
+"                          outPCFQty out number)
+"
+"                          return varchar2
+"
+"is
+"
+"  vc_TmpChar varchar2(1);
+"
+"begin
+"
+"
+"
+"  begin
+"
+"    select 'Y'
+"
+"    into vc_TmpChar
+"
+"    from reco_toff_structs
+"
+"    where toff_struct_id = givenToffStrId;
+"
+"  exception
+"
+"    when others
+"
+"    then
+"
+"      outPCFQty := null;
+"
+"      return 'Error 0029 - Invalid Parameters given';
+"
+"  end;
+"
+"
+"
+"	select count(*)
+"
+"	into outPCFQty
+"
+"	from prec_pcf_walls rpw
+"
+"	where rpw.structure_id = givenToffStrId;
+"
+"
+"
+"  return 'DONE';
+"
+"end; -- GetStructPCFQty
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- GetStructMOQty
+"
+"--
+"
+"-- Find if a takeoff wall has any M) history
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : givenToffStrId is valid
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Return 'DONE' if everything works
+"
+"-- : Return an error if something fails
+"
+"-- : When completeing and 'DONE', this method sets the value of
+"
+"--   outMOQty to the number of material order records found for the structure
+"
+"function GetStructMOQty ( givenToffStrId in number,
+"
+"                          outMOQty out number)
+"
+"                          return varchar2
+"
+"is
+"
+"  vc_TmpChar varchar2(1);
+"
+"begin
+"
+"
+"
+"  begin
+"
+"    select 'Y'
+"
+"    into vc_TmpChar
+"
+"    from reco_toff_structs
+"
+"    where toff_struct_id = givenToffStrId;
+"
+"  exception
+"
+"    when others
+"
+"    then
+"
+"      outMOQty := null;
+"
+"      return 'Error 0027 - Invalid Parameters given';
+"
+"  end;
+"
+"
+"
+"  --select count(*)
+"
+"  --into outMOQty
+"
+"  --from reco_order_structures ros
+"
+"  --where ros.structure_id = givenToffStrId;
+"
+"  outMOQty := 0;
+"
+"  return 'DONE';
+"
+"end; -- GetStructMOQty
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- write_history_for_struct
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- Takes the indicated Structure record in the database and copies it into
+"
+"-- the reco_toff_struct_hist table. The original record is unchanged
+"
+"--
+"
+"-- UPDATES
+"
+"-- : 02-NOV-2011 - DSM - Created
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : givenStructId must exist if provided and be valid in reco_toff_structs table
+"
+"-- : realistically, you should only call this on commited database-data. It
+"
+"--   really doesn't make sense to mod stuff on the DB side then send-it-history
+"
+"-- : you shouldn't really need to use the givenShouldCommit. I mean you can,
+"
+"--   but what if something after this commit fails in your process ??
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Takes the indicated record and copies it into the history table
+"
+"-- : Doesn't do anything to the struct table
+"
+"-- : Calculated values don't need adjustment here, just copy to history table
+"
+"-- : Return 'DONE' if everything works
+"
+"-- : Return an error message if something fails and rollback
+"
+"-- : When completeing and 'DONE', this method may commit
+"
+"--   depending on the givenShouldCommit value
+"
+"function write_history_for_struct ( givenStructId in number,
+"
+"                                    givenShouldCommit in boolean)
+"
+"return varchar2
+"
+"is
+"
+"begin
+"
+"
+"
+"  declare
+"
+"    vc_Tmp varchar2(1);
+"
+"  begin
+"
+"    select 'Y' into vc_Tmp
+"
+"    from reco_toff_structs
+"
+"    where toff_struct_id = givenStructId;
+"
+"  exception
+"
+"    when others then
+"
+"      return 'Error 0030 - Invalid parameter given. Contact MIS';
+"
+"  end;
+"
+"
+"
+"  begin
+"
+"	insert into reco_toff_struct_hist
+"
+"		(	toff_struct_id,
+"
+"			structure_name,
+"
+"			revision_number,
+"
+"            project_number, product_code, 
+"
+"			unit_of_measure,
+"
+"			toff_job_id,
+"
+"			status_code,
+"
+"			soil_reinf_type,
+"
+"			total_area,
+"
+"			prelim_date,
+"
+"			final_date,
+"
+"			total_steel_lf,
+"
+"			total_steel_tons,
+"
+"			total_steel_qty,
+"
+"			wall_length,
+"
+"			num_columns,
+"
+"			avg_height,
+"
+"			num_panels,
+"
+"			num_ties,
+"
+"			importer_id,
+"
+"			last_update_date,
+"
+"			last_updated_by,
+"
+"			creation_date,
+"
+"			created_by,
+"
+"			last_update_login,
+"
+"      is_corp_std,
+"
+"      is_mural_wall,
+"
+"      contents_code,
+"
+"      engineering_start, engineering_end,
+"
+"      precast_start, precast_end,
+"
+"      precast_ship_start, precast_ship_end,
+"
+"      steel_start, steel_end,
+"
+"      accessory_start, accessory_end,
+"
+"      wall_start, wall_end,
+"
+"      act_engineering_start, act_engineering_end,
+"
+"      act_precast_start, act_precast_end,
+"
+"      act_precast_ship_start, act_precast_ship_end,
+"
+"      act_steel_start, act_steel_end,
+"
+"      act_accessory_start, act_accessory_end,
+"
+"      act_wall_start, act_wall_end	)
+"
+"		(	select	subTbl.TOFF_STRUCT_ID,
+"
+"							subTbl.STRUCTURE_NAME,
+"
+"							subTbl.REVISION_NUMBER, subtbl.project_number, subtbl.product_code,
+"
+"							subTbl.UNIT_OF_MEASURE,
+"
+"							subTbl.TOFF_JOB_ID,
+"
+"							subTbl.STATUS_CODE,
+"
+"							subTbl.SOIL_REINF_TYPE,
+"
+"							subTbl.TOTAL_AREA,
+"
+"							subTbl.PRELIM_DATE,
+"
+"							subTbl.FINAL_DATE,
+"
+"							subTbl.TOTAL_STEEL_LF,
+"
+"							subTbl.TOTAL_STEEL_TONS,
+"
+"							subTbl.TOTAL_STEEL_QTY,
+"
+"							subTbl.WALL_LENGTH,
+"
+"							subTbl.NUM_COLUMNS,
+"
+"							subTbl.AVG_HEIGHT,
+"
+"							subTbl.NUM_PANELS,
+"
+"							subTbl.NUM_TIES,
+"
+"							subTbl.IMPORTER_ID,
+"
+"							subTbl.LAST_UPDATE_DATE,
+"
+"							subTbl.LAST_UPDATED_BY,
+"
+"							subTbl.CREATION_DATE,
+"
+"							subTbl.CREATED_BY,
+"
+"							subTbl.LAST_UPDATE_LOGIN,
+"
+"              subTbl.IS_CORP_STD,
+"
+"              subTbl.IS_MURAL_WALL,
+"
+"              subTbl.CONTENTS_CODE,
+"
+"      engineering_start, engineering_end,
+"
+"      precast_start, precast_end,
+"
+"      precast_ship_start, precast_ship_end,
+"
+"      steel_start, steel_end,
+"
+"      accessory_start, accessory_end,
+"
+"      wall_start, wall_end,
+"
+"      act_engineering_start, act_engineering_end,
+"
+"      act_precast_start, act_precast_end,
+"
+"      act_precast_ship_start, act_precast_ship_end,
+"
+"      act_steel_start, act_steel_end,
+"
+"      act_accessory_start, act_accessory_end,
+"
+"      act_wall_start, act_wall_end
+"
+"			from	reco_toff_structs subTbl
+"
+"			where		subTbl.toff_struct_id = givenStructId);
+"
+"exception
+"
+"  when DUP_VAL_ON_INDEX
+"
+"  then
+"
+"    -- This never happens in a good system. However, when something breaks
+"
+"    -- (e.g. Forms screws up half-way through a transaction), then you may get a
+"
+"    -- data-corruption thing where a history record exists with the same RevNum
+"
+"    -- as the current structure. All future updates to that structure will fail
+"
+"    -- because of the screwed-up data Hist_REV_NUM = Current_REV_NUM
+"
+"    --
+"
+"  -- instead, update history record to match
+"
+"  	update reco_toff_struct_hist
+"
+"		set	(structure_name,
+"
+"			revision_number,
+"
+"			unit_of_measure,
+"
+"			toff_job_id,
+"
+"			status_code,
+"
+"			soil_reinf_type,
+"
+"			total_area,
+"
+"			prelim_date,
+"
+"			final_date,
+"
+"			total_steel_lf,
+"
+"			total_steel_tons,
+"
+"			total_steel_qty,
+"
+"			wall_length,
+"
+"			num_columns,
+"
+"			avg_height,
+"
+"			num_panels,
+"
+"			num_ties,
+"
+"			importer_id,
+"
+"			last_update_date,
+"
+"			last_updated_by,
+"
+"			creation_date,
+"
+"			created_by,
+"
+"			last_update_login,
+"
+"      is_corp_std,
+"
+"      is_mural_wall,
+"
+"      contents_code,
+"
+"      engineering_start, engineering_end,
+"
+"      precast_start, precast_end,
+"
+"      precast_ship_start, precast_ship_end,
+"
+"      steel_start, steel_end,
+"
+"      accessory_start, accessory_end,
+"
+"      wall_start, wall_end,
+"
+"      act_engineering_start, act_engineering_end,
+"
+"      act_precast_start, act_precast_end,
+"
+"      act_precast_ship_start, act_precast_ship_end,
+"
+"      act_steel_start, act_steel_end,
+"
+"      act_accessory_start, act_accessory_end,
+"
+"      act_wall_start, act_wall_end	) =
+"
+"		(	select	subTbl.STRUCTURE_NAME,
+"
+"							subTbl.REVISION_NUMBER,
+"
+"							subTbl.UNIT_OF_MEASURE,
+"
+"							subTbl.TOFF_JOB_ID,
+"
+"							subTbl.STATUS_CODE,
+"
+"							subTbl.SOIL_REINF_TYPE,
+"
+"							subTbl.TOTAL_AREA,
+"
+"							subTbl.PRELIM_DATE,
+"
+"							subTbl.FINAL_DATE,
+"
+"							subTbl.TOTAL_STEEL_LF,
+"
+"							subTbl.TOTAL_STEEL_TONS,
+"
+"							subTbl.TOTAL_STEEL_QTY,
+"
+"							subTbl.WALL_LENGTH,
+"
+"							subTbl.NUM_COLUMNS,
+"
+"							subTbl.AVG_HEIGHT,
+"
+"							subTbl.NUM_PANELS,
+"
+"							subTbl.NUM_TIES,
+"
+"							subTbl.IMPORTER_ID,
+"
+"							subTbl.LAST_UPDATE_DATE,
+"
+"							subTbl.LAST_UPDATED_BY,
+"
+"							subTbl.CREATION_DATE,
+"
+"							subTbl.CREATED_BY,
+"
+"							subTbl.LAST_UPDATE_LOGIN,
+"
+"              subTbl.IS_CORP_STD,
+"
+"              subTbl.IS_MURAL_WALL,
+"
+"              subTbl.CONTENTS_CODE,
+"
+"      engineering_start, engineering_end,
+"
+"      precast_start, precast_end,
+"
+"      precast_ship_start, precast_ship_end,
+"
+"      steel_start, steel_end,
+"
+"      accessory_start, accessory_end,
+"
+"      wall_start, wall_end,
+"
+"      act_engineering_start, act_engineering_end,
+"
+"      act_precast_start, act_precast_end,
+"
+"      act_precast_ship_start, act_precast_ship_end,
+"
+"      act_steel_start, act_steel_end,
+"
+"      act_accessory_start, act_accessory_end,
+"
+"      act_wall_start, act_wall_end
+"
+"			from	reco_toff_structs subTbl
+"
+"			where		subTbl.toff_struct_id = givenStructId)
+"
+"        where toff_struct_id = givenStructId;
+"
+"
+"
+"  end;
+"
+"
+"
+"  if givenShouldCommit = TRUE
+"
+"  then commit;
+"
+"  end if;
+"
+"
+"
+"  return 'DONE';
+"
+"exception
+"
+"  when others
+"
+"  then
+"
+"    rollback;
+"
+"    return 'Error 0040 - Unknown Error. Contact MIS:'||sqlerrm;
+"
+"end; -- write_history_for_struct
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- set_toff_calc_values
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- Be sure to read the PRE-CONDITIONS and POST-CONDITIONS for more details on
+"
+"-- how this method works.
+"
+"--
+"
+"-- Takeoff tables save a lot of calculated values. This makes queries and
+"
+"-- reports run much faster, as-well-as making somethings a little more easily
+"
+"-- programmable in Form Builder. However, form builder still has difficulty with
+"
+"-- this concept, and it doesn't like it when a child record tries to update
+"
+"-- calculated values in a master record (multi-record blocks screw things up).
+"
+"--
+"
+"-- As a result, this method is formed. It handles the setting of calculated
+"
+"-- values in the takeoff system, so you can be sure that any given takeoff
+"
+"-- structure will have its values set properly.
+"
+"--
+"
+"-- UPDATES
+"
+"-- : 02-NOV-2011 - DSM - Created
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- 1) You should only provide either a givenJobId or a givenStructId.
+"
+"--    Do not give both.
+"
+"-- 2) givenJobId must exist if provided and be valid in reco_toff_jobs table
+"
+"-- 3) givenStructId must exist if provided and be valid in reco_toff_structs table
+"
+"-- 4) If givenStructId is provided, it is only required to have these
+"
+"--    values set in the table:
+"
+"--    + toff_struct_id, structure_name, unit_of_measure,
+"
+"--      status_code, toff_job_id, wall_length
+"
+"--    All the other stuff is optional, or will be set properly
+"
+"-- 5) For either case (givenJob or givenStruct) the toff_job_id should be valid
+"
+"--    (see TakeoffJobIsValid for details)
+"
+"-- 6) The caller is responsible for who-columns, not this method.
+"
+"--    e.g. if caller is changing panels, it should have set whocols for panels
+"
+"--    e.g. if caller is changing structs, then should have set whocols for structs
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : When given the StructId only,
+"
+"--   calculate and apply these values for the struct table.
+"
+"--      -- REVISION_NUMBER
+"
+"--      -- SOIL_REINF_TYPE
+"
+"--      -- TOTAL_AREA (not for wirewalls e.g. 'TRL','VTL','VTR','OTL', manual entry)
+"
+"--      -- TOTAL_STEEL_LF
+"
+"--      -- TOTAL_STEEL_TONS
+"
+"--      -- TOTAL_STEEL_QTY
+"
+"--      -- AVG_HEIGHT
+"
+"--      -- NUM_PANELS
+"
+"--      -- NUM_TIES
+"
+"-- : Regardless which parameter is given, the Job table has its calculated
+"
+"--   values updated too.
+"
+"--      -- NUM_OF_WALLS
+"
+"--      -- TOTAL_AREA
+"
+"--      -- TOTAL_STEEL_LF
+"
+"--      -- TOTAL_STEEL_TONS
+"
+"--      -- TOTAL_STEEL_QTY
+"
+"--      -- WALL_LENGTH
+"
+"--      -- NUM_COLUMNS
+"
+"--      -- AVG_HEIGHT
+"
+"--      -- NUM_PANELS
+"
+"--      -- NUM_TIES
+"
+"-- : When a structure is involved, this method will --ALWAYS-- increment the
+"
+"--   revision number by 1. If the revision number is null, it's set to 0
+"
+"-- : This method does not handle backup or history. Literally we can't do
+"
+"--   it, because some of the required data may have already been set. So it
+"
+"--   is the caller's responsibility to track history
+"
+"-- : This method does not set who columns, as per pre-conditions above
+"
+"-- : This method does not commit. It is callers responsibility to commit.
+"
+"-- : Return 'DONE' if everything works
+"
+"-- : Return an error message if something fails
+"
+"function set_toff_calc_values ( givenjobid in number,
+"
+"                                givenstructid in number)
+"
+"return varchar2
+"
+"is
+"
+"
+"
+"  cursor cur_getstrdat (pi_strid in number)
+"
+"  is
+"
+"    select  toffs.revision_number,
+"
+"            toffs.total_area curr_wall_area,
+"
+"            toffs.wall_length,
+"
+"            nvl(subqpan.totnumpan,0) panelqtynorm,
+"
+"            toffs.num_panels panelqtywire,
+"
+"            nvl(subqpar.totextrats,0) tieqty,
+"
+"            nvl(subqpan.totpanarea,0) panelarea
+"
+"            -- Don't get steel  lf  here
+"
+"            -- Don't get steel tons here
+"
+"            -- Don't get steel qty  here
+"
+"    from  reco_toff_structs toffs,
+"
+"          (
+"
+"            select  toffpan.toff_struct_id,
+"
+"                    sum(toffpan.quantity_required) totnumpan,
+"
+"                    sum(toffpan.quantity_required * toffpan.tie_strip_quantity) totnumtie,
+"
+"                    sum(toffpan.quantity_required * toffpan.area_per_piece) totpanarea
+"
+"            from  reco_toff_panels toffpan
+"
+"            where   toffpan.toff_struct_id = pi_strid
+"
+"            group by  toffpan.toff_struct_id
+"
+"          ) subqpan,
+"
+"          (
+"
+"            select  toffpar.toff_struct_id, sum(toffpar.quantity_required) totextrats
+"
+"            from  reco_toff_parts toffpar
+"
+"            where   part_code like 'TS%'
+"
+"            and     toffpar.toff_struct_id = pi_strid
+"
+"            group by  toffpar.toff_struct_id
+"
+"          ) subqpar
+"
+"    where   toffs.toff_struct_id = pi_strid
+"
+"    and     toffs.toff_struct_id = subqpan.toff_struct_id (+)
+"
+"    and     toffs.toff_struct_id = subqpar.toff_struct_id (+);
+"
+"
+"
+"  rec_getstrdat cur_getstrdat%rowtype;
+"
+"
+"
+"  vn_workingjobid number;
+"
+"  vc_productcode reco_toff_jobs_v.product_code%type;
+"
+"  vc_jobuom reco_toff_jobs_v.job_uom%type;
+"
+"
+"
+"  vn_tmptotwallqty number;
+"
+"  vn_tmptotarea number;
+"
+"  vn_tmptotsteellf number;
+"
+"  vn_tmptotsteelton number;
+"
+"  vn_tmptotsteelqty number;
+"
+"  vn_tmptotwalllen number;
+"
+"  vn_tmptotnumcols number;
+"
+"  vn_tmptotavghgt number;
+"
+"  vn_tmptotpanqty number;
+"
+"  vn_tmptottieqty number;
+"
+"
+"
+"begin
+"
+"
+"
+"  -- Validate
+"
+"  if (givenjobid is null and givenstructid is null)
+"
+"  or (givenjobid is not null and givenstructid is not null)
+"
+"  then return 'Internal Error 0020 - Method Usage Error';
+"
+"  end if;
+"
+"
+"
+"  --if TakeoffJobIsValid = 'NO' then developer error end if;
+"
+"
+"
+"  -- Basic needs
+"
+"  if givenjobid is not null
+"
+"  then
+"
+"    select givenjobid, product_code, job_uom
+"
+"    into vn_workingjobid, vc_productcode, vc_jobuom
+"
+"    from reco_toff_jobs_v toffj
+"
+"    where toffj.toff_job_id = givenjobid;
+"
+"  elsif givenstructid is not null
+"
+"  then
+"
+"    select toffj.toff_job_id, toffj.product_code, toffj.job_uom
+"
+"    into vn_workingjobid, vc_productcode, vc_jobuom
+"
+"    from reco_toff_jobs_v toffj, reco_toff_structs toffs
+"
+"    where toffj.toff_job_id = toffs.toff_job_id
+"
+"    and toffs.toff_struct_id = givenstructid;
+"
+"  end if;
+"
+"
+"
+"  -- Set structure data
+"
+"  if givenstructid is not null
+"
+"  then
+"
+"    declare
+"
+"      vn_tmpthiswallrevnum number;
+"
+"      vn_tmpthiswallarea number;
+"
+"      vn_tmpthiswallstllf number;
+"
+"      vn_tmpthiswallstlton number;
+"
+"      vn_tmpthiswallstlqty number;
+"
+"      vn_tmpthiswallavghgt number;
+"
+"      vn_tmpthiswallnumpan number;
+"
+"      vn_tmpthiswallnumtie number;
+"
+"    begin
+"
+"      -- Get and set lots of info first
+"
+"
+"
+"      open cur_getstrdat(givenstructid);
+"
+"      fetch cur_getstrdat into rec_getstrdat;
+"
+"      close cur_getstrdat;
+"
+"
+"
+"      -- Determine new revision_number
+"
+"      vn_tmpthiswallrevnum := rec_getstrdat.revision_number + 1;
+"
+"      if vn_tmpthiswallrevnum is null
+"
+"      then vn_tmpthiswallrevnum := 0;
+"
+"      end if;
+"
+"
+"
+"      -- Determine new Area
+"
+"      if vc_productcode not in ('TRL','VTL','VTR','OTL','CTT','CT1','CT2','CT3')
+"
+"      then vn_tmpthiswallarea := rec_getstrdat.panelarea;
+"
+"      elsif vc_productcode in ('TRL','VTL','VTR','OTL','CTT','CT1','CT2','CT3')
+"
+"      then vn_tmpthiswallarea := rec_getstrdat.curr_wall_area;
+"
+"      end if;
+"
+"
+"
+"      -- Determine new steel
+"
+"      vn_tmpthiswallstllf := getsteellf(givenstructid);
+"
+"      vn_tmpthiswallstlton := getsteeltons(givenstructid);
+"
+"      vn_tmpthiswallstlqty := getsteelqty(givenstructid);
+"
+"
+"
+"      -- Determine new avg height
+"
+"      if nvl(rec_getstrdat.wall_length,0) = 0
+"
+"      or nvl(vn_tmpthiswallarea,0) = 0
+"
+"      then vn_tmpthiswallavghgt := 0;
+"
+"      else vn_tmpthiswallavghgt := vn_tmpthiswallarea / rec_getstrdat.wall_length;
+"
+"      end if;
+"
+"
+"
+"      -- Determine new panel quantity
+"
+"      if vc_productcode not in ('TRL','VTL','VTR','OTL','CTT','CT1','CT2','CT3')
+"
+"      then vn_tmpthiswallnumpan := rec_getstrdat.panelqtynorm;
+"
+"      elsif vc_productcode in ('TRL','VTL','VTR','OTL','CTT','CT1','CT2','CT3')
+"
+"      then vn_tmpthiswallnumpan := rec_getstrdat.panelqtywire;
+"
+"      end if;
+"
+"
+"
+"      -- Determine new tie quantity
+"
+"      vn_tmpthiswallnumtie := rec_getstrdat.tieqty;
+"
+"
+"
+"      -- Update all of our calculated data in structure table
+"
+"
+"
+"      update reco_toff_structs
+"
+"      set revision_number = vn_tmpthiswallrevnum,
+"
+"          total_area = vn_tmpthiswallarea,
+"
+"          total_steel_lf = vn_tmpthiswallstllf,
+"
+"          total_steel_tons = vn_tmpthiswallstlton,
+"
+"          total_steel_qty = vn_tmpthiswallstlqty,
+"
+"          avg_height = vn_tmpthiswallavghgt,
+"
+"          num_panels = vn_tmpthiswallnumpan,
+"
+"          num_ties = vn_tmpthiswallnumtie
+"
+"      where toff_struct_id = givenstructid;
+"
+"    end;
+"
+"  end if;
+"
+"
+"
+"  -- Run lots of calcs at the job level
+"
+"
+"
+"  -- The nvl(total_area) is needed because wire walls can have
+"
+"  -- a missing area until the user enters it on per-wall basis.
+"
+"  -- Other nvl(value) is added for consistency
+"
+"
+"
+"  select  count(*) totalwalls,
+"
+"          sum(nvl(total_area,0)) totalarea,
+"
+"          sum(nvl(total_steel_lf,0)) totalsteell,
+"
+"          sum(nvl(total_steel_tons,0)) totalsteelt,
+"
+"          sum(nvl(total_steel_qty,0)) totalsteelq,
+"
+"          sum(nvl(wall_length,0)) totalwalll,
+"
+"          sum(nvl(num_columns,0)) totalnumc,
+"
+"          sum(nvl(num_panels,0)) numpan,
+"
+"          sum(nvl(num_ties,0)) numtie
+"
+"  into  vn_tmptotwallqty, vn_tmptotarea, vn_tmptotsteellf,
+"
+"        vn_tmptotsteelton, vn_tmptotsteelqty, vn_tmptotwalllen,
+"
+"        vn_tmptotnumcols, vn_tmptotpanqty, vn_tmptottieqty
+"
+"  from reco_toff_structs
+"
+"  where toff_job_id = vn_workingjobid;
+"
+"
+"
+"  -- Handle case when user deletes last wall, or when there
+"
+"  -- are otherwise no records in the structure table when
+"
+"  -- these auto-calcs are run
+"
+"  if vn_tmptotwallqty = 0
+"
+"  then
+"
+"    vn_tmptotarea := 0;
+"
+"    vn_tmptotsteellf := 0;
+"
+"    vn_tmptotsteelton := 0;
+"
+"    vn_tmptotsteelqty := 0;
+"
+"    vn_tmptotwalllen := 0;
+"
+"    vn_tmptotnumcols := 0;
+"
+"    vn_tmptotpanqty := 0;
+"
+"    vn_tmptottieqty := 0;
+"
+"  end if;
+"
+"
+"
+"  if vn_tmptotarea = 0
+"
+"  or vn_tmptotwalllen = 0
+"
+"  then vn_tmptotavghgt := 0;
+"
+"  else vn_tmptotavghgt := vn_tmptotarea / vn_tmptotwalllen;
+"
+"  end if;
+"
+"
+"
+"  -- Update all of our calculated data in jobs table
+"
+"
+"
+"  update prec_project_products
+"
+"  set num_of_walls = vn_tmptotwallqty,
+"
+"      total_area = vn_tmptotarea,
+"
+"      total_steel_lf = vn_tmptotsteellf,
+"
+"      total_steel_tons = vn_tmptotsteelton,
+"
+"      total_steel_qty = vn_tmptotsteelqty,
+"
+"      wall_length = vn_tmptotwalllen,
+"
+"      num_columns = vn_tmptotnumcols,
+"
+"      avg_height = vn_tmptotavghgt,
+"
+"      num_panels = vn_tmptotpanqty,
+"
+"      num_ties = vn_tmptottieqty
+"
+"  where product_id = vn_workingjobid;
+"
+"
+"
+"  -- As described in POST-CONDITIONS, we do not commit
+"
+"
+"
+"  return 'DONE';
+"
+"
+"
+"end; -- set_toff_calc_values
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- delete_toff_struct
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- Deletes a structure along with its panels and parts from takeoff.
+"
+"-- Will also create a history, and delete any related estimates.
+"
+"--
+"
+"-- UPDATES
+"
+"-- : 02-NOV-2011 - DSM - Created
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : The givenStructId is saved in the structure table
+"
+"-- : There should be no PCFs tied to this structure,
+"
+"--   validated by GetStructPCFQty
+"
+"-- : There should be no Material Orders tied to this structure,
+"
+"--   validated by GetStructMOQty
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Deletes the structure, and any related estimates.
+"
+"-- : A history record is created before deletion.
+"
+"-- : Return 'DONE' if everything works
+"
+"-- : Return an error message if something fails and rollback
+"
+"-- : When completeing and 'DONE', this method may commit
+"
+"--   depending on the givenShouldCommit value
+"
+"-- : When completeing and 'DONE', calculated values are synced
+"
+"function delete_toff_struct ( givenstructid in number,
+"
+"                              givenshouldcommit in boolean)
+"
+"return varchar2
+"
+"is
+"
+"  vc_temperrormsg varchar2(1024);
+"
+"
+"
+"
+"
+"  vn_storedjobid number;
+"
+"
+"
+"begin
+"
+"
+"
+"  declare
+"
+"    vn_tmppcfquantity number;
+"
+"    vn_tmpmoquantity number;
+"
+"  begin
+"
+"    vc_temperrormsg :=
+"
+"      prec_takeoff.getstructpcfqty(givenstructid,vn_tmppcfquantity);
+"
+"    if vc_temperrormsg != 'DONE'
+"
+"    then return vc_temperrormsg;
+"
+"    end if;
+"
+"    if vn_tmppcfquantity > 0
+"
+"    then return 'Error 0021 - Cannot delete structure with live PCFs attached';
+"
+"    end if;
+"
+"    vc_temperrormsg :=
+"
+"      prec_takeoff.getstructmoqty(givenstructid,vn_tmpmoquantity);
+"
+"    if vc_temperrormsg != 'DONE'
+"
+"    then return vc_temperrormsg;
+"
+"    end if;
+"
+"    if vn_tmpmoquantity > 0
+"
+"    then return 'Error 0022 - Cannot delete structure with live MOs attached';
+"
+"    end if;
+"
+"  end;
+"
+"
+"
+"  select toff_job_id
+"
+"  into vn_storedjobid
+"
+"  from reco_toff_structs
+"
+"  where toff_struct_id = givenstructid;
+"
+"
+"
+"  vc_temperrormsg := prec_takeoff.write_history_for_struct(givenstructid,false);
+"
+"  if vc_temperrormsg != 'DONE'
+"
+"  then
+"
+"    rollback;
+"
+"    return vc_temperrormsg;
+"
+"  end if;
+"
+"
+"
+"  delete from reco_toff_panels where toff_struct_id = givenstructid;
+"
+"  delete from reco_toff_parts where toff_struct_id = givenstructid;
+"
+"  delete from reco_toff_panel_coordinates where toff_struct_id = givenstructid;
+"
+"  delete from reco_toff_structs where toff_struct_id = givenstructid;
+"
+"
+"
+"
+"
+"  -- Update job-level stuff
+"
+"
+"
+"  vc_temperrormsg := prec_takeoff.set_toff_calc_values(vn_storedjobid,null);
+"
+"
+"
+"  if vc_temperrormsg != 'DONE'
+"
+"  then rollback;
+"
+"        return vc_temperrormsg;
+"
+"  end if;
+"
+"
+"
+"  if givenshouldcommit
+"
+"  then commit;
+"
+"  end if;
+"
+"
+"
+"  return 'DONE';
+"
+"end; -- delete_toff_struct
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- copy_toff_struct
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- Copies a structure along with its panels and parts to a takeoff job.
+"
+"-- Doesn't create history, doesn't affect estimates, and doesn't change costs,
+"
+"-- but it will affect calculated values in the new job
+"
+"--
+"
+"-- UPDATES
+"
+"-- : 13-JAN-2012 - DSM - Created
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : The givenOldStrId is some valid structure in reco_toff_structs
+"
+"-- : The givenNewJobId is some job in the reco_toff_jobs table
+"
+"-- : The givenUserId and givenLoginId are for who columns
+"
+"-- : Do NOT call this method when copying the wall into the same job and there are
+"
+"--   costs attached. In this case the user should just fix the wall !!
+"
+"-- : The givenNewStrName is the desired name for the new wall copy.
+"
+"--   This new name parameter should be used in 1 of 4 ways, and it
+"
+"--   is the responsibility of the caller to make sure to use it
+"
+"--   correctly:
+"
+"--   - IF wall is copied to different job
+"
+"--   - AND wall has no costs
+"
+"--   - {
+"
+"--   -   givenNewStrName can be anything, or null to keep existing name
+"
+"--   - }
+"
+"--   - ELSIF wall is copied to different job
+"
+"--   - AND wall has costs (PCFs/MOs history)
+"
+"--   - {
+"
+"--   -   givenNewStrName should be null, keep the same name as old one
+"
+"--   - }
+"
+"--   - ELSIF wall is copied to same job
+"
+"--   - AND wall has no costs
+"
+"--   - {
+"
+"--   -   givenNewStrName can be anything, or null to keep existing name
+"
+"--   - }
+"
+"--   - ELSIF wall is copied to same job
+"
+"--   - AND wall has costs (PCFs/MOs history)
+"
+"--   - {
+"
+"--   -   Don't allow this case. Caller error (see other pre-conditions)
+"
+"--   - }
+"
+"-- : the job units may be different between old job and new job
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Copies the structure to the job, with the given name (if any)
+"
+"--   ( see pre-conditions ).
+"
+"-- : No history change, no estimate change, no cost change
+"
+"-- : Return 'DONE' if everything works, and the new copy's
+"
+"--   toff_struct_id is set into outNewStrId
+"
+"-- : Return an error message if something fails and rollback
+"
+"-- : When completeing and 'DONE', this method may commit
+"
+"--   depending on the givenShouldCommit value
+"
+"-- : When completeing and 'DONE', this method sets the value of
+"
+"--   outNewStrId to the copy's structure_id
+"
+"-- : When completeing and 'DONE', calculated values are synced
+"
+"function copy_toff_struct ( givenoldstrid in number,
+"
+"                            givennewjobid in number,
+"
+"                            givennewstrname in varchar2,
+"
+"                            givenuserid in number,
+"
+"                            givenloginid in number,
+"
+"                            givenshouldcommit in boolean,
+"
+"                            outnewstrid out number)
+"
+"return varchar2
+"
+"is
+"
+"	vn_tmppcfqty number;
+"
+"	vn_tmpmoqty number;
+"
+"  vc_tmphascosts varchar2(1);
+"
+"
+"
+"  vn_oldjobid number;
+"
+"  vn_oldstrid number;
+"
+"  vn_newjobid number;
+"
+"  vn_newstrid number;
+"
+"  vc_newstrname reco_toff_structs.structure_name%type;
+"
+"  vd_updatetime date;
+"
+"
+"
+"  vc_tmpchar varchar2(1);
+"
+"  vc_tmperrmsg varchar2(1024);
+"
+"begin
+"
+"
+"
+"  -- Validations
+"
+"  if givenoldstrid is null or givennewjobid is null or givenshouldcommit is null
+"
+"  then return 'Error 0025 - Internal Error - Invalid parameters';
+"
+"  end if;
+"
+"
+"
+"  begin
+"
+"    select 'Y' into vc_tmpchar from reco_toff_structs
+"
+"    where toff_struct_id = givenoldstrid;
+"
+"    select 'Y' into vc_tmpchar from reco_toff_jobs_v
+"
+"    where toff_job_id = givennewjobid;
+"
+"  exception
+"
+"    when others then return 'Error 0026 - Internal Error - Invalid parameters';
+"
+"  end;
+"
+"
+"
+"  vn_oldstrid := givenoldstrid;
+"
+"  vn_newjobid := givennewjobid;
+"
+"
+"
+"  select toff_job_id into vn_oldjobid from reco_toff_structs
+"
+"  where toff_struct_id = vn_oldstrid;
+"
+"
+"
+"  vc_tmperrmsg := prec_takeoff.getstructpcfqty(vn_oldstrid,vn_tmppcfqty);
+"
+"  if vc_tmperrmsg != 'DONE'
+"
+"  then return vc_tmperrmsg;
+"
+"  end if;
+"
+"  vc_tmperrmsg := prec_takeoff.getstructmoqty(vn_oldstrid,vn_tmpmoqty);
+"
+"  if vc_tmperrmsg != 'DONE'
+"
+"  then return vc_tmperrmsg;
+"
+"  end if;
+"
+"  vc_tmperrmsg := prec_takeoff.structhascosts(vn_oldstrid,vc_tmphascosts);
+"
+"  if vc_tmperrmsg != 'DONE'
+"
+"  then return vc_tmperrmsg;
+"
+"  end if;
+"
+"
+"
+"  if vn_oldjobid = vn_newjobid
+"
+"  and vc_tmphascosts = 'Y'
+"
+"  then return 'Error 0027 - Cannot copy wall into same project if it has costs';
+"
+"  end if;
+"
+"
+"
+"  if vn_oldjobid != vn_newjobid
+"
+"  and vc_tmphascosts = 'Y'
+"
+"  and givennewstrname is not null
+"
+"  then return 'Error 0028 - Cannot change wall name when you copy a '||
+"
+"              'costed wall to another project';
+"
+"  end if;
+"
+"
+"
+"  -- Done validations (and setting 3 vars)
+"
+"  -- So now do everything else
+"
+"
+"
+"  select reco_structure_seq.nextval into vn_newstrid from dual;
+"
+"
+"
+"  vc_newstrname := givennewstrname;
+"
+"  if vc_newstrname is null
+"
+"  then
+"
+"    select substr.structure_name into vc_newstrname
+"
+"    from reco_toff_structs substr where substr.toff_struct_id = vn_oldstrid;
+"
+"  end if;
+"
+"
+"
+"  vd_updatetime := sysdate;
+"
+"
+"
+"	insert into reco_toff_structs (toff_struct_id,structure_name,
+"
+"			revision_number,unit_of_measure,toff_job_id,status_code,
+"
+"			soil_reinf_type,total_area,prelim_date,final_date,
+"
+"			total_steel_lf,total_steel_tons,total_steel_qty,wall_length,
+"
+"			num_columns,avg_height,num_panels,num_ties,importer_id,
+"
+"			last_update_date,last_updated_by,creation_date,created_by,
+"
+"			last_update_login,
+"
+"      is_corp_std,is_mural_wall,contents_code)
+"
+"	(	select	vn_newstrid,
+"
+"						vc_newstrname,
+"
+"						revision_number,
+"
+"						unit_of_measure,
+"
+"						vn_newjobid,
+"
+"						status_code,
+"
+"						soil_reinf_type,
+"
+"						total_area,
+"
+"						prelim_date,
+"
+"						final_date,
+"
+"						total_steel_lf,
+"
+"						total_steel_tons,
+"
+"						total_steel_qty,
+"
+"						wall_length,
+"
+"						num_columns,
+"
+"						avg_height,
+"
+"						num_panels,
+"
+"						num_ties,
+"
+"						importer_id,
+"
+"						vd_updatetime,
+"
+"						givenuserid,
+"
+"						creation_date,
+"
+"						created_by,
+"
+"						givenloginid,
+"
+"            is_corp_std,
+"
+"            is_mural_wall,
+"
+"            contents_code
+"
+"		from	reco_toff_structs
+"
+"		where		toff_struct_id = vn_oldstrid );
+"
+"
+"
+"	insert into reco_toff_panels (toff_panel_id,toff_struct_id,
+"
+"			panel_name,tie_strip_quantity,panel_reinforcements,
+"
+"			panel_finish,panel_additions,width,thickness,area_per_piece,
+"
+"			quantity_required,last_update_date,last_updated_by,
+"
+"			creation_date,created_by,last_update_login)
+"
+"	(	select	reco_panel_seq.nextval,
+"
+"						vn_newstrid,
+"
+"						panel_name,
+"
+"						tie_strip_quantity,
+"
+"						panel_reinforcements,
+"
+"						panel_finish,
+"
+"						panel_additions,
+"
+"						width,
+"
+"						thickness,
+"
+"						area_per_piece,
+"
+"						quantity_required,
+"
+"						vd_updatetime,
+"
+"						givenuserid,
+"
+"						creation_date,
+"
+"						created_by,
+"
+"						givenloginid
+"
+"		from	reco_toff_panels
+"
+"		where		toff_struct_id = vn_oldstrid );
+"
+"
+"
+"	insert into reco_toff_parts (toff_part_id,toff_struct_id,
+"
+"			part_code,calc_quantity,adj_quantity,
+"
+"			quantity_required,last_update_date,last_updated_by,
+"
+"			creation_date,created_by,last_update_login)
+"
+"	(	select	reco_part_seq.nextval,
+"
+"						vn_newstrid,
+"
+"						part_code,
+"
+"						calc_quantity,
+"
+"						adj_quantity,
+"
+"						quantity_required,
+"
+"						vd_updatetime,
+"
+"						givenuserid,
+"
+"						creation_date,
+"
+"						created_by,
+"
+"						givenloginid
+"
+"		from	reco_toff_parts
+"
+"		where		toff_struct_id = vn_oldstrid );
+"
+"
+"
+"  vc_tmperrmsg := prec_takeoff.set_toff_calc_values(vn_newjobid,null);
+"
+"
+"
+"  if vc_tmperrmsg != 'DONE'
+"
+"  then rollback;
+"
+"        return vc_tmperrmsg;
+"
+"  end if;
+"
+"
+"
+"  if givenshouldcommit
+"
+"  then commit;
+"
+"  end if;
+"
+"
+"
+"  outnewstrid := vn_newstrid;
+"
+"
+"
+"  return 'DONE';
+"
+"end; -- copy_toff_Struct
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- fix_saved_wall_uom
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- Older jobs, and user-error jobs, may give us walls that have a different
+"
+"-- unit_of_measure than what is needed for the job
+"
+"-- e.g. a Linear-Meter REW wall in a SquareFoot job
+"
+"--
+"
+"-- It's really easy to data-fix a job by just running DML statements.
+"
+"-- However, this method at least does some checks and validations in an attempt
+"
+"-- to catch serious issues, so use this method instead if just running an update
+"
+"-- statement
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : Realistically, everything should be saved on the user's end, especially if
+"
+"--   calling from a form. Make sure everything's saved-and-simple before doing
+"
+"--   this for best results.
+"
+"-- : givenToffStrId must be given and valid and exist in the table
+"
+"-- : RECO_TOFF_JOBS entry and RECO_TOFF_STRUCTS entries all need to be valid
+"
+"-- : The givenUserId/givenLoginId must be given
+"
+"-- : If the given wall has PCFs/MOs against it, you should manually fix it and
+"
+"--   check for any expenditures agains it, and the units of those expenses
+"
+"-- : If the given wall wall is English/Metric, and that has problems with
+"
+"--   the rest of job, then you should manually fix, and the area of the
+"
+"--   panels in that job for E/M
+"
+"-- : If the JOB is linked to sales/CRM, then if there are budgets against it
+"
+"--   of a conflicting unit then you should manually fix it, because I'm not
+"
+"--   sure what to do if your LF wall has LF budget in a Metric job
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Updates the structure record to set its unit to match the job's unit
+"
+"-- : Handles the history too
+"
+"-- : This runs recalculate for the values out of consistency (and
+"
+"--   future-proofing the code too) and to increment the revision number
+"
+"-- : Commits the changes
+"
+"-- : Returns 'DONE' when successful
+"
+"-- : Returns and error message when anything fails, and then does a rollback
+"
+"--   if it fails too
+"
+"function fix_saved_wall_uom ( giventoffstrid in number,
+"
+"                              givenuserid in number,
+"
+"                              givenloginid in number )
+"
+"return varchar2
+"
+"is
+"
+"  vn_tmpjobid number;
+"
+"  vc_tmpjobuom varchar2(2);
+"
+"  vc_tmperrmsg varchar2(1024);
+"
+"begin
+"
+"  begin
+"
+"    select toffs.toff_job_id, toffj.job_uom
+"
+"    into vn_tmpjobid, vc_tmpjobuom
+"
+"    from reco_toff_structs toffs, reco_toff_jobs_v toffj
+"
+"    where   toffj.toff_job_id = toffs.toff_job_id
+"
+"    and     toffs.toff_struct_id = giventoffstrid;
+"
+"  exception
+"
+"    when others
+"
+"    then
+"
+"      return 'Internal Error 0036 - Invalid Parameters. Contact MIS';
+"
+"  end;
+"
+"
+"
+"  if givenuserid is null
+"
+"  or givenloginid is null
+"
+"  then return 'Internal Error 0037 - Invalid Parameters. Contact MIS';
+"
+"  end if;
+"
+"
+"
+"  vc_tmperrmsg := prec_takeoff.write_history_for_struct(giventoffstrid,false);
+"
+"
+"
+"  if vc_tmperrmsg != 'DONE'
+"
+"  then
+"
+"    rollback;
+"
+"    return vc_tmperrmsg;
+"
+"  end if;
+"
+"
+"
+"  update reco_toff_structs
+"
+"  set unit_of_measure = vc_tmpjobuom,
+"
+"      last_updated_by = givenuserid,
+"
+"      last_update_date = sysdate,
+"
+"      last_update_login = givenloginid
+"
+"  where toff_struct_id = giventoffstrid;
+"
+"
+"
+"  if sql%rowcount != 1
+"
+"  then
+"
+"    rollback;
+"
+"    return 'Internal Error 0038 - Unknown Error. Contact MIS';
+"
+"  end if;
+"
+"
+"
+"  -- Calculated Values
+"
+"  -- Currently, none of the calculated values depend on the individual
+"
+"  -- structure's UOM, but this is always a good habit plus it raises
+"
+"  -- the revision number
+"
+"  vc_tmperrmsg := prec_takeoff.set_toff_calc_values(null,giventoffstrid);
+"
+"
+"
+"  if vc_tmperrmsg != 'DONE'
+"
+"  then
+"
+"    rollback;
+"
+"    return vc_tmperrmsg;
+"
+"  end if;
+"
+"
+"
+"  -- Commit our changes
+"
+"  commit;
+"
+"
+"
+"  return 'DONE';
+"
+"end;
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- get_std_panel_areas
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- Using the Panel Name, RECo assumes standard areas for some panels.
+"
+"-- Use this method to access standard panelname/area data.
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : givenUOM should be valid
+"
+"-- : givenProdCode is given
+"
+"-- : commaSeparatedPanNames is a list of panel names that you want to get
+"
+"--   standard areas for. It should be of format
+"
+"--   : 'A','B','CII','Q','ZZZZ'
+"
+"--   This is required for network performance reasons (i.e. no blind queries
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : If successful, return a nested-table collection that contains panName and
+"
+"--   stdArea. You can get the qty with outputobject.count method.
+"
+"-- : It is possible for this method to return a collection with 0 items. It
+"
+"--   just means the commaSeparatedPanNames given don't have any standard
+"
+"--   heights, which is okay.
+"
+"-- : Return null if error
+"
+"function get_std_panel_areas (givenuom in varchar2,
+"
+"                              givenprodcode in varchar2,
+"
+"                              commaseparatedpannames in varchar2)
+"
+"return coll_stdpanelareas
+"
+"is
+"
+"  vo_thepanelsapproved prec_takeoff.coll_stdpanelareas; -- Fetched, so don't initialize
+"
+"
+"
+"  type dyn_cursor is ref cursor;
+"
+"  cur_mycursor dyn_cursor;
+"
+"
+"
+"  vc_jobtype varchar2(1);
+"
+"
+"
+"  vc_tmpquery varchar2(4000);
+"
+"begin
+"
+"  if givenuom is null
+"
+"  or givenprodcode is null
+"
+"  or commaseparatedpannames is null
+"
+"  then return null;
+"
+"  end if;
+"
+"
+"
+"  if length(givenuom) = 0
+"
+"  or length(givenprodcode) = 0
+"
+"  or length(commaseparatedpannames) = 0
+"
+"  or givenuom not in ('SF','LF','SM','LM')
+"
+"  or substr(commaseparatedpannames,1,1) != chr(39)
+"
+"  then return null;
+"
+"  end if;
+"
+"
+"
+"	if givenuom in ('SF','LF') then vc_jobtype := 'E';
+"
+"	elsif givenuom in ('SM','LM') then vc_jobtype := 'M';
+"
+"	end if;
+"
+"
+"
+"  vc_tmpquery :=
+"
+"    'select distinct dataProdPanLvl.data_value name, '||
+"
+"    'to_number(dataAreaLvl.data_value) area '||
+"
+"    'from reco_domain_data dataEMLvl, reco_domain_data dataProdLvl, '||
+"
+"    'reco_domain_data dataProdPanLvl, reco_domain_data dataAreaLvl '||
+"
+"    'where dataEMLvl.domain_name = '||chr(39)||'RECO_JOB_TYPE'||chr(39)||' '||
+"
+"    'and dataProdLvl.domain_name = '||chr(39)||'RECO_PRODUCTS'||chr(39)||' '||
+"
+"    'and dataProdPanLvl.domain_name = '||chr(39)||'RECO_PRODUCT_PANELS'||chr(39)||' '||
+"
+"    'and dataAreaLvl.domain_name (+) = '||chr(39)||'RECO_PANEL_AREAS'||chr(39)||' '||
+"
+"    'and dataEMLvl.data_rownum = dataProdLvl.master_data_rownum '||
+"
+"    'and dataProdLvl.data_rownum = dataProdPanLvl.master_data_rownum '||
+"
+"    'and dataProdPanLvl.data_rownum = dataAreaLvl.master_data_rownum (+) '||
+"
+"    'and dataEMLvl.data_value = '||chr(39)||vc_jobtype||chr(39)||' '||
+"
+"    'and dataProdLvl.data_value = '||chr(39)||givenprodcode||chr(39)||' '||
+"
+"    'and dataProdPanLvl.data_value in ('||commaseparatedpannames||') '||
+"
+"    'order by dataProdPanLvl.data_value, dataAreaLvl.data_value';
+"
+"
+"
+"  open cur_mycursor for vc_tmpquery;
+"
+"  fetch cur_mycursor bulk collect into vo_thepanelsapproved;
+"
+"  close cur_mycursor;
+"
+"
+"
+"  return vo_thepanelsapproved;
+"
+"end; -- get_std_panel_areas
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- send_wall_change_email
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- Sends an email to relevant people about a Takeoff Structure's recent changes.
+"
+"-- This performs an autnomous_transaction to commit the email without affecting
+"
+"-- the caller at all
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : Given Structure Id should be a valid toff_struct_id saved in the
+"
+"--   reco_toff_structs table (or, in cases of deletion, it should be a valid
+"
+"--   toff_struct_id that exists in reco_toff_struct_hist but not in the
+"
+"--   reco_toff_structs table)
+"
+"-- : The involvesImportSys boolean should indicate if the last change for
+"
+"--   the wall involved Takeoff-Import in any way (new import, overwrite import)
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : If everything works, return 'DONE'
+"
+"-- : If there is a problem, return error message
+"
+"-- : If everything works, an email MIGHT be sent. Emails are only sent for jobs
+"
+"--   that are in WON/AWARDED-TO-RECO status to COMP/PENDING CLOSE status. Jobs
+"
+"--   that are real early or completely closed will not bother with emails
+"
+"-- : The Commit/Rollback is handled automatically in this method, and does not
+"
+"--   affect the calling transaction
+"
+"function send_wall_change_email ( givenToffStrId in number,
+"
+"                                  pi_InvolvesImportSys in boolean)
+"
+"return varchar2
+"
+"is
+"
+"  pragma autonomous_transaction;
+"
+"
+"
+"  vc_lastupdatedusername varchar2(80);
+"
+"  vc_messagesubject varchar2(80);
+"
+"  vc_messagebody varchar2(1000);
+"
+"
+"
+"  --vn_myemail_serialnum reco_notification.notification_id%type;
+"
+"
+"
+"  type rec_changetext is record (thistext varchar2(1000));
+"
+"  type coll_changetext is table of rec_changetext;
+"
+"
+"
+"currentorg number;
+"
+"
+"
+"  othechangetexts coll_changetext := coll_changetext(); -- Initalize since not fetched
+"
+"  nctrchangetexts number := 0;
+"
+"
+"
+"  type rec_emails is record (thisemail varchar2(240));
+"
+"  type coll_emails is table of rec_emails;
+"
+"
+"
+"  otheemails coll_emails := coll_emails(); -- Initalize since not fetched
+"
+"  nctremails number := 0;
+"
+"
+"
+"  rec_toffjob reco_toff_jobs_v%rowtype;
+"
+"  vb_foundoldstrrec boolean;
+"
+"  rec_oldstruct reco_toff_struct_hist%rowtype;
+"
+"  vb_foundcurrstrrec boolean;
+"
+"  rec_currstruct reco_toff_structs%rowtype;
+"
+"  --findusername fnd_user%rowtype;
+"
+"
+"
+"begin -- send_wall_change_email
+"
+"/*
+"
+"  if giventoffstrid is null
+"
+"  or pi_involvesimportsys is null
+"
+"  then
+"
+"    commit; -- required
+"
+"    return 'Internal Error 0075 - Developer Error, Invalid Parameters. Contact MIS';
+"
+"  end if;
+"
+"
+"
+"  declare
+"
+"    vn_tmppid number;
+"
+"    vc_tmpprojstatus reco_projects.project_status_code%type;
+"
+"    vc_tmpttstatus reco_top_tasks.osc_status_code%type;
+"
+"  begin
+"
+"    select rproj.project_id, rproj.project_status_code, toffj.crm_status_code, rproj.org_id
+"
+"    into vn_tmppid, vc_tmpprojstatus, vc_tmpttstatus, currentorg
+"
+"    from reco_projects rproj, reco_toff_jobs_v toffj, reco_toff_structs toffs
+"
+"    where toffs.toff_job_id = toffj.toff_job_id
+"
+"    and toffj.reco_project_id = rproj.reco_project_id
+"
+"    and toffs.toff_struct_id = giventoffstrid;
+"
+"
+"
+"    if vn_tmppid is null
+"
+"    or (upper(vc_tmpprojstatus) != 'SIGNED'
+"
+"        and upper(vc_tmpttstatus) not in ('AWARD','WON','SIGNED') )
+"
+"    then
+"
+"      commit; -- required
+"
+"      return 'DONE';
+"
+"    end if;
+"
+"  exception
+"
+"    when no_data_found
+"
+"    then
+"
+"      begin
+"
+"        select rproj.project_id, rproj.project_status_code, toffj.crm_status_code
+"
+"        into vn_tmppid, vc_tmpprojstatus, vc_tmpttstatus
+"
+"        from reco_projects rproj, reco_toff_jobs_v toffj, reco_toff_struct_hist toffh
+"
+"        where toffh.toff_job_id = toffj.toff_job_id
+"
+"        and toffj.reco_project_id = rproj.reco_project_id
+"
+"        and toffh.toff_struct_id = giventoffstrid
+"
+"        and toffh.revision_number in (select max(subh.revision_number)
+"
+"                                      from reco_toff_struct_hist subh
+"
+"                                      where subh.toff_struct_id = toffh.toff_struct_id);
+"
+"
+"
+"        if vn_tmppid is null
+"
+"        or (upper(vc_tmpprojstatus) != 'SIGNED'
+"
+"            and upper(vc_tmpttstatus) not in ('AWARD','WON','SIGNED') )
+"
+"        then
+"
+"          commit; -- required
+"
+"          return 'DONE';
+"
+"        end if;
+"
+"      exception
+"
+"        when others
+"
+"        then
+"
+"          commit; -- required
+"
+"          return 'Internal Error 0085 - Unknown Error. Contact MIS';
+"
+"      end;
+"
+"    when others
+"
+"    then
+"
+"      commit; -- required
+"
+"      return 'Internal Error 0081 - Unknown Error. Contact MIS';
+"
+"  end;
+"
+"
+"
+"  ---
+"
+"  -- Basic access information
+"
+"  ---
+"
+"
+"
+"  begin
+"
+"    select * into rec_currstruct
+"
+"    from reco_toff_structs where toff_struct_id = giventoffstrid;
+"
+"    vb_foundcurrstrrec := true;
+"
+"  exception
+"
+"    when no_data_found
+"
+"    then vb_foundcurrstrrec := false;
+"
+"    when others
+"
+"    then
+"
+"      commit; -- required
+"
+"      return 'Internal Error 0076 - Unknown Error. Contact MIS';
+"
+"  end;
+"
+"
+"
+"  begin
+"
+"    select * into rec_oldstruct
+"
+"    from reco_toff_struct_hist toffh where toffh.toff_struct_id = giventoffstrid
+"
+"    and toffh.revision_number in (select max(subh.revision_number)
+"
+"                                  from reco_toff_struct_hist subh
+"
+"                                  where subh.toff_struct_id = toffh.toff_struct_id);
+"
+"    vb_foundoldstrrec := true;
+"
+"  exception
+"
+"    when no_data_found
+"
+"    then vb_foundoldstrrec := false;
+"
+"    when others
+"
+"    then
+"
+"      commit; -- required
+"
+"      return 'Internal Error 0077 - Unknown Error. Contact MIS';
+"
+"  end;
+"
+"
+"
+"  begin
+"
+"    select * into rec_toffjob from reco_toff_jobs_v where toff_job_id in
+"
+"    (select toff_job_id from reco_toff_structs where toff_struct_id = giventoffstrid);
+"
+"  exception
+"
+"    when no_data_found
+"
+"    then
+"
+"      begin
+"
+"        select * into rec_toffjob from reco_toff_jobs_v where toff_job_id in
+"
+"                  ( select toffh.toff_job_id
+"
+"                    from reco_toff_struct_hist toffh
+"
+"                    where toffh.toff_struct_id = giventoffstrid
+"
+"                    and toffh.revision_number in (
+"
+"                                    select max(subh.revision_number)
+"
+"                                    from reco_toff_struct_hist subh
+"
+"                                    where subh.toff_struct_id = toffh.toff_struct_id));
+"
+"      exception
+"
+"        when others
+"
+"        then
+"
+"          commit; -- required
+"
+"          return 'Internal Error 0078 - Developer Error, Invalid Parameters. Contact MIS';
+"
+"      end;
+"
+"    when others
+"
+"    then
+"
+"      commit; -- required
+"
+"      return 'Internal Error 0080 - Unknown Error. Contact MIS';
+"
+"  end;
+"
+"
+"
+"  -- JNL
+"
+"   begin
+"
+"    select * into findusername
+"
+"    from apps.fnd_user
+"
+"    where rec_currstruct.last_updated_by = apps.fnd_user.user_id ;
+"
+"  end;
+"
+"
+"
+"  -- JNL
+"
+"
+"
+"  if pi_involvesimportsys = true
+"
+"  and vb_foundcurrstrrec = false
+"
+"  then
+"
+"    commit; -- required
+"
+"    return 'Internal Error 0079 - Developer Error, Invalid Parameters. Contact MIS';
+"
+"  end if;
+"
+"
+"
+"  ---
+"
+"  -- Set Subject Line and Body Text
+"
+"  ---
+"
+"
+"
+"  if pi_involvesimportsys = true
+"
+"  then
+"
+"    vc_messagesubject :=
+"
+"      'Takeoff Import '||rec_toffjob.project_number||'-'||rec_toffjob.product_code||
+"
+"      '('||rec_currstruct.structure_name||') at '||
+"
+"      to_char(sysdate,'mm/dd-hh24:mi');
+"
+"
+"
+"    if vb_foundoldstrrec = false
+"
+"    then
+"
+"      vc_messagebody := 'New structure imported to '||
+"
+"        rec_toffjob.project_number||'-'||rec_toffjob.product_code||
+"
+"        '. Name: '||rec_currstruct.structure_name;
+"
+"    elsif vb_foundoldstrrec = true
+"
+"    then
+"
+"      vc_messagebody := 'Structure was import-overridden in '||
+"
+"        rec_toffjob.project_number||'-'||rec_toffjob.product_code||
+"
+"        '. Changed Structure: '||rec_currstruct.structure_name;
+"
+"    end if;
+"
+"  elsif pi_involvesimportsys = false
+"
+"  then
+"
+"    if vb_foundoldstrrec = false
+"
+"    then
+"
+"      vc_messagesubject :=
+"
+"        'Takeoff added '||rec_toffjob.project_number||'-'||rec_toffjob.product_code||
+"
+"        '('||rec_currstruct.structure_name||') at '||
+"
+"        to_char(sysdate,'mm/dd-hh24:mi');
+"
+"      vc_messagebody := 'New structure added to '||
+"
+"        rec_toffjob.project_number||'-'||rec_toffjob.product_code||
+"
+"        '. Name: '||rec_currstruct.structure_name||' by '||findusername.user_name;
+"
+"    elsif vb_foundcurrstrrec = false
+"
+"    then
+"
+"      vc_messagesubject :=
+"
+"        'Takeoff deleted '||rec_toffjob.project_number||'-'||rec_toffjob.product_code||
+"
+"        '('||rec_oldstruct.structure_name||') at '||
+"
+"        to_char(sysdate,'mm/dd-hh24:mi');
+"
+"      vc_messagebody := 'Structure deleted in '||
+"
+"        rec_toffjob.project_number||'-'||rec_toffjob.product_code||
+"
+"        '. Name: '||rec_oldstruct.structure_name||' by '||findusername.user_name;
+"
+"    elsif vb_foundoldstrrec = true
+"
+"    and vb_foundcurrstrrec = true
+"
+"    then
+"
+"      nctrchangetexts := 0;
+"
+"      --oTheChangeTexts -- Oracle collections start at 1 ...
+"
+"
+"
+"      vc_messagesubject :=
+"
+"        'Takeoff changed '||rec_toffjob.project_number||'-'||rec_toffjob.product_code||
+"
+"        '('||rec_oldstruct.structure_name||') at '||
+"
+"        to_char(sysdate,'mm/dd-hh24:mi');
+"
+"
+"
+"      -- ADDING TEST CODE HERE -- ANDY TICKET -- JNL
+"
+"      -- STRUCTURE_NAME
+"
+"      if rec_oldstruct.structure_name != rec_currstruct.structure_name
+"
+"      then
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"          'Structure Name changed to '||to_char(rec_currstruct.structure_name);
+"
+"      else
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"        'Structure Name remains UNCHANGED to '||to_char(rec_currstruct.structure_name);
+"
+"      end if;
+"
+"
+"
+"      -- REVISION_NUMBER
+"
+"      if rec_oldstruct.revision_number != rec_currstruct.revision_number
+"
+"      then
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"          'Structure Revision Number changed to '||to_char(rec_currstruct.revision_number);
+"
+"      end if;
+"
+"      -- ADDING TEST CODE HERE -- ANDY TICKET -- JNL
+"
+"
+"
+"      if rec_oldstruct.total_area != rec_currstruct.total_area
+"
+"      then
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"          'Area changed to '||to_char(rec_currstruct.total_area);
+"
+"      else
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"        'Area remains UNCHANGED to '||to_char(rec_currstruct.total_area);
+"
+"      end if;
+"
+"
+"
+"      if rec_oldstruct.num_panels != rec_currstruct.num_panels
+"
+"      then
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"          'NumPanels changed to '||to_char(rec_currstruct.num_panels);
+"
+"      end if;
+"
+"
+"
+"      if rec_oldstruct.num_columns != rec_currstruct.num_columns
+"
+"      then
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"          'NumColumns changed to '||to_char(rec_currstruct.num_columns);
+"
+"      end if;
+"
+"
+"
+"      if rec_oldstruct.num_ties != rec_currstruct.num_ties
+"
+"      then
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"          'NumTies changed to '||to_char(rec_currstruct.num_ties);
+"
+"      end if;
+"
+"
+"
+"      if rec_oldstruct.wall_length != rec_currstruct.wall_length
+"
+"      then
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"          'WallLength changed to '||to_char(rec_currstruct.wall_length);
+"
+"      end if;
+"
+"
+"
+"      if rec_oldstruct.total_steel_lf != rec_currstruct.total_steel_lf
+"
+"      then
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"          'SteelLF changed to '||to_char(rec_currstruct.total_steel_lf);
+"
+"      else
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"        'SteelLF remains UNCHANGED to '||to_char(rec_currstruct.total_steel_lf);
+"
+"      end if;
+"
+"
+"
+"      if rec_oldstruct.total_steel_tons != rec_currstruct.total_steel_tons
+"
+"      then
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"          'SteelTons changed to '||to_char(rec_currstruct.total_steel_tons);
+"
+"      else
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"        'SteelTons remains UNCHANGED to '||to_char(rec_currstruct.total_steel_tons);
+"
+"      end if;
+"
+"
+"
+"      if rec_oldstruct.total_steel_qty != rec_currstruct.total_steel_qty
+"
+"      then
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"          'SteelPieces changed to '||to_char(rec_currstruct.total_steel_qty);
+"
+"      else
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"          'SteelPieces remains UNCHANGED to '||to_char(rec_currstruct.total_steel_qty);
+"
+"      end if;
+"
+"
+"
+"      -- ADDING TEST CODE HERE -- ANDY TICKET -- JNL
+"
+"      -- STATUS_CODE
+"
+"      if rec_oldstruct.status_code != rec_currstruct.status_code
+"
+"      then
+"
+"        othechangetexts.extend(1);
+"
+"        nctrchangetexts := nctrchangetexts + 1;
+"
+"        othechangetexts(nctrchangetexts).thistext :=
+"
+"          'Status Code changed to '||to_char(rec_currstruct.status_code);
+"
+"      end if;
+"
+"
+"
+"       -- FINAL DATE
+"
+"      othechangetexts.extend(1);
+"
+"      nctrchangetexts := nctrchangetexts + 1;
+"
+"      othechangetexts(nctrchangetexts).thistext :=
+"
+"        'The last update was on '||to_char(rec_currstruct.last_update_date, 'mm/dd/yyyy');
+"
+"
+"
+"      -- UPDATED BY
+"
+"      vc_lastupdatedusername := findusername.user_name;
+"
+"      othechangetexts.extend(1);
+"
+"      nctrchangetexts := nctrchangetexts + 1;
+"
+"      othechangetexts(nctrchangetexts).thistext :=
+"
+"        'The last update was by '|| vc_lastupdatedusername ;
+"
+"
+"
+"      -- NOTE:
+"
+"      vc_lastupdatedusername := findusername.user_name;
+"
+"      othechangetexts.extend(1);
+"
+"      nctrchangetexts := nctrchangetexts + 1;
+"
+"      othechangetexts(nctrchangetexts).thistext :=
+"
+"        'There may be additional changes in Panels and Parts which are not included in this email.';
+"
+"
+"
+"      -- ENDING TEST CODE HERE -- ANDY TICKET -- JNL
+"
+"
+"
+"      if nctrchangetexts = 0
+"
+"      then
+"
+"        vc_messagebody := 'Takeoff '||
+"
+"          rec_toffjob.project_number||'-'||rec_toffjob.product_code||
+"
+"          '. Wall changed: '||rec_currstruct.structure_name;
+"
+"      elsif nctrchangetexts > 0
+"
+"      then
+"
+"        vc_messagebody := null;
+"
+"        for nctrchangetexts in 1 .. othechangetexts.count
+"
+"        loop
+"
+"          if nctrchangetexts = 1
+"
+"          then vc_messagebody := othechangetexts(nctrchangetexts).thistext;
+"
+"          elsif nctrchangetexts > 1
+"
+"          then vc_messagebody := vc_messagebody||'.'||chr(10)||
+"
+"                  othechangetexts(nctrchangetexts).thistext;
+"
+"          end if;
+"
+"        end loop;
+"
+"      end if;
+"
+"    end if;
+"
+"  end if;
+"
+"
+"
+"  ---
+"
+"  -- Figure out email addressees
+"
+"  ---
+"
+"
+"
+"  nctremails := 0;
+"
+"  --oTheEmails -- Oracle collections start at 1 ...
+"
+"
+"
+"  if vb_foundcurrstrrec = true
+"
+"  then
+"
+"    for rec_email in
+"
+"      ( select fndu.email_address email_address
+"
+"        from fnd_user fndu
+"
+"        where fndu.employee_id in
+"
+"          ( select  ppp.person_id
+"
+"            from  reco_toff_structs toffs,
+"
+"                  reco_toff_jobs_v toffj,
+"
+"                  reco_projects rproj,
+"
+"                  apps.pa_projects pap,
+"
+"                  apps.pa_project_players_v ppp
+"
+"            where   giventoffstrid = toffs.toff_struct_id
+"
+"            and     toffs.toff_job_id = toffj.toff_job_id
+"
+"            and     toffj.reco_project_id = rproj.reco_project_id
+"
+"            and     rproj.project_id = pap.project_id
+"
+"            and     pap.project_id = ppp.project_id
+"
+"            and     ppp.role in ('Project Manager','Assistant Project Manager')
+"
+"            and     nvl(ppp.end_date_active,sysdate+2) >= sysdate
+"
+"          )
+"
+"        and fndu.email_address is not null
+"
+"      )
+"
+"    loop
+"
+"      otheemails.extend(1);
+"
+"      nctremails := nctremails + 1;
+"
+"      otheemails(nctremails).thisemail := rec_email.email_address;
+"
+"    end loop;
+"
+"  elsif vb_foundcurrstrrec = false
+"
+"  then
+"
+"    for rec_email in
+"
+"      ( select fndu.email_address email_address
+"
+"        from fnd_user fndu
+"
+"        where fndu.employee_id in
+"
+"          ( select  ppp.person_id
+"
+"            from  reco_toff_struct_hist toffh,
+"
+"                  reco_toff_jobs_v toffj,
+"
+"                  reco_projects rproj,
+"
+"                  apps.pa_projects pap,
+"
+"                  apps.pa_project_players_v ppp
+"
+"            where   giventoffstrid = toffh.toff_struct_id
+"
+"            and     toffh.revision_number in (select max(subh.revision_number)
+"
+"                                              from reco_toff_struct_hist subh
+"
+"                                              where subh.toff_struct_id = toffh.toff_struct_id)
+"
+"            and     toffh.toff_job_id = toffj.toff_job_id
+"
+"            and     toffj.reco_project_id = rproj.reco_project_id
+"
+"            and     rproj.project_id = pap.project_id
+"
+"            and     pap.project_id = ppp.project_id
+"
+"            and     ppp.role in ('Project Manager','Assistant Project Manager')
+"
+"            and     nvl(ppp.end_date_active,sysdate+2) >= sysdate
+"
+"          )
+"
+"        and fndu.email_address is not null
+"
+"      )
+"
+"    loop
+"
+"      otheemails.extend(1);
+"
+"      nctremails := nctremails + 1;
+"
+"      otheemails(nctremails).thisemail := rec_email.email_address;
+"
+"    end loop;
+"
+"  end if;
+"
+"
+"
+"  if currentorg = 293 then
+"
+"    -- send notification to requested mgmt
+"
+"      otheemails.extend(1);
+"
+"      nctremails := nctremails + 1;
+"
+"      otheemails(nctremails).thisemail := get_reco_variable( 'CA TAKEOFF EMAIL' );
+"
+"  end if;
+"
+"  if nctremails = 0
+"
+"  then
+"
+"    commit; -- required
+"
+"    return 'DONE';
+"
+"  end if;
+"
+"
+"
+"  ---
+"
+"  -- Create Email
+"
+"  ---
+"
+"
+"
+"  reco_notify.add_notification(
+"
+"          otheemails(1).thisemail,vc_messagesubject,null);
+"
+"
+"
+"  ---
+"
+"  -- Get  Email just created
+"
+"  ---
+"
+"
+"
+"  vn_myemail_serialnum := reco_notify.lastmsg;
+"
+"
+"
+"  ---
+"
+"  -- Add more people to email
+"
+"  ---
+"
+"
+"
+"  for nctremails in 2 .. otheemails.count
+"
+"  loop reco_notify.add_addressee(otheemails(nctremails).thisemail);
+"
+"  end loop;
+"
+"
+"
+"--  if vb_notifyproductionladies = true
+"
+"--  then
+"
+"--    declare
+"
+"--      vc_tempemailaddress varchar2(240);
+"
+"--    begin
+"
+"--      vc_tempemailaddress := get_reco_variable('STRUCTURE_NOTIFY');
+"
+"--      reco_notify.add_addressee (vc_tempemailaddress);
+"
+"--    end;
+"
+"--  end if;
+"
+"
+"
+"  declare
+"
+"    vc_thisprojregion reco_projects.region%type;
+"
+"    vc_tempemail varchar(240);
+"
+"  begin
+"
+"    select rproj.region into vc_thisprojregion
+"
+"    from reco_projects rproj, reco_toff_jobs_v toffj
+"
+"    where rproj.reco_project_id = toffj.reco_project_id
+"
+"    and toffj.toff_job_id = rec_currstruct.toff_job_id;
+"
+"
+"
+"    if vc_thisprojregion = 'M2'
+"
+"    and rec_currstruct.status_code != 'PRELIM'
+"
+"    then
+"
+"      select fnd_user.email_address into vc_tempemail
+"
+"      from fnd_user where user_name = 'DEBBIER';
+"
+"
+"
+"      reco_notify.add_addressee (vc_tempemail);
+"
+"    end if;
+"
+"  exception
+"
+"    when others then null;
+"
+"  end;
+"
+"
+"
+"  ---
+"
+"  -- Add Body Text to email
+"
+"  ---
+"
+"
+"
+"  reco_notify.add_chunk_to(vn_myemail_serialnum,vc_messagebody);
+"
+"
+"
+"  ---
+"
+"  -- Force Email Send now
+"
+"  ---
+"
+"
+"
+"  --Send email right now
+"
+"  --reco_notify.mail_notification(vn_MyEmail_SerialNum);
+"
+"
+"
+"  commit;
+"
+"  */
+"
+"  return 'DONE';
+"
+"end; -- send_wall_change_email
+"
+"
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- validate_uom
+"
+"--
+"
+"-- OVERLOADED FUNCTION
+"
+"-- This function is overloaded. It contains additional error checking and
+"
+"-- validations.
+"
+"-- -> Compares the units of a job and an import, instead of simply taking
+"
+"--    a generic JobType and UOM
+"
+"-- See the other overloaded function for details.
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- Most "unit system" stuff boils down into the following setup
+"
+"-- :   JobType   = E / M
+"
+"-- : UnitMeasure = LF / SF / LM / SM
+"
+"--
+"
+"-- This function attempts to determine if a Takeoff's unit setup is compatable
+"
+"-- with an indicated import.
+"
+"--
+"
+"-- UPDATES
+"
+"-- : None
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : given parameters should not be null
+"
+"-- : This method can generate warnings, so the caller should have run the
+"
+"--   clear_messages method at some point before calling this
+"
+"-- : The pi_ForceExactMatch should be set true or false as desired
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Return 'Valid' if import uom matches the takeoff uom
+"
+"-- : A warning is also generated if method notices that RECO_PROJECTS seems
+"
+"--   out-of-sync with everything (only a warning, realistically we ignore
+"
+"--   RECO_PROJECTS almost entirely while in Takeoff)
+"
+"-- : Return an error only if pi_ForceExactMatch is true and the
+"
+"--   import uom doesn't match takeoff uom
+"
+"FUNCTION validate_uom ( pi_ToffJobId IN number,
+"
+"                        pi_ImportId IN number,
+"
+"                        pi_ForceExactMatch in boolean)
+"
+"RETURN varchar2
+"
+"IS
+"
+"
+"
+"  cursor cur_FullSalesUnitInfo (givenToffJobId in number)
+"
+"  is
+"
+"    select  toffj.job_uom toff_job_uom
+"
+"    from  reco_toff_jobs_v toffj
+"
+"    where   toffj.toff_job_id = givenToffJobId;
+"
+"
+"
+"  rec_FullSalesUnitInfo cur_FullSalesUnitInfo%ROWTYPE;
+"
+"
+"
+"  rec_PendingStruct reco_toff_struct_pending%ROWTYPE;
+"
+"
+"
+"  vc_OutputMessage varchar2(1000);
+"
+"
+"
+"BEGIN -- validate_uom
+"
+"
+"
+"  vc_OutputMessage := 'Valid';
+"
+"
+"
+"  IF pi_ToffJobId IS NULL OR pi_ImportId IS NULL
+"
+"  THEN
+"
+"    return 'Error: Cannot identify sales item / import item !';
+"
+"  END IF;
+"
+"
+"
+"  begin
+"
+"    select *
+"
+"    into rec_PendingStruct
+"
+"    from reco_toff_struct_pending
+"
+"    where toff_struct_pending_id = pi_ImportId;
+"
+"  exception
+"
+"    when NO_DATA_FOUND
+"
+"    then vc_OutputMessage := 'Internal Error: Unknown toff_struct_pending_id. Contact MIS.';
+"
+"    when others
+"
+"    then vc_OutputMessage := 'Internal Error: Unknown error. Contact MIS.';
+"
+"  end;
+"
+"
+"
+"  if vc_OutputMessage != 'Valid'
+"
+"  then return vc_OutputMessage;
+"
+"  end if;
+"
+"
+"
+"  open cur_FullSalesUnitInfo(pi_ToffJobId);
+"
+"  fetch cur_FullSalesUnitInfo into rec_FullSalesUnitInfo;
+"
+"  close cur_FullSalesUnitInfo;
+"
+"
+"
+"  if rec_PendingStruct.unit_of_measure != rec_FullSalesUnitInfo.toff_job_uom
+"
+"  then
+"
+"    if pi_ForceExactMatch = false
+"
+"    then warning('Warning: Unit Type '||rec_PendingStruct.unit_of_measure||
+"
+"                  ' could cause problems for this job.');
+"
+"    elsif pi_ForceExactMatch = true
+"
+"    then
+"
+"      vc_OutputMessage :=
+"
+"        'The wall'||chr(39)||'s unit system ('||
+"
+"        rec_PendingStruct.unit_of_measure||
+"
+"        ') conflicts with the job ('||
+"
+"        rec_FullSalesUnitInfo.toff_job_uom||
+"
+"        '). Please check your product code,'||
+"
+"        ' or contact MIS if you feel this is incorrect.';
+"
+"      return vc_OutputMessage;
+"
+"    end if;
+"
+"  end if;
+"
+"
+"
+"  RETURN vc_OutputMessage;
+"
+"END validate_uom;
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- getsteeltons
+"
+"--
+"
+"-- modified 5/10/2001 by David Correia
+"
+"-- Needed the category set id id stop this function from returning double amount
+"
+"-- of linear feet since the mtl_item_categories table has two entries for steel,
+"
+"-- category 5 and 26.
+"
+"-- 1/6/04  conversion changed to 1000001005
+"
+"function getsteeltons (pi_givenstructid in number)
+"
+"return number
+"
+"is
+"
+"  cursor gettonnage
+"
+"  is
+"
+"    select weight_uom, sum(weight * quantity_required ) amt
+"
+"    from reco_toff_parts p, prec_parts m
+"
+"    where weight is not null
+"
+"    and m.part_code = p.part_code
+"
+"    and m.part_type = 'STEEL'
+"
+"    and p.toff_struct_id = pi_givenstructid
+"
+"    group by weight_uom;
+"
+"
+"
+"  totaltons number := 0;
+"
+"begin
+"
+"  for eachton in gettonnage
+"
+"  loop
+"
+"      -- CONTINUE HERE this was hard-coded to avoid reco_estimation for CRM-upgrade only
+"
+"      totaltons := totaltons +
+"
+"          --reco_estimation.convert_to(eachton.amt,eachton.weight_uom_code,'TO' );
+"
+"          prec_takeoff.convert_to(eachton.amt,eachton.weight_uom,'TO' );
+"
+"  end loop;
+"
+"
+"
+"  return totaltons;
+"
+"end;
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- getsteellf
+"
+"function getsteellf (pi_givenstructid in number)
+"
+"return number
+"
+"is
+"
+"  cursor getlf
+"
+"  is
+"
+"    select length_uom, sum(length * quantity_required ) amt
+"
+"    from reco_toff_parts p, prec_parts u
+"
+"    where length is not null
+"
+"    and u.part_code = p.part_code
+"
+"    and p.toff_struct_id = pi_givenstructid
+"
+"    and part_type = 'STEEL'
+"
+"    group by length_uom;
+"
+"
+"
+"  totallen number := 0;
+"
+"begin
+"
+"  for eachlen in getlf
+"
+"  loop
+"
+"      -- CONTINUE HERE this was hard-coded to avoid reco_estimation for CRM-upgrade only
+"
+"      totallen := totallen +
+"
+"          --reco_estimation.convert_to(eachlen.amt,eachlen.volume_uom_code,'LF' );
+"
+"          prec_takeoff.convert_to(eachlen.amt,eachlen.length_uom,'LF' );
+"
+"  end loop;
+"
+"
+"
+"  return totallen;
+"
+"end;
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- getsteelqty
+"
+"function getsteelqty (pi_givenstructid in number)
+"
+"return number
+"
+"is
+"
+"	cursor getsteelitemvialfmethod
+"
+"	is
+"
+"		select sum(quantity_required)
+"
+"		from reco_toff_parts rpv, prec_parts p
+"
+"		where rpv.toff_struct_id = pi_givenstructid
+"
+"		and p.part_code = rpv.part_code and length is not null
+"
+"    and part_type = 'STEEL';
+"
+"
+"
+"	vn_output number;
+"
+"begin
+"
+"  open getsteelitemvialfmethod;
+"
+"  fetch getsteelitemvialfmethod into vn_output;
+"
+"  if getsteelitemvialfmethod%notfound -- Doesn't happen with SUM method
+"
+"  then
+"
+"    close getsteelitemvialfmethod;
+"
+"    return 0;
+"
+"  end if;
+"
+"  close getsteelitemvialfmethod;
+"
+"
+"
+"  if vn_output is null
+"
+"  then vn_output := 0;
+"
+"  end if;
+"
+"
+"
+"  return vn_output;
+"
+"end;
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- takeoff_is_TRLLBskJob
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- RECo currently groups two different styles of wire-wall under the product
+"
+"-- code of 'TRL'. Well, actually there's at least three different styles, but
+"
+"-- for these purposes we look at two-types of TRL-code jobs
+"
+"-- 1) Single-Stage and Two-Stage jobs
+"
+"-- 2) L-Basket jobs
+"
+"--
+"
+"-- For Single-Stage and Two-Stage jobs, the main panels are A/B/P/Q. There are
+"
+"-- few (if any) actual L-panels. For these jobs, A/B/P/Q get tiestrips, and are
+"
+"-- treated at "official" TRL wire panels. The L-Baskets are just tacked on by
+"
+"-- themselves as one-per-columns.
+"
+"--
+"
+"-- But some TRL jobs are made entirely of L-Baskets. In this case, the L-Basket
+"
+"-- is treated as a regular panel, along with A/B/P/Q (if any). So for this case,
+"
+"-- The L-Basket gets rods / strips / etc ...
+"
+"--
+"
+"-- UPDATES
+"
+"-- : None
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : given pi_ImportId is a valid import id
+"
+"-- : given pi_ProductCode is a valid product code
+"
+"-- : this function should only analyze TRL jobs (not OTL / etc), so if you
+"
+"--   use this function for a non-TRL job then you will get an error
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : When invalid parameters are passed, some error occurs, then we return an
+"
+"--   error message.
+"
+"-- : When valid parameters are passed, but some user-error makes us receive a
+"
+"--   value of pi_NumColumns = 0, then we can't return a definitive answer. So
+"
+"--   we just assume the basic / common TRL job style and return 'NO'
+"
+"-- : When function completes, if indicated TRL import is a "standard" TRL job
+"
+"--   like Single-Stage or Two-Stage, then return 'NO'
+"
+"-- : When function completes, if indicated TRL import is a "L-Basket" style
+"
+"--   TRL job, then return 'YES'
+"
+"FUNCTION takeoff_is_TRLLBskJob ( pi_ImportId IN NUMBER,
+"
+"                                 pi_ProductCode IN VARCHAR2,
+"
+"                                 pi_NumColumns IN NUMBER)
+"
+"RETURN VARCHAR2
+"
+"IS
+"
+"  vn_TempQtyLBaskets number;
+"
+"  vn_TempTotalPanelQty number;
+"
+"
+"
+"BEGIN
+"
+"
+"
+"  IF pi_ProductCode not in ('CT1','CT2','CT3' )
+"
+"  THEN RETURN 'Error 0024 - Internal error for function call';
+"
+"  END IF;
+"
+"
+"
+"  if nvl(pi_NumColumns,0) <= 0
+"
+"  then return 'NO';
+"
+"  end if;
+"
+"
+"
+"  vn_TempQtyLBaskets := 0;
+"
+"
+"
+"  begin
+"
+"    SELECT SUM(quantity_required)
+"
+"    INTO vn_TempQtyLBaskets
+"
+"    FROM reco_toff_panel_pending
+"
+"    WHERE toff_struct_pending_id = pi_ImportId
+"
+"    AND panel_name LIKE 'L%';
+"
+"
+"
+"    if vn_TempQtyLBaskets is null
+"
+"    then vn_TempQtyLBaskets := 0;
+"
+"    end if;
+"
+"  exception
+"
+"    when NO_DATA_FOUND then vn_TempQtyLBaskets := 0;
+"
+"    when others then return 'ERROR';
+"
+"  end;
+"
+"
+"
+"  vn_TempTotalPanelQty := 0;
+"
+"
+"
+"  begin
+"
+"    SELECT SUM(quantity_required)
+"
+"    INTO vn_TempTotalPanelQty
+"
+"    FROM reco_toff_panel_pending
+"
+"    WHERE toff_struct_pending_id = pi_ImportId;
+"
+"
+"
+"    if vn_TempTotalPanelQty is null
+"
+"    then vn_TempTotalPanelQty := 0;
+"
+"    end if;
+"
+"  exception
+"
+"    when NO_DATA_FOUND then vn_TempTotalPanelQty := 0;
+"
+"    when others then return 'ERROR';
+"
+"  end;
+"
+"
+"
+"  if vn_TempQtyLBaskets > 0
+"
+"  and vn_TempQtyLBaskets > pi_NumColumns
+"
+"  and vn_TempQtyLBaskets > vn_TempTotalPanelQty * .6
+"
+"  then return 'YES';
+"
+"  end if;
+"
+"
+"
+"  return 'NO';
+"
+"END; -- takeoff_is_TRLLBskJob
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- import_panels_normally
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- imports and validates panels.
+"
+"--
+"
+"-- This function grabs panels from the IMPORT_PANELS table, and then inserts
+"
+"-- them into the RECO_PANELS table.
+"
+"-- Also, during the import, this function validates the panels it reads.
+"
+"--
+"
+"-- This function should not be run for wire walls. In that case, you should
+"
+"-- refer to the function import_panels_aswire(). Note that even though these
+"
+"-- functions may seem similar, they do have several key differences.
+"
+"--
+"
+"-- UPDATES
+"
+"-- grouping added 2/2/01  jra
+"
+"-- added by David Correia 2/13/2001
+"
+"-- fixed group by problem by adding sum on quantity required field. the sum will
+"
+"-- now be placed in the field qty_required
+"
+"-- Scott-Mattingly 08-AUG-2010
+"
+"-- : Improved function name (previously named import_panels)
+"
+"-- : Improved documentation
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : parameter pi_ImportId reflects a non-wire-wall import
+"
+"-- : pi_GivenJobType is 'E' or 'M'
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Function returns 'Imported.' when successful. In this case, any warnings
+"
+"--   are written to package warning system. The panels are inserted into the
+"
+"--   RECO_PANELS table, but no commit is executed.
+"
+"-- : Function returns an error message when it fails. Warnings may still be
+"
+"--   added to the package warning system before the error occurs. In this case,
+"
+"--   no rollback is executed.
+"
+"FUNCTION import_panels_normally(pi_ImportId IN number,
+"
+"                                pi_ProdCode IN varchar2,
+"
+"                                pi_StructId IN number,
+"
+"                                pi_GivenJobType in varchar2,
+"
+"                                pi_GivenLoginId in number,
+"
+"                                pi_GivenUserId in varchar2)
+"
+"            RETURN varchar2
+"
+"IS
+"
+"  vn_OriginalPanArea number;
+"
+"
+"
+"  vc_IsListedAsProdPanel varchar2(1);
+"
+"  vn_TheStdPanelArea number;
+"
+"
+"
+"  cursor getnewid is select reco_panel_seq.nextval from dual;
+"
+"  panelid number;
+"
+"  pendingpanelid number;
+"
+"
+"
+"CURSOR getnewpanels
+"
+"IS
+"
+"  SELECT  toff_panel_pending_id,
+"
+"          panel_name,
+"
+"          tie_strip_quantity,
+"
+"          panel_reinforcements,
+"
+"          panel_finish,
+"
+"          panel_additions,
+"
+"          width,
+"
+"          thickness,
+"
+"          area_per_piece,
+"
+"          quantity_required sum_qty_required
+"
+"  FROM reco_toff_panel_pending
+"
+"  WHERE toff_struct_pending_id = pi_ImportId;
+"
+"
+"
+"BEGIN -- import_panels_normally
+"
+"
+"
+"  -- Check that JobType/Product exists in the domain data.
+"
+"  -- If there is a problem, then return error message
+"
+"
+"
+"  declare
+"
+"    vc_Temp varchar2(1);
+"
+"  begin
+"
+"    select 'Y' into vc_Temp
+"
+"    from  prec_products
+"
+"    where  product_code = pi_ProdCode;
+"
+"  exception
+"
+"    when NO_DATA_FOUND
+"
+"    then
+"
+"      return 'Invalid ProductCode. The product does not exist.';
+"
+"    when TOO_MANY_ROWS
+"
+"    then
+"
+"      return 'Invalid ProductCode/JobType. Duplicate data found. Contact MIS.';
+"
+"    when others
+"
+"    then
+"
+"      return 'Product Code error. Unknown error. Contact MIS.';
+"
+"  end;
+"
+"
+"
+"  -------------------------------------------------------------------
+"
+"  -- Check that all the panel reinforcements are allowable
+"
+"  -------------------------------------------------------------------
+"
+"
+"
+"  declare
+"
+"    cursor cur_BadReinforcements
+"
+"    is
+"
+"      select  impan.panel_name pname,
+"
+"              impan.tie_strip_quantity tsqty,
+"
+"              impan.panel_reinforcements reinf
+"
+"      from  reco_toff_panel_pending impan
+"
+"      where   impan.toff_struct_pending_id = pi_ImportId
+"
+"      and     impan.panel_reinforcements not in
+"
+"                ( select reinforcement_type from prec_reinforcements where product_code = pi_prodcode  );
+"
+"
+"
+"    vn_TotalReinfApproved number;
+"
+"
+"
+"    vb_FoundBadRec boolean;
+"
+"    rec_BadReinforcements cur_BadReinforcements%rowtype;
+"
+"  begin
+"
+"
+"
+"    select count(*) into vn_TotalReinfApproved
+"
+"    from  prec_reinforcements
+"
+"    where   product_code = pi_ProdCode;
+"
+"
+"
+"    vb_FoundBadRec := true;
+"
+"    open cur_BadReinforcements;
+"
+"    fetch cur_BadReinforcements into rec_BadReinforcements;
+"
+"    if cur_BadReinforcements%NOTFOUND
+"
+"    then vb_FoundBadRec := false;
+"
+"    end if;
+"
+"    close cur_BadReinforcements;
+"
+"
+"
+"    if vn_TotalReinfApproved > 0
+"
+"    and vb_FoundBadRec = true
+"
+"    and pi_ProdCode not in ('TRL','VTL','VTR','OTL','CTT','CT1','CT2','CT3')
+"
+"    then
+"
+"      return 'Invalid Reinforcement ('||rec_BadReinforcements.reinf||
+"
+"              ') for panel '||
+"
+"              rec_BadReinforcements.pname||'-'||
+"
+"              rec_BadReinforcements.tsqty||'-'||
+"
+"              rec_BadReinforcements.reinf||
+"
+"              '. Either choose a standard reinforcement, '||
+"
+"              'or contact MIS for assistance';
+"
+"    end if;
+"
+"  end;
+"
+"
+"
+"  -------------------------------------------------------------------
+"
+"  -- Check that all the panel additions allowable, add warning if not
+"
+"  -------------------------------------------------------------------
+"
+"
+"
+"  begin
+"
+"
+"
+"    if pi_ProdCode in ('REW','SQR','RLA','CTC')
+"
+"    then
+"
+"      for rec_BadAdditions
+"
+"      in
+"
+"      (
+"
+"        select  distinct impan.panel_additions addit
+"
+"        from  reco_toff_panel_pending impan
+"
+"        where   impan.toff_struct_pending_id = pi_ImportId
+"
+"        and     impan.panel_additions not in
+"
+"                  ( select addition_type from prec_additions where product_code = pi_prodcode
+"
+"                  )
+"
+"      )
+"
+"      loop
+"
+"        warning( 'Warning: Additions '||rec_BadAdditions.addit||' has not been approved for this product.');
+"
+"      end loop;
+"
+"    end if;
+"
+"
+"
+"  end;
+"
+"
+"
+"  -- Loop for each panel we want to import from the reco_toff_panel_pending table
+"
+"
+"
+"  FOR eachone IN getnewpanels
+"
+"  LOOP
+"
+"
+"
+"    vn_OriginalPanArea := eachone.area_per_piece;
+"
+"
+"
+"    vc_IsListedAsProdPanel := 'F';
+"
+"    vn_TheStdPanelArea := null;
+"
+"
+"
+"    begin
+"
+"      select  'T',
+"
+"              case
+"
+"              when default_area is null then null
+"
+"              else to_number(default_area)
+"
+"              end
+"
+"      into  vc_IsListedAsProdPanel,
+"
+"            vn_TheStdPanelArea
+"
+"      from  prec_panel_validation
+"
+"      where   product_code = pi_ProdCode
+"
+"      and     panel_name = eachone.panel_name;
+"
+"    exception
+"
+"      when NO_DATA_FOUND
+"
+"      then
+"
+"        vc_IsListedAsProdPanel := 'F';
+"
+"        vn_TheStdPanelArea := null;
+"
+"      when TOO_MANY_ROWS
+"
+"      then
+"
+"        return 'Invalid Area definition for panel '||
+"
+"                eachone.panel_name||'. Contact MIS.';
+"
+"      when others
+"
+"      then
+"
+"        return 'Panel Area error. Unknown error. Contact MIS.';
+"
+"    end;
+"
+"
+"
+"    IF vc_IsListedAsProdPanel = 'T'
+"
+"    THEN
+"
+"
+"
+"      IF vn_TheStdPanelArea is not null
+"
+"      AND vn_TheStdPanelArea != vn_OriginalPanArea
+"
+"      THEN
+"
+"         warning( 'Invalid default area :'||
+"
+"                  eachone.panel_name||'-'||TO_CHAR(eachone.area_per_piece)||
+"
+"                  '/TS:'||TO_CHAR(eachone.tie_strip_quantity)||'/R:'||
+"
+"                  eachone.panel_reinforcements||'/'||
+"
+"                  eachone.panel_finish||'/'||eachone.panel_additions||'/'||
+"
+"                  TO_CHAR(eachone.width)||'/'||TO_CHAR(eachone.thickness)  );
+"
+"         warning( 'Correcting to '||TO_CHAR(vn_TheStdPanelArea) ) ;
+"
+"      END IF;
+"
+"
+"
+"
+"
+"      declare
+"
+"        vn_MinTSQty number;
+"
+"        vn_MaxTSQty number;
+"
+"      begin
+"
+"        select rts.tiestrips_low, rts.tiestrips_high
+"
+"        into  vn_MinTSQty, vn_MaxTSQty
+"
+"        from  prec_product_ranges rts
+"
+"        where   product_code = pi_ProdCode;
+"
+"
+"
+"        if eachone.tie_strip_quantity < vn_MinTSQty
+"
+"        or eachone.tie_strip_quantity > vn_MaxTSQty
+"
+"        then
+"
+"          return 'Invalid TSQty for Panel. Panel '||
+"
+"                  eachone.panel_name||'-'||TO_CHAR(eachone.tie_strip_quantity)||
+"
+"                  '-'||eachone.panel_reinforcements||' should have TSQty '||
+"
+"                  'between '||to_char(vn_MinTSQty)||' - '||to_char(vn_MaxTSQty);
+"
+"        end if;
+"
+"      exception
+"
+"        when NO_DATA_FOUND
+"
+"        then
+"
+"          null;
+"
+"        when TOO_MANY_ROWS
+"
+"        then
+"
+"          return 'Invalid Tiestrip settings for '||pi_ProdCode||
+"
+"                  '. Duplicate data found. Contact MIS.';
+"
+"        when others
+"
+"        then
+"
+"          return 'Tiestrip settings error. Unknown error. Contact MIS.';
+"
+"      end;
+"
+"
+"
+"
+"
+"      declare
+"
+"        vn_MinWidth number;
+"
+"        vn_MaxWidth number;
+"
+"      begin
+"
+"        select  rwr.width_low, rwr.width_high
+"
+"        into  vn_MinWidth, vn_MaxWidth
+"
+"        from  prec_product_ranges rwr
+"
+"        where   product_code = pi_ProdCode;
+"
+"        if eachone.width > 10 then
+"
+"          -- assume if > 10 then it is in millimeters
+"
+"          vn_MaxWidth := vn_MaxWidth * 1000 ;
+"
+"        end if;
+"
+"        if eachone.width < vn_MinWidth
+"
+"        or eachone.width > vn_MaxWidth
+"
+"        then
+"
+"          return 'Invalid width for panel: '||
+"
+"                  eachone.panel_name||'-'||TO_CHAR(eachone.tie_strip_quantity)||'-'||
+"
+"                  eachone.panel_reinforcements||'-'||
+"
+"                  TO_CHAR(eachone.width)||'. Outside range '||vn_minwidth||'-'||vn_maxwidth;
+"
+"        end if;
+"
+"      exception
+"
+"        when NO_DATA_FOUND
+"
+"        then
+"
+"          null;
+"
+"        when TOO_MANY_ROWS
+"
+"        then
+"
+"          return 'Invalid Width settings for '||pi_ProdCode||
+"
+"                  '. Duplicate data found. Contact MIS.';
+"
+"        when others
+"
+"        then
+"
+"          return 'Width settings error. Unknown error. Contact MIS.';
+"
+"      end;
+"
+"    END IF;
+"
+"
+"
+"    pendingpanelid := eachone.toff_panel_pending_id;
+"
+"
+"
+"    open getnewid;
+"
+"    fetch getnewid into panelid;
+"
+"    close getnewid;
+"
+"
+"
+"    INSERT INTO reco_toff_panels ( TOFF_PANEL_ID,TOFF_STRUCT_ID,
+"
+"      PANEL_NAME,TIE_STRIP_QUANTITY,PANEL_REINFORCEMENTS,
+"
+"      PANEL_FINISH,PANEL_ADDITIONS,WIDTH,THICKNESS,AREA_PER_PIECE,
+"
+"      QUANTITY_REQUIRED,
+"
+"      LAST_UPDATE_DATE,LAST_UPDATED_BY,
+"
+"      CREATION_DATE,CREATED_BY,LAST_UPDATE_LOGIN )
+"
+"    VALUES ( panelid, pi_StructId, eachone.panel_name,
+"
+"             eachone.tie_strip_quantity, eachone.panel_reinforcements,
+"
+"             eachone.panel_finish, eachone.panel_additions, eachone.width,
+"
+"             eachone.thickness,
+"
+"             --nvl(vn_TheStdPanelArea,vn_OriginalPanArea), --commented by Komal 22-OCT-25
+"
+"	         nvl(vn_OriginalPanArea,vn_TheStdPanelArea), --Added by Komal 22-OCT-25
+"
+"             eachone.sum_qty_required,
+"
+"             SYSDATE,pi_GivenUserId,SYSDATE,pi_GivenUserId,pi_GivenLoginId );
+"
+"
+"
+"    -- 8/7 update pending panel to newly created panel id for coordinates
+"
+"    update reco_toff_panel_pending set toff_panel_id = panelid
+"
+"     where toff_panel_pending_id = pendingpanelid;
+"
+"
+"
+"  END LOOP;
+"
+"
+"
+"  RETURN 'Imported.';
+"
+"EXCEPTION
+"
+"  WHEN others THEN
+"
+"    IF getnewpanels%isopen THEN
+"
+"       CLOSE getnewpanels;
+"
+"    END IF;
+"
+"    RETURN 'Panels - Insert Failure:'||SQLERRM;
+"
+"END import_panels_normally;
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- import_panels_aswire
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- imports terratrel panels as parts
+"
+"--
+"
+"-- This function grabs panels from the IMPORT_PANELS table, converts them to
+"
+"-- part numbers / etc , and then inserts them into the RECO_PARTS table.
+"
+"--
+"
+"-- This function also handles wire dependent parts, and inserts those too.
+"
+"--
+"
+"-- This function should only be run for wire walls. For ordinary walls, you
+"
+"-- should refer to the function import_panels_normally(). Note that even though
+"
+"-- these functions may seem similar, they do have several key differences.
+"
+"--
+"
+"-- UPDATES
+"
+"--  added decode to force to B or G
+"
+"--  changed default MF to now use panel_reinforcements for the TRL type
+"
+"-- Scott-Mattingly 08-AUG-2010
+"
+"-- : Improved function name (previously named import_trl)
+"
+"-- : Improved documentation
+"
+"-- : Updated connector rod calculations
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : parameter pi_ImportId reflects a wire-wall import
+"
+"-- : parameter pi_ProdCode reflects the product code
+"
+"-- : parameter pi_NumColumns reflects the number of columns entered by user
+"
+"-- : pi_GivenJobType is 'E' or 'M'
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : This function attempts to insert parts required for the wire wall job.
+"
+"--   Warning messages are sometimes generated if a part cannot be imported.
+"
+"--   No commit or rollback is executed here.
+"
+"PROCEDURE import_panels_aswire( pi_ImportId IN NUMBER,
+"
+"                                pi_ProdCode IN VARCHAR2,
+"
+"                                pi_NumColumns IN NUMBER,
+"
+"                                pi_StrId IN NUMBER,
+"
+"                                pi_GivenJobType in varchar2,
+"
+"                                pi_GivenLoginId in number,
+"
+"                                pi_GivenUserId in varchar2)
+"
+"IS
+"
+"  CURSOR getpartnos IS
+"
+"    SELECT panel_reinforcements||
+"
+"            SUBSTR(panel_name,1,1)||
+"
+"            DECODE(panel_finish,'G','G','B','B','G') wirename,
+"
+"            panel_name,
+"
+"            tie_strip_quantity,
+"
+"            area_per_piece,
+"
+"            quantity_required
+"
+"     FROM reco_toff_panel_pending
+"
+"    WHERE toff_struct_pending_id = pi_ImportId;
+"
+"
+"
+"  CURSOR matchpart( partname varchar2 ) IS
+"
+"     SELECT part_code
+"
+"     FROM prec_parts
+"
+"     WHERE part_code LIKE partname;
+"
+"
+"
+"  CURSOR determineladder IS
+"
+"     SELECT 'YES'
+"
+"     FROM reco_toff_part_pending P
+"
+"     WHERE toff_struct_pending_id = pi_ImportId
+"
+"     AND part_name LIKE 'LD%';
+"
+"
+"
+"  -- added HA's  7/24 jra
+"
+"  CURSOR determinereinf IS
+"
+"     SELECT 'YES'
+"
+"     FROM reco_toff_part_pending P
+"
+"     WHERE toff_struct_pending_id = pi_ImportId
+"
+"     AND ( part_name LIKE '50%' OR part_name LIKE 'HA%' OR part_name LIKE '%W%W%' );
+"
+"
+"
+"  tempval number;
+"
+"  invid   varchar2(25);
+"
+"  tester  varchar2(3) := NULL;
+"
+"
+"
+"  totalarea number := 0;
+"
+"  totalties number := 0;
+"
+"  totalrods number := 0;
+"
+"  fcw3rolls number := 0;
+"
+"
+"
+"  -- There are technically 3 types of TRL jobs
+"
+"  -- : TRL -  Single Stage  - Middle Panel is 'A'
+"
+"  -- : TRL -   Two Stage    - Middle Panel is 'Q'
+"
+"  -- : TRL - L-Basket Stack - Middle Panel is 'L'
+"
+"  -- The L-Basket wall receives parts differently than the other types, so
+"
+"  -- we need a special value to track this
+"
+"  vc_Is_TRL_LBasketWall varchar2(3) := 'NO';
+"
+"
+"
+"BEGIN
+"
+"
+"
+"  -- Determine if this is a TRL wall made entirely of L-Baskets
+"
+"  vc_Is_TRL_LBasketWall := 'NO';
+"
+"
+"
+"  IF pi_ProdCode = 'TRL'
+"
+"  THEN
+"
+"    vc_Is_TRL_LBasketWall :=
+"
+"                takeoff_is_TRLLBskJob (pi_ImportId,pi_ProdCode,pi_NumColumns);
+"
+"  END IF;
+"
+"
+"
+"  -- Loop for each wire "panel" in takeoff
+"
+"  -- For each panel we see, we will try to import the related wire-panel,
+"
+"  -- and we will also gather various information in the process
+"
+"  FOR eachwire IN getpartnos
+"
+"  LOOP
+"
+"      -- If this row is a valid wire part, then insert it
+"
+"      invid := eachwire.wirename ;
+"
+"
+"
+"      IF invid IS NULL THEN
+"
+"         warning( 'Part '||eachwire.wirename||' does not match part list.' );
+"
+"      ELSE
+"
+"         tempval := insert_struct_parts(pi_StrId, invid, 0,
+"
+"                      eachwire.quantity_required,eachwire.quantity_required,
+"
+"                      pi_GivenLoginId,pi_GivenUserId);
+"
+"      END IF;
+"
+"
+"
+"      -- Add this wire part's total area to our cummulative total
+"
+"      totalarea :=
+"
+"        totalarea + (eachwire.area_per_piece * eachwire.quantity_required);
+"
+"
+"
+"      -- Add this wire part's tie-strip total to our cummulative total
+"
+"      totalties :=
+"
+"        totalties + (eachwire.tie_strip_quantity * eachwire.quantity_required);
+"
+"
+"
+"      -- Add this wire part's connector-rod total to the cummulative total
+"
+"      tempval := 0;
+"
+"
+"
+"      IF pi_ProdCode IN ('TRL','VTL','VTR','CTT','CT1','CT2','CT3')
+"
+"      THEN
+"
+"        CASE
+"
+"          WHEN eachwire.panel_name LIKE 'A%'
+"
+"          THEN
+"
+"            tempval := 4;
+"
+"            IF eachwire.tie_strip_quantity <= 8
+"
+"            THEN tempval := 2;
+"
+"            ELSIF eachwire.tie_strip_quantity > 8
+"
+"            AND eachwire.tie_strip_quantity < 12
+"
+"            THEN tempval := 3;
+"
+"            END IF;
+"
+"          WHEN eachwire.panel_name LIKE 'B%'
+"
+"          THEN
+"
+"            tempval := 2;
+"
+"            IF eachwire.tie_strip_quantity <= 5
+"
+"            THEN tempval := 1;
+"
+"            END IF;
+"
+"          WHEN eachwire.panel_name LIKE 'P%'
+"
+"          THEN
+"
+"            tempval := 5;
+"
+"            IF eachwire.tie_strip_quantity <= 11
+"
+"            THEN tempval := 3;
+"
+"            ELSIF eachwire.tie_strip_quantity > 11
+"
+"            AND eachwire.tie_strip_quantity < 15
+"
+"            THEN tempval := 4;
+"
+"            END IF;
+"
+"          WHEN eachwire.panel_name LIKE 'Q%'
+"
+"          THEN
+"
+"            tempval := 3;
+"
+"            IF eachwire.tie_strip_quantity <= 8
+"
+"            THEN tempval := 2;
+"
+"            END IF;
+"
+"          WHEN eachwire.panel_name LIKE 'L%'
+"
+"          THEN
+"
+"            tempval := 0;
+"
+"            IF vc_Is_TRL_LBasketWall = 'YES'
+"
+"            THEN tempval := 1;
+"
+"            END IF;
+"
+"          ELSE
+"
+"            tempval := 0;
+"
+"        END CASE;
+"
+"      END IF;
+"
+"
+"
+"      totalrods := totalrods + (tempval*eachwire.quantity_required);
+"
+"
+"
+"  END LOOP; -- Done loop for each wire part name
+"
+"
+"
+"  -- calcuate filter cloth rolls
+"
+"  IF pi_GivenJobType = 'E'
+"
+"  THEN fcw3rolls := CEIL(totalarea/500.0);
+"
+"  ELSE fcw3rolls := CEIL(totalarea/46.5);
+"
+"  END IF;
+"
+"
+"
+"  -- insert wire part - filter cloth rolls
+"
+"
+"
+"  invid := 'FCW3';
+"
+"  tempval := insert_struct_parts( pi_StrId,invid, 0, fcw3rolls, fcw3rolls,
+"
+"                                  pi_GivenLoginId,pi_GivenUserId);
+"
+"
+"
+"  -- insert wire part - strut boxes
+"
+"
+"
+"  IF pi_ProdCode IN ('TRL','OTL')
+"
+"  THEN
+"
+"    invid := 'STRUT';
+"
+"    tempval := insert_struct_parts( pi_StrId, invid, 0, 0, 0,
+"
+"                                    pi_GivenLoginId,pi_GivenUserId);
+"
+"    invid := 'STRUTG';
+"
+"    tempval := insert_struct_parts( pi_StrId, invid, 0, 0, 0,
+"
+"                                    pi_GivenLoginId,pi_GivenUserId);
+"
+"  END IF;
+"
+"
+"
+"  -- if ladders, insert stuff
+"
+"  OPEN determineladder;
+"
+"  FETCH determineladder INTO tester;
+"
+"  IF determineladder%NOTFOUND
+"
+"  THEN tester := 'NO';
+"
+"  END IF;
+"
+"  CLOSE determineladder;
+"
+"
+"
+"  IF tester = 'YES'
+"
+"  THEN
+"
+"    invid := 'AB2B';
+"
+"    tempval := insert_struct_parts( pi_StrId,invid, 0, totalties, totalties,
+"
+"                                    pi_GivenLoginId,pi_GivenUserId);
+"
+"    invid := 'AB2G';
+"
+"    tempval := insert_struct_parts( pi_StrId,invid, 0, totalties, totalties,
+"
+"                                    pi_GivenLoginId,pi_GivenUserId);
+"
+"    invid := 'HB2B';
+"
+"    tempval := insert_struct_parts( pi_StrId,invid, 0, totalties, totalties,
+"
+"                                    pi_GivenLoginId,pi_GivenUserId);
+"
+"    invid := 'HB2G';
+"
+"    tempval := insert_struct_parts( pi_StrId,invid, 0, totalties, totalties,
+"
+"                                    pi_GivenLoginId,pi_GivenUserId);
+"
+"  END IF;
+"
+"
+"
+"  -- if reinf, insert stuff
+"
+"  OPEN determinereinf;
+"
+"  FETCH determinereinf INTO tester;
+"
+"  IF determinereinf%NOTFOUND
+"
+"  THEN tester := 'NO';
+"
+"  END IF;
+"
+"  CLOSE determinereinf;
+"
+"
+"
+"  IF tester = 'YES'
+"
+"  THEN
+"
+"    invid := 'CLP5';
+"
+"    tempval := insert_struct_parts( pi_StrId,invid, 0, totalties, totalties,
+"
+"                                    pi_GivenLoginId,pi_GivenUserId);
+"
+"    invid := 'CLP8';
+"
+"    tempval := insert_struct_parts( pi_StrId,invid, 0, totalties, totalties,
+"
+"                                    pi_GivenLoginId,pi_GivenUserId);
+"
+"   invid := 'BL14';
+"
+"    tempval := insert_struct_parts( pi_StrId,invid, 0, totalties, totalties,
+"
+"                                    pi_GivenLoginId,pi_GivenUserId);
+"
+"    invid :='ROD10';
+"
+"    tempval := insert_struct_parts( pi_StrId,invid, 0, totalrods, totalrods,
+"
+"                                    pi_GivenLoginId,pi_GivenUserId);
+"
+"    invid := 'ROD11';
+"
+"    tempval := insert_struct_parts( pi_StrId,invid, 0, totalrods, totalrods,
+"
+"                                    pi_GivenLoginId,pi_GivenUserId);
+"
+"  END IF;
+"
+"END; -- import_panels_aswire
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- import_reinforcements
+"
+"--
+"
+"-- DESCRIPTION
+"
+"-- This function reviews all the entries in RECO_TOFF_PART_PENDING for this import,
+"
+"-- and grabs the reinforcements to import them into the job.
+"
+"--
+"
+"-- This validates reinforcements that are processed.
+"
+"--
+"
+"-- This function may modify the strips or reinforcements, so that the
+"
+"-- reinforcements that go into the job may not match exactly what was imported
+"
+"-- from AutoCAD.
+"
+"-- e.g. very long reinforcing strips may be cut into shorter strips
+"
+"-- e.g. the geostrap lengths given in import may need to be 'interpreted'
+"
+"--
+"
+"-- During this import process here, we may add additional parts / bolts / etc,
+"
+"-- as may be required by the cutting / interpretation that we perform.
+"
+"--
+"
+"-- UPDATES
+"
+"-- Modified 1/12/2001 by David Correia
+"
+"-- Added second Splice Plate for steel > 40
+"
+"-- jra 11/30/01
+"
+"-- added reduction past 64 feet
+"
+"-- Bahar on 4/17/2006
+"
+"-- added additional variables for mesh pins caculation
+"
+"-- Modified by Scott Mattingly 24-AUG-2010
+"
+"-- : Added Geostrap handling
+"
+"-- : Renamed function (formerly know as deal_with_part)
+"
+"-- : Added loop to function to loop through each strip in the RECO_TOFF_PART_PENDING
+"
+"--   table. This allows function to work independently, and removes redundancy
+"
+"-- : Improved documentation
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : given pi_ImportId is a valid importid
+"
+"-- : given pi_ProdCode is a valid product code
+"
+"-- : pi_GivenJobType is 'E' or 'M'
+"
+"-- : Realistically, this function expects reinforcements follow a certain
+"
+"--   format whenplaced in the RECO_TOFF_PART_PENDING table
+"
+"--   - '50%'  is part_name to reflect reinforcing strips
+"
+"--   - 'HA%'  is part_name to reflect HA ladders
+"
+"--   - 'LD%'  is part_name to reflect other type of legacy ladder
+"
+"--   - 'GEO%' is part_name to reflect geostraps
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Function returns 'Imported.' when reinforcements are imported successfully
+"
+"--   and no errors occur.
+"
+"-- : Function returns an error message when an error occurs
+"
+"-- : When function is successful, the reinforcement parts in RECO_TOFF_PART_PENDING
+"
+"--   are converted and imported into the structure
+"
+"-- : When function is successful, additional parts other than the reinforcements
+"
+"--   may also have been imported into the structure
+"
+"FUNCTION import_reinforcements ( pi_ImportId IN NUMBER,
+"
+"                                 pi_ProdCode IN VARCHAR2,
+"
+"                                 pi_StrId IN NUMBER,
+"
+"                                 pi_GivenJobType in varchar2,
+"
+"                                 pi_GivenLoginId in number,
+"
+"                                 pi_GivenUserId in varchar2)
+"
+"RETURN VARCHAR2
+"
+"IS
+"
+"
+"
+"  CURSOR cur_TakeoffReinforcements
+"
+"  IS
+"
+"    SELECT  P.part_name,
+"
+"            P.quantity_required,
+"
+"            P.attribute1,
+"
+"            P.attribute2
+"
+"    FROM  reco_toff_part_pending P
+"
+"    WHERE   P.toff_struct_pending_id = pi_ImportId
+"
+"    AND     P.attribute1 is not null
+"
+"    ORDER BY  P.part_name;
+"
+"  CURSOR Drawing_parts
+"
+"  IS
+"
+"    SELECT  P.part_name,
+"
+"            P.quantity_required,
+"
+"            P.attribute1,
+"
+"            P.attribute2
+"
+"    FROM  reco_toff_part_pending P
+"
+"    WHERE   P.toff_struct_pending_id = pi_ImportId
+"
+"    AND     P.attribute1 is null
+"
+"    ORDER BY  P.part_name;
+"
+"
+"
+"
+"
+"  ptlookup varchar2(40);
+"
+"  ptlookup2 varchar2(40);
+"
+"  tempnum number;
+"
+"  tempnum2 number;
+"
+"  partnum number := NULL;
+"
+"  nn number;
+"
+"
+"
+"  pname   reco_toff_part_pending.part_name%TYPE;
+"
+"  qty     reco_toff_part_pending.QUANTITY_REQUIRED%TYPE;
+"
+"  attr1   reco_toff_part_pending.attribute1%TYPE;
+"
+"  attr2   reco_toff_part_pending.attribute2%TYPE;
+"
+"
+"
+"  ---- additional variables for mesh pins caculation
+"
+"  nwire number;
+"
+"  nspace number;
+"
+"  npinnum number;
+"
+"
+"
+"  ---- additional variables for geostraps
+"
+"  vn_Geostrap35TotalLF number := 0;
+"
+"  vn_Geostrap50TotalLF number := 0;
+"
+"  vn_Geostrap65TotalLF number := 0;
+"
+"
+"
+"BEGIN
+"
+"
+"
+"  ------------------------------------------------------------
+"
+"  -- Start looping for all reinforcements in RECO_TOFF_PART_PENDING
+"
+"  ------------------------------------------------------------
+"
+"
+"
+"  -- import original lengths into extract table for viewing
+"
+"  insert into reco_toff_parts_extract
+"
+"  SELECT  pi_StrId, part_name,
+"
+"            quantity_required,
+"
+"            attribute1, attribute2, attribute3, attribute4, attribute5, sysdate
+"
+"    FROM  reco_toff_part_pending P
+"
+"    WHERE   P.toff_struct_pending_id = pi_ImportId
+"
+"    AND     P.attribute1 is not null;
+"
+"
+"
+"  ---------------------------------------------------------------
+"
+"  -- Finished looping for all reinforcements in RECO_TOFF_PART_PENDING
+"
+"  ---------------------------------------------------------------
+"
+"-- 10/2/24  insert parts from direct extract
+"
+"  for eachpart in Drawing_Parts loop
+"
+"    pname := eachpart.part_name;
+"
+"    qty := eachpart.quantity_required;
+"
+"    attr1 := eachpart.attribute1;
+"
+"    attr2 := eachpart.attribute2;
+"
+"
+"
+"    --OPEN cur_InventoryItemId( pname );
+"
+"    --FETCH cur_InventoryItemId INTO partnum;
+"
+"    --CLOSE cur_InventoryItemId;
+"
+"
+"
+"     nn := insert_struct_parts( pi_strid, pname, 0, qty, qty,
+"
+"                                pi_GivenLoginId,pi_GivenUserId);
+"
+"    end loop;
+"
+"
+"
+"  -- Done
+"
+"
+"
+"  -- Done
+"
+"
+"
+"  RETURN 'Imported.';
+"
+"
+"
+"EXCEPTION
+"
+"  WHEN NO_DATA_FOUND
+"
+"  THEN RETURN 'Internal Error: NO_DATA_FOUND exception';
+"
+"  WHEN TOO_MANY_ROWS
+"
+"  THEN RETURN 'Internal Error: TOO_MANY_ROWS exception';
+"
+"  WHEN OTHERS
+"
+"  THEN RETURN 'Internal Error: Unknown exception';
+"
+"END; -- import_reinforcements
+"
+"
+"
+"--------------------------------------------------------------------------------
+"
+"-- import_structure
+"
+"--
+"
+"-- This function takes a structure from the import tables, does some validation,
+"
+"-- then either imports the data and saves it, or clears and inserts the new revision.
+"
+"-- It is done as a single transaction, so if there are any failures, it returns
+"
+"-- a simple description of what went wrong.   If it succeeds, it will return 'Imported.'
+"
+"-- either a salesid/projectid or pi_StructId MUST be passed in.  If no pi_StructId, it
+"
+"-- creates a new one for the salesid.   The importid must exist as well.
+"
+"-- Update 08/02/2010 by DSM
+"
+"-- : Changed parameters to accept user-id and login-id
+"
+"-- : Changed parameters to accept number-of-columns and wall-length
+"
+"--   (this saves caller from manually handling set avg_height and such)
+"
+"-- Update 11/11/2011 by DSM
+"
+"-- : Converted import to new takeoff system
+"
+"--
+"
+"-- PRE-CONDITIONS
+"
+"-- : All parameters are required to be valid, except ToffJobId and ToffStructid,
+"
+"--   where only one of those needs to be valid
+"
+"--
+"
+"-- POST-CONDITIONS
+"
+"-- : Return 'DONE' when successful
+"
+"-- : Return an error message when failure
+"
+"-- : When successful, if ToffStructId is not provided, the import is added
+"
+"--   to the indicated ToffJobId as a new wall, and output po_StrIdModified is set
+"
+"--   to the new structure id that was added
+"
+"-- : When successful, if ToffStructId is provided, then ToffJobId is ignored and
+"
+"--   the indicated pi_ToffStructId is overwritten with the new import data,
+"
+"--   and po_StrIdModified is set to the struct id that was updated
+"
+"FUNCTION import_structure( pi_UserID IN varchar2, pi_LoginID IN number,
+"
+"                           pi_NumColumns IN number, pi_WallLength IN number,
+"
+"                           pi_ToffJobId IN number, pi_ToffStructId IN number,
+"
+"                           pi_ImportId IN number, pi_JobType IN varchar2,
+"
+"                           pi_UOM IN varchar2, po_StrIdModified out number )
+"
+"RETURN varchar2
+"
+"IS
+"
+"
+"
+"  rec_ToffJobV reco_toff_jobs_v%ROWTYPE;
+"
+"
+"
+"  vn_DestinationStructId number;
+"
+"
+"
+"  vb_IsNewStruct BOOLEAN;
+"
+"  vb_IsRevision BOOLEAN;
+"
+"
+"
+"  vn_OriginalRevNum number;
+"
+"
+"
+"  vc_TempErrorMsg varchar2(1024);
+"
+"
+"
+"  cursor cur_PendingStructureHdr(pi_GivenPendingStructId in number)
+"
+"  is select * from reco_toff_struct_pending where toff_struct_pending_id = pi_GivenPendingStructId;
+"
+"
+"
+"  rec_PendingStructureHdr cur_PendingStructureHdr%rowtype;
+"
+"
+"
+"  -----------------------------------------------------------------------------
+"
+"  -- Read reco_toff_jobs_v data into a record using our method parameters
+"
+"  --
+"
+"  -- This makes it easy to access job information without having to requery
+"
+"  -- the job number every 5 seconds.
+"
+"  --
+"
+"  -- We need to re-read each time we update ToffJ table, so this code was
+"
+"  -- wrapped into a function for sanity
+"
+"  function func_RetrieveJobData(rec_FromJob out reco_toff_jobs_v%ROWTYPE)
+"
+"  return varchar2
+"
+"  is
+"
+"    vn_TempNum number;
+"
+"    vc_TmpSubErr varchar2(1024);
+"
+"  begin
+"
+"
+"
+"    vc_TmpSubErr := 'DONE';
+"
+"
+"
+"    vn_TempNum := pi_ToffJobId;
+"
+"    if pi_ToffStructId is not null
+"
+"    then
+"
+"      begin
+"
+"        select subTbl.toff_job_id
+"
+"        into vn_TempNum
+"
+"        from reco_toff_structs subTbl
+"
+"        where subTbl.toff_struct_id = pi_ToffStructId;
+"
+"      exception
+"
+"        when no_data_found then vc_TmpSubErr := 'Internal Error 0010 - Import failed';
+"
+"        when too_many_rows then vc_TmpSubErr := 'Internal Error 0011 - Import failed';
+"
+"        when others then vc_TmpSubErr := 'Internal Error 0012 - Import failed';
+"
+"      end;
+"
+"    end if;
+"
+"
+"
+"    if vc_TmpSubErr != 'DONE'
+"
+"    then return vc_TmpSubErr;
+"
+"    end if;
+"
+"
+"
+"    begin
+"
+"      select subTbl.*
+"
+"      into rec_FromJob
+"
+"      from reco_toff_jobs_v subTbl
+"
+"      where subTbl.toff_job_id = vn_TempNum;
+"
+"    exception
+"
+"      when no_data_found then vc_TmpSubErr := 'Internal Error 0013 - Import failed';
+"
+"      when too_many_rows then vc_TmpSubErr := 'Internal Error 0014 - Import failed';
+"
+"      when others then vc_TmpSubErr := 'Internal Error 0015 - Import failed';
+"
+"    end;
+"
+"
+"
+"    return vc_TmpSubErr;
+"
+"  end; -- func_RetrieveJobData
+"
+"
+"
+"BEGIN -- import_structure
+"
+"
+"
+"  ---------------------------------------------------------------
+"
+"  -- Initialize many output variables
+"
+"  ---------------------------------------------------------------
+"
+"
+"
+"  -- Some old boolean from 10 years ago, probably can be replaced by a simple FUNCTION-RETURN value
+"
+"  did_complete := FALSE;
+"
+"
+"
+"  -- The warning messages that are generated by this import process
+"
+"  clear_messages;
+"
+"
+"
+"  -- Temporary string that holds a return-value from a function or other similar message.
+"
+"  -- Usually 'DONE' means success, or null means NO ERRORS. Any other string
+"
+"  -- indicates an ERROR MESSAGE STRING to error out and return to the user
+"
+"  vc_TempErrorMsg := null;
+"
+"
+"
+"  -- Importing a new structure can generate a new record, and new primary key
+"
+"  po_StrIdModified := 0;
+"
+"
+"
+"  declare
+"
+"    vc_Found varchar2(1);
+"
+"  begin
+"
+"    select 'Y'
+"
+"    into vc_Found
+"
+"    from reco_toff_struct_pending
+"
+"    where toff_struct_pending_id = pi_ImportId;
+"
+"  exception
+"
+"    when no_data_found
+"
+"    then
+"
+"      rollback;
+"
+"      return 'Internal Error 0007 - Import failed';
+"
+"    when too_many_rows
+"
+"    then
+"
+"      rollback;
+"
+"      return 'Internal Error 0008 - Import failed';
+"
+"    when others
+"
+"    then
+"
+"      rollback;
+"
+"      return 'Internal Error 0009 - Import failed';
+"
+"  end;
+"
+"
+"
+"  ---------------------------------------------------------------
+"
+"  -- Access the pending structure info and destination job info
+"
+"  ---------------------------------------------------------------
+"
+"
+"
+"  open cur_PendingStructureHdr(pi_ImportId);
+"
+"  fetch cur_PendingStructureHdr into rec_PendingStructureHdr;
+"
+"  close cur_PendingStructureHdr;
+"
+"
+"
+"  vc_TempErrorMsg := func_RetrieveJobData(rec_ToffJobV);
+"
+"
+"
+"  if vc_TempErrorMsg != 'DONE'
+"
+"  then rollback;
+"
+"        return vc_TempErrorMsg;
+"
+"  end if;
+"
+"
+"
+"  ---------------------------------------------------------------
+"
+"  -- Verify pending Job-Level info against the destination Job
+"
+"  -- JobNo matches?
+"
+"  -- Product matches?
+"
+"  -- Unit System matches?
+"
+"  ---------------------------------------------------------------
+"
+"
+"
+"  if rec_toffJobV.project_number
+"
+"      !=
+"
+"      nvl(rec_PendingStructureHdr.project_number,rec_toffJobV.project_number)
+"
+"  then
+"
+"    rollback;
+"
+"    vc_TempErrorMsg :=
+"
+"      'The import wall JobNo '||
+"
+"      rec_PendingStructureHdr.project_number||
+"
+"      ' does not match your selected project number !';
+"
+"    return vc_TempErrorMsg;
+"
+"  end if;
+"
+"
+"
+"  if rec_toffJobV.product_code
+"
+"      !=
+"
+"      nvl(rec_PendingStructureHdr.product_code,rec_toffJobV.product_code)
+"
+"  then
+"
+"    rollback;
+"
+"    vc_TempErrorMsg :=
+"
+"      'The import wall Product '||
+"
+"      rec_PendingStructureHdr.product_code||
+"
+"      ' does not match your selected project product code !';
+"
+"    return vc_TempErrorMsg;
+"
+"  end if;
+"
+"
+"
+"  declare
+"
+"    vb_ExactUOMRequired boolean;
+"
+"  begin
+"
+"    vb_ExactUOMRequired := true;
+"
+"    if ProdCodeCanBeLinear(rec_ToffJobV.product_code) = 'T'
+"
+"    and ProdCodeCanBeSquare(rec_ToffJobV.product_code) = 'T'
+"
+"    then vb_ExactUOMRequired := false;
+"
+"    end if;
+"
+"
+"
+"    vc_TempErrorMsg := prec_takeoff.validate_uom(
+"
+"      rec_ToffJobV.toff_job_id, pi_ImportId, vb_ExactUOMRequired);
+"
+"
+"
+"    if vc_TempErrorMsg != 'Valid'
+"
+"    then
+"
+"      rollback;
+"
+"      return vc_TempErrorMsg;
+"
+"    end if;
+"
+"  end;
+"
+"
+"
+"  ---------------------------------------------------------------
+"
+"  -- Type of Import (New, ReplaceExisting) and destination struct id
+"
+"  ---------------------------------------------------------------
+"
+"
+"
+"  vb_IsNewStruct := false;
+"
+"  vb_IsRevision := false;
+"
+"
+"
+"  if pi_ToffStructId is not null
+"
+"  then
+"
+"    vb_IsNewStruct := false;
+"
+"    vb_IsRevision := true;
+"
+"    vn_DestinationStructId := pi_ToffStructId;
+"
+"  elsif pi_ToffStructId is null
+"
+"  then
+"
+"    vb_IsNewStruct := true;
+"
+"    vb_IsRevision := false;
+"
+"    select reco_structure_seq.nextval into vn_DestinationStructId from dual;
+"
+"  end if;
+"
+"
+"
+"  ---------------------------------------------------------------
+"
+"  -- Verify pending structure info against destination struct
+"
+"  -- IS_CORP_STD matches?
+"
+"  -- IS_MURAL_WALL matches?
+"
+"  -- CONTENTS_CODE matches?
+"
+"  ---------------------------------------------------------------
+"
+"
+"
+"  if vb_IsRevision = true
+"
+"  then
+"
+"    declare
+"
+"      vr_ExistingStructRec reco_toff_structs%rowtype;
+"
+"    begin
+"
+"      select *
+"
+"      into vr_ExistingStructRec
+"
+"      from reco_toff_structs
+"
+"      where toff_struct_id = vn_DestinationStructId;
+"
+"
+"
+"      if nvl(vr_ExistingStructRec.is_corp_std,'N')
+"
+"            != nvl(rec_PendingStructureHdr.is_corp_std,'N')
+"
+"      then
+"
+"        rollback;
+"
+"        vc_TempErrorMsg := 'Internal Error 0091 - Import Failed.'||
+"
+"                            ' New Import is a CORP-RLA standard wall, which'||
+"
+"                            ' does not match the takeoff wall selected.'||
+"
+"                            ' Please fix the drawing, or correct the checkbox in Takeoff.';
+"
+"        if nvl(rec_PendingStructureHdr.is_corp_std,'N') = 'N'
+"
+"        then
+"
+"          vc_TempErrorMsg := 'Internal Error 0091 - Import Failed.'||
+"
+"                              ' New Import is a Central Legacy RLA standard wall, which'||
+"
+"                              ' does not match the takeoff wall selected.'||
+"
+"                              ' Please fix the drawing, or correct the checkbox in Takeoff.';
+"
+"        end if;
+"
+"        return vc_TempErrorMsg;
+"
+"      end if;
+"
+"
+"
+"      if nvl(vr_ExistingStructRec.is_mural_wall,'N')
+"
+"            != nvl(rec_PendingStructureHdr.is_mural_wall,'N')
+"
+"      then
+"
+"        rollback;
+"
+"        vc_TempErrorMsg := 'Internal Error 0092 - Import Failed.'||
+"
+"                            ' New Import is a mural wall, which'||
+"
+"                            ' does not match the takeoff wall selected.'||
+"
+"                            ' Please open Takeoff and mark the wall as Mural.';
+"
+"        if nvl(rec_PendingStructureHdr.is_mural_wall,'N') = 'N'
+"
+"        then
+"
+"          vc_TempErrorMsg := 'Internal Error 0092 - Import Failed.'||
+"
+"                              ' The takeoff wall was indicated as a mural wall, which'||
+"
+"                              ' does not match the pending import selected.'||
+"
+"                              ' Please fix the drawing, or de-select the mural option in Takeoff.';
+"
+"        end if;
+"
+"        return vc_TempErrorMsg;
+"
+"      end if;
+"
+"
+"
+"      if nvl(vr_ExistingStructRec.contents_code,'STRUCTURE')
+"
+"            != nvl(rec_PendingStructureHdr.contents_code,'STRUCTURE')
+"
+"      then
+"
+"        rollback;
+"
+"        vc_TempErrorMsg := 'Internal Error 0094 - Import Failed.'||
+"
+"                            ' New Structure is of type '||
+"
+"                            chr(39)||nvl(rec_PendingStructureHdr.contents_code,'STRUCTURE')||chr(39)||
+"
+"                            ', but the wall in Takeoff is listed as '||
+"
+"                            chr(39)||nvl(vr_ExistingStructRec.contents_code,'STRUCTURE')||chr(39)||
+"
+"                            '. Please match the Extract with the Takeoff Structure.';
+"
+"        return vc_TempErrorMsg;
+"
+"      end if;
+"
+"    end;
+"
+"  end if;
+"
+"
+"
+"  ---------------------------------------------------------------
+"
+"  -- If making a new structure,
+"
+"  -- then a lot of the old Takeoff code requires
+"
+"  -- a record to exist in reco_toff_structs
+"
+"  ---------------------------------------------------------------
+"
+"
+"
+"  if vb_IsNewStruct
+"
+"  then
+"
+"    vc_TempErrorMsg := null;
+"
+"
+"
+"    begin
+"
+"      insert into reco_toff_structs
+"
+"        ( toff_struct_id, structure_name, project_number, product_code, 
+"
+"          unit_of_measure, status_code,
+"
+"          toff_job_id, wall_length, num_columns,
+"
+"          is_corp_std,
+"
+"          is_mural_wall,
+"
+"          contents_code,
+"
+"          importer_id, last_update_date, last_updated_by,
+"
+"          creation_date, created_by, last_update_login )
+"
+"      values
+"
+"        ( vn_DestinationStructId, rec_PendingStructureHdr.structure_name, rec_pendingstructurehdr.project_number, 
+"
+"          rec_pendingstructurehdr.product_code,
+"
+"          rec_PendingStructureHdr.unit_of_measure, 'PRELIM',
+"
+"          rec_ToffJobV.toff_job_id, pi_WallLength, pi_NumColumns,
+"
+"          nvl(rec_PendingStructureHdr.is_corp_std,'N'),
+"
+"          nvl(rec_PendingStructureHdr.is_mural_wall,'N'),
+"
+"          nvl(rec_PendingStructureHdr.contents_code,'STRUCTURE'),
+"
+"          pi_UserID, SYSDATE, pi_UserID,
+"
+"          SYSDATE, pi_UserID, pi_LoginID );
+"
+"    exception
+"
+"      when others then vc_TempErrorMsg := 'Internal Error 0019 - Import failed'||sqlerrm;
+"
+"    end;
+"
+"
+"
+"    if vc_TempErrorMsg is not null
+"
+"    then rollback;
+"
+"          return vc_TempErrorMsg;
+"
+"    end if;
+"
+"
+"
+"    vc_TempErrorMsg := prec_takeoff.set_toff_calc_values(null,vn_DestinationStructId);
+"
+"
+"
+"    if vc_TempErrorMsg != 'DONE'
+"
+"    then rollback;
+"
+"          return vc_TempErrorMsg;
+"
+"    end if;
+"
+"
+"
+"    -- If there is chance the jobs table has changed, we need to re-read it
+"
+"    vc_TempErrorMsg := func_RetrieveJobData(rec_ToffJobV);
+"
+"    if vc_TempErrorMsg != 'DONE'
+"
+"    then rollback;
+"
+"          return vc_TempErrorMsg;
+"
+"    end if;
+"
+"  end if;
+"
+"
+"
+"  ---------------------------------------------------------------
+"
+"  -- When revising a row we should move it to history
+"
+"  ---------------------------------------------------------------
+"
+"
+"
+"  if vb_IsRevision
+"
+"  then
+"
+"    insert into reco_toff_struct_hist
+"
+"		(	toff_struct_id, project_Number, product_code, structure_name, revision_number, unit_of_measure,
+"
+"			toff_job_id, status_code, soil_reinf_type, total_area, prelim_date,
+"
+"			final_date, total_steel_lf, total_steel_tons, total_steel_qty,
+"
+"			wall_length, num_columns, avg_height, num_panels, num_ties,
+"
+"      is_corp_std, is_mural_wall, contents_code,
+"
+"			importer_id, last_update_date, last_updated_by, creation_date,
+"
+"			created_by, last_update_login	)
+"
+"		(	select	subTbl.TOFF_STRUCT_ID,  subtbl.project_Number, subtbl.product_code,
+"
+"							subTbl.STRUCTURE_NAME,
+"
+"							subTbl.REVISION_NUMBER,
+"
+"							subTbl.UNIT_OF_MEASURE,
+"
+"							subTbl.TOFF_JOB_ID,
+"
+"							subTbl.STATUS_CODE,
+"
+"							subTbl.SOIL_REINF_TYPE,
+"
+"							subTbl.TOTAL_AREA,
+"
+"							subTbl.PRELIM_DATE,
+"
+"							subTbl.FINAL_DATE,
+"
+"							subTbl.TOTAL_STEEL_LF,
+"
+"							subTbl.TOTAL_STEEL_TONS,
+"
+"              subTbl.TOTAL_STEEL_QTY,
+"
+"							subTbl.WALL_LENGTH,
+"
+"							subTbl.NUM_COLUMNS,
+"
+"							subTbl.AVG_HEIGHT,
+"
+"							subTbl.NUM_PANELS,
+"
+"							subTbl.NUM_TIES,
+"
+"              subTbl.is_corp_std,
+"
+"              subTbl.is_mural_wall,
+"
+"              subTbl.contents_code,
+"
+"							subTbl.IMPORTER_ID,
+"
+"							subTbl.LAST_UPDATE_DATE,
+"
+"							subTbl.LAST_UPDATED_BY,
+"
+"							subTbl.CREATION_DATE,
+"
+"							subTbl.CREATED_BY,
+"
+"							subTbl.LAST_UPDATE_LOGIN
+"
+"			from	reco_toff_structs subTbl
+"
+"			where		subTbl.toff_struct_id = vn_DestinationStructId);
+"
+"  end if;
+"
+"
+"
+"  ---------------------------------------------------------------
+"
+"  -- We need to save the "current" revision number before the import does any changes.
+"
+"  -- A lot of this code will re-gen and raise the revision_number,
+"
+"  -- so we will need to correct it at the end of the process to what the value should be.
+"
+"  ---------------------------------------------------------------
+"
+"
+"
+"  select revision_number
+"
+"  into vn_OriginalRevNum
+"
+"  from reco_toff_structs
+"
+"  where toff_struct_id = vn_DestinationStructId;
+"
+"  if vb_IsRevision
+"
+"  then vn_OriginalRevNum := vn_OriginalRevNum + 1;
+"
+"  end if;
+"
+"
+"
+"  ---------------------------------------------------------------
+"
+"  -- update the number of columns for structure and wall_length too
+"
+"  -- Note: The num_columns is needed for calculate_parts to work properly
+"
+"  -- Note: The wall_length is needed for avg_height calculations to work
+"
+"  ---------------------------------------------------------------
+"
+"
+"
+"  update  reco_toff_structs
+"
+"  set num_columns = pi_NumColumns,
+"
+"      wall_length = pi_WallLength
+"
+"  where toff_struct_id = vn_DestinationStructId;
+"
+"
+"
+"  ---------------------------------------------------------------
+"
+"  -- Wipe panels and replace panels
+"
+"  ---------------------------------------------------------------
+"
+"
+"
+"  delete from reco_toff_panels where toff_struct_id = vn_DestinationStructId;
+"
+"
+"
+"  if rec_ToffJobV.product_code not in ( 'TRL','VTL','VTR','OTL','STL','CTT','CT1','CT2','CT3' )
+"
+"  then
+"
+"    vc_TempErrorMsg := prec_takeoff.import_panels_normally(
+"
+"                  pi_ImportId, rec_ToffJobV.product_code,
+"
+"                  vn_DestinationStructId,'M',
+"
+"                  pi_LoginID,pi_UserID);
+"
+"    if vc_TempErrorMsg != 'Imported.'
+"
+"    then rollback;
+"
+"          return vc_TempErrorMsg;
+"
+"    end if;
+"
+"  end if;
+"
+"
+"
+"  ---------------------------------------------------------------
+"
+"  -- now calculate parts
+"
+"  ---------------------------------------------------------------
+"
+"
+"
+"  delete from reco_toff_parts where toff_struct_id = vn_DestinationStructId;
+"
+"
+"
+"  --commit_during_calc := FALSE;
+"
+"  --vc_TempErrorMsg := prec_takeoff.calculate_parts(
+"
+"  --                      vn_DestinationStructId,pi_LoginID,pi_UserID);
+"
+"
+"
+"  --if vc_TempErrorMsg != 'DONE'
+"
+"  --then rollback;
+"
+"  --      return vc_TempErrorMsg;
+"
+"  --end if;
+"
+"
+"
+"  -- now insert remaining parts from import
+"
+"  --did_complete := FALSE;
+"
+"  vc_TempErrorMsg := prec_takeoff.import_reinforcements(
+"
+"      pi_ImportId, rec_ToffJobV.product_code,
+"
+"      vn_DestinationStructId, 'M',pi_LoginID,pi_UserID);
+"
+"
+"
+"  if vc_TempErrorMsg != 'Imported.'
+"
+"  then rollback;
+"
+"        return vc_TempErrorMsg;
+"
+"  end if;
+"
+"
+"
+"  -- if wire wall, import as parts not panels
+"
+"  IF rec_ToffJobV.product_code IN( 'TRL','VTR','VTL','OTL','STL','CTT','CT1','CT2','CT3')
+"
+"  THEN
+"
+"    prec_takeoff.import_panels_aswire(
+"
+"      pi_ImportId, rec_ToffJobV.product_code, pi_NumColumns,
+"
+"      vn_DestinationStructId,'M',
+"
+"      pi_LoginID,pi_UserID);
+"
+"  END IF;
+"
+"
+"
+"  -- if TRL, then sometimes we add one L-Basket per column, sometimes no
+"
+"  declare
+"
+"
+"
+"    -- Single Stage TRL and 2-Stage TRL only
+"
+"    -- Find number of Wire-Panels that are Black (not galvanized)
+"
+"    -- -> Excludes L-Baskets (if any), since those are not wire-panels in this case
+"
+"    CURSOR cur_TRLNumBlack (givenImportId number) IS
+"
+"    SELECT  SUM(quantity_required)
+"
+"    FROM  reco_toff_panel_pending
+"
+"    WHERE   toff_struct_pending_id = givenImportId
+"
+"    AND     panel_name NOT LIKE 'L%'
+"
+"    AND     panel_finish = 'B';
+"
+"
+"
+"    -- Single Stage TRL and 2-Stage TRL only
+"
+"    -- Find number of Wire-Panels total
+"
+"    -- -> Excludes L-Baskets (if any), since those are not wire-panels in this case
+"
+"    CURSOR cur_TRLNumTotal (givenImportId number) IS
+"
+"    SELECT  SUM(quantity_required)
+"
+"    FROM  reco_toff_panel_pending
+"
+"    WHERE   toff_panel_pending_id = givenImportId
+"
+"    AND     panel_name NOT LIKE 'L%';
+"
+"
+"
+"    tempTRLBlack number;
+"
+"    tempTRLTotal number;
+"
+"    tempItemId varchar2(25);
+"
+"    tempRetNum number;
+"
+"  begin
+"
+"    IF rec_ToffJobV.product_code = 'TRL'
+"
+"    THEN
+"
+"      vc_TempErrorMsg := takeoff_is_TRLLBskJob(
+"
+"                pi_ImportId,rec_ToffJobV.product_code,pi_NumColumns);
+"
+"
+"
+"      -- only add L-Baskets per-column when job is single-stage or two-stage
+"
+"      IF vc_TempErrorMsg = 'NO'
+"
+"      THEN
+"
+"
+"
+"        -- See cursor defn. for additional details
+"
+"        OPEN cur_TRLNumBlack(pi_ImportId);
+"
+"        FETCH cur_TRLNumBlack INTO tempTRLBlack;
+"
+"        IF cur_TRLNumBlack%NOTFOUND
+"
+"        THEN tempTRLBlack := 0;
+"
+"        END IF;
+"
+"        CLOSE cur_TRLNumBlack;
+"
+"
+"
+"        -- See cursor defn. for additional details
+"
+"        OPEN cur_TRLNumTotal(pi_ImportId);
+"
+"        FETCH cur_TRLNumTotal INTO tempTRLTotal;
+"
+"        IF cur_TRLNumTotal%NOTFOUND
+"
+"        THEN tempTRLTotal := 0;
+"
+"        END IF;
+"
+"        CLOSE cur_TRLNumTotal;
+"
+"
+"
+"        IF tempTRLBlack = tempTRLTotal
+"
+"        THEN
+"
+"          tempItemId:= 'W5LB' ;
+"
+"        ELSE
+"
+"          tempItemId:= 'W5LG';
+"
+"        END IF;
+"
+"
+"
+"        tempRetNum := insert_struct_parts(
+"
+"                  vn_DestinationStructId, tempItemId, 0, pi_NumColumns, pi_NumColumns,
+"
+"                  pi_LoginID,pi_UserID);
+"
+"      END IF;
+"
+"    END IF;
+"
+"  end;
+"
+"
+"
+"  fold_up_parts(vn_DestinationStructId,pi_LoginID,pi_UserID);
+"
+"
+"
+"  -- We made a lot of changes, and some calc columns probably aren't set yet.
+"
+"  -- So let's run the auto complete for the structure, sync with it, and
+"
+"  -- make sure our revision number stays good
+"
+"
+"
+"  vc_TempErrorMsg := prec_takeoff.set_toff_calc_values(null,vn_DestinationStructId);
+"
+"
+"
+"  if vc_TempErrorMsg != 'DONE'
+"
+"  then rollback;
+"
+"        return vc_TempErrorMsg;
+"
+"  end if;
+"
+"
+"
+"  -- If there is chance the jobs table has changed, we need to re-read it
+"
+"  vc_TempErrorMsg := func_RetrieveJobData(rec_ToffJobV);
+"
+"  if vc_TempErrorMsg != 'DONE'
+"
+"  then rollback;
+"
+"        return vc_TempErrorMsg;
+"
+"  end if;
+"
+"
+"
+"  -------
+"
+"  -- New Feature MAY-2015
+"
+"  --
+"
+"  -- A Job Specific Exception for large Florida Job
+"
+"  -- This also forms a template for "Splitting Finish" Feature if things go well
+"
+"  -------
+"
+"
+"
+"  if nvl(rec_PendingStructureHdr.contents_code,'STRUCTURE') = 'PANELS ONLY'
+"
+"  then
+"
+"    update reco_toff_structs
+"
+"    set num_columns = 0
+"
+"    where toff_struct_id = vn_DestinationStructId;
+"
+"
+"
+"    update reco_toff_parts
+"
+"    set adj_quantity = (calc_quantity * -1), quantity_required = 0
+"
+"    where toff_struct_id = vn_DestinationStructId;
+"
+"  end if;
+"
+"
+"
+"  if nvl(rec_PendingStructureHdr.contents_code,'STRUCTURE') = 'PARTS ONLY'
+"
+"  then
+"
+"    update reco_toff_panels
+"
+"    set quantity_required = 0
+"
+"    where toff_struct_id = vn_DestinationStructId;
+"
+"  end if;
+"
+"
+"
+"  declare
+"
+"    vc_OutputMssg varchar2(1000);
+"
+"  begin
+"
+"    vc_OutputMssg := set_toff_calc_values(null, vn_DestinationStructId);
+"
+"  end;
+"
+"
+"
+"  -- If there is chance the jobs table has changed, we need to re-read it
+"
+"  vc_TempErrorMsg := func_RetrieveJobData(rec_ToffJobV);
+"
+"  if vc_TempErrorMsg != 'DONE'
+"
+"  then rollback;
+"
+"        return vc_TempErrorMsg;
+"
+"  end if;
+"
+"
+"
+"  -------
+"
+"  -- This continues normally
+"
+"  -------
+"
+"
+"
+"  -- We have calculated and re-calculated several times,
+"
+"  -- so the revision number is probably through the roof
+"
+"  -- so let's set it properly
+"
+"  update reco_toff_structs
+"
+"  set revision_number = vn_OriginalRevNum
+"
+"  where toff_struct_id = vn_DestinationStructId;
+"
+"
+"
+"  -- Lastly, set the who columns for all the panels and parts and the structure
+"
+"  -- Be sure to check if this is importing new structure vs Revising an
+"
+"  -- existing one
+"
+"  declare
+"
+"    vd_ThisDate date := SYSDATE;
+"
+"  begin
+"
+"    update reco_toff_panels
+"
+"    set creation_date = vd_ThisDate,
+"
+"        created_by = pi_UserID,
+"
+"        last_update_date = vd_ThisDate,
+"
+"        last_updated_by = pi_UserID,
+"
+"        last_update_login = pi_LoginId
+"
+"    where toff_struct_id = vn_DestinationStructId;
+"
+"
+"
+"    update reco_toff_parts
+"
+"    set creation_date = vd_ThisDate,
+"
+"        created_by = pi_UserID,
+"
+"        last_update_date = vd_ThisDate,
+"
+"        last_updated_by = pi_UserID,
+"
+"        last_update_login = pi_LoginId
+"
+"    where toff_struct_id = vn_DestinationStructId;
+"
+"
+"
+"    if vb_IsRevision = FALSE
+"
+"    then
+"
+"      update reco_toff_structs
+"
+"      set creation_date = vd_ThisDate,
+"
+"          created_by = pi_UserID,
+"
+"          last_update_date = vd_ThisDate,
+"
+"          last_updated_by = pi_UserID,
+"
+"          last_update_login = pi_LoginId
+"
+"      where toff_struct_id = vn_DestinationStructId;
+"
+"    elsif vb_IsRevision = TRUE
+"
+"    then
+"
+"      update reco_toff_structs
+"
+"      set last_update_date = vd_ThisDate,
+"
+"          last_updated_by = pi_UserID,
+"
+"          last_update_login = pi_LoginId
+"
+"      where toff_struct_id = vn_DestinationStructId;
+"
+"    end if;
+"
+"  end;
+"
+"
+"
+"  -- Commit everything
+"
+"  --COMMIT;
+"
+"
+"
+"  po_StrIdModified := vn_DestinationStructId;
+"
+"
+"
+"  -- Now that EVERYTHING has been processed properly, we can inform
+"
+"  -- people of a revision.
+"
+"  -- It all gets handled nicely in one method
+"
+"
+"
+"  vc_TempErrorMsg := send_wall_change_email(vn_DestinationStructId,TRUE);
+"
+"
+"
+"  if vc_TempErrorMsg != 'DONE'
+"
+"  then rollback;
+"
+"        return vc_TempErrorMsg;
+"
+"  end if;
+"
+"
+"
+"  -- set this variable here
+"
+"  --commit_during_calc := TRUE;
+"
+"
+"
+"  -- this function is finished, but caller may want to check the
+"
+"  -- message_count function to see if any warnings occured
+"
+"
+"
+"  -- call coordinate import procedure
+"
+"  -- 7/19  determines whether to import, commits, adds warnings as needed
+"
+"  --
+"
+"  prec_takeoff.coord_import( vn_DestinationStructId, pi_importid );
+"
+"  
+"
+"  --added by komal 12-APR-26 
+"
+"  
+"
+"  delete from reco_toff_part_pending
+"
+"  where toff_struct_pending_id = pi_ImportId;
+"
+"
+"
+"  delete from reco_toff_panel_pending
+"
+"  where toff_struct_pending_id = pi_ImportId;
+"
+"
+"
+"  delete from reco_toff_struct_pending
+"
+"  where toff_struct_pending_id = pi_ImportId;
+"
+"  
+"
+"  COMMIT;
+"
+"  --
+"
+"
+"
+"  did_complete := TRUE;
+"
+"  RETURN 'DONE';
+"
+"END; -- import_structure
+"
+"
+"
+"-- imports existing structure coordinates
+"
+"procedure process_coord_import( errbuf out varchar2, retcode out number, p_struct_pending_id in number, p_takeoff in number ) is
+"
+"
+"
+"thisstruct  reco_toff_struct_coords%ROWTYPE;
+"
+"thispanel   reco_toff_panel_coords%ROWTYPE;
+"
+"finalpanel    reco_toff_panel_coordinates%ROWTYPE;
+"
+"thisstructid  reco_toff_panel_coordinates.toff_struct_id%TYPE;
+"
+"matchedpanelid  reco_toff_panel_coordinates.toff_panel_id%TYPE;
+"
+"
+"
+"cursor getstruct is select * from reco_toff_struct_coords where toff_struct_pending_id = p_struct_pending_id;
+"
+"
+"
+"cursor getpanels is select * from reco_toff_panel_coords where toff_struct_pending_id = p_struct_pending_id;
+"
+"
+"
+"-- we take first instance of structure: if they duplicate its on them
+"
+"cursor lookforstructure( pnum varchar2, prod varchar2, sname varchar2 )  is
+"
+"   select toff_struct_id from reco_toff_structs ts, prec_project_products pp, prec_projects p
+"
+"   where p.project_number = pnum
+"
+"    and  pp.project_id = p.project_id and pp.product_code = prod
+"
+"    and  ts.toff_job_id = pp.product_code and structure_name = sname
+"
+"    order by creation_date desc;
+"
+"
+"
+"-- search for panel type in takeoff, we use exact match
+"
+"-- 8/7 toff_panel_id is stored in import record now, we do not need to search
+"
+" cursor getmatch( pendingid number ) is
+"
+"   select toff_panel_id from reco_toff_panel_pending
+"
+"    where toff_panel_pending_id = pendingid;
+"
+"
+"
+"   cursor getpanel( tsid number, p_x number, p_y number, p_z number ) is
+"
+"                 select * from reco_toff_panel_coordinates
+"
+"                       where toff_struct_id = tsid
+"
+"                         --and toff_panel_id = tpid  just look for coords only
+"
+"                         and x = p_x and y = p_y and z = p_z;
+"
+"
+"
+"   isnew  boolean := false;
+"
+"   lastcoord  varchar2(100);
+"
+"begin
+"
+"
+"
+"  open getstruct;
+"
+"  fetch getstruct into thisstruct;
+"
+"  if getstruct%NOTFOUND then
+"
+"     close getstruct;
+"
+"     errbuf := 'No takeoff found for :'||to_char(p_struct_pending_id);
+"
+"     retcode := -101;
+"
+"     return;
+"
+"  end if;
+"
+"  close getstruct;
+"
+"
+"
+"  -- there are no panels for wire walls, so do not import coords
+"
+"  if thisstruct.product_code in ('TRL', 'VTL', 'VTR', 'OTL', 'CTT', 'CT1', 'CT2', 'CT3') then
+"
+"     return;
+"
+"     end if;
+"
+"  if p_takeoff is null then
+"
+"     open lookforstructure( thisstruct.project_number,
+"
+"                         thisstruct.product_code,
+"
+"                         thisstruct.structure_name );
+"
+"     fetch lookforstructure into thisstructid;
+"
+"     if lookforstructure%NOTFOUND then
+"
+"        close lookforstructure;
+"
+"        errbuf := 'No imported takeoff found for :'||thisstruct.project_number||','||thisstruct.product_code||','||thisstruct.structure_name;
+"
+"        retcode := -102;
+"
+"        return;
+"
+"     end if;
+"
+"     close lookforstructure;
+"
+"  else
+"
+"     thisstructid := p_takeoff;
+"
+"  end if;
+"
+"    prec_takeoff.warning( 'Structure ID:'||to_char(thisstructid) );
+"
+"  -- update coords to all 'Invalid'
+"
+"  --   then for each import panel, search for type
+"
+"  --   look for type + x,y,z, if match, update to Valid
+"
+"  --   if no match, insert new item as Valid
+"
+"  --   at end, invalids are those that do not match new coordinate array
+"
+"
+"
+"  savepoint coordinates;
+"
+"
+"
+"  update reco_toff_panel_coordinates set panel_status = 'Invalid' where toff_struct_id = thisstructid;
+"
+"
+"
+"  for thispanel in getpanels loop
+"
+"      matchedpanelid := null;
+"
+"      finalpanel := null;
+"
+"      isnew := false;
+"
+"      lastcoord := thispanel.panel_name||'-'||to_char(thispanel.x)||','||to_char(thispanel.y)||','||to_char(thispanel.z);
+"
+"   -- prec_takeoff.warning( lastcoord );
+"
+"
+"
+"      open getmatch( thispanel.toff_panel_pending_id );
+"
+"      fetch getmatch into matchedpanelid;
+"
+"      if getmatch%NOTFOUND then
+"
+"         matchedpanelid := null;
+"
+"      end if;
+"
+"      close getmatch;
+"
+"   -- prec_takeoff.warning( to_char(matchedpanelid) );
+"
+"
+"
+"      /* not needed 8/7 open matchtakeoff( thisstructid, thispanel.panel_name,
+"
+"                                       thispanel.tie_strip_quantity,
+"
+"                                       thispanel.panel_reinforcements,
+"
+"                                       thispanel.panel_finish,
+"
+"                                       thispanel.width,
+"
+"                                       thispanel.thickness,
+"
+"                                       thispanel.panel_additions,
+"
+"                                       thispanel.area_per_piece );
+"
+"      fetch matchtakeoff into matchedpanelid;
+"
+"      close matchtakeoff; */
+"
+"
+"
+"      if matchedpanelid is not null then
+"
+"         open getpanel( thisstructid, thispanel.x, thispanel.y, thispanel.z );
+"
+"         fetch getpanel into finalpanel;
+"
+"         close getpanel;
+"
+"      end if;
+"
+"      if finalpanel.panel_coord_id is null then
+"
+"         -- new panel coord, set up
+"
+"         finalpanel.toff_struct_id := thisstructid;
+"
+"         finalpanel.toff_panel_id := matchedpanelid;
+"
+"         finalpanel.x := thispanel.x;
+"
+"         finalpanel.y := thispanel.y;
+"
+"         finalpanel.z := thispanel.z;
+"
+"         finalpanel.PANEL_ROW := thispanel.panel_row;
+"
+"         finalpanel.PANEL_COLUMN := thispanel.panel_column;
+"
+"         finalpanel.LEFTFFHEIGHT := thispanel.leftffheight;
+"
+"         finalpanel.RIGHTFFHEIGHT := thispanel.rightffheight;
+"
+"         finalpanel.LINER_TYPE := thispanel.liner_type;
+"
+"         finalpanel.TOPWIDTH := thispanel.topwidth;
+"
+"         finalpanel.concretevolume := thispanel.concretevolume;
+"
+"         finalpanel.created_by := thispanel.created_by;
+"
+"         finalpanel.creation_date := thispanel.creation_date;
+"
+"         isnew := true;
+"
+"      end if;
+"
+"      finalpanel.panel_status := 'Valid';
+"
+"      finalpanel.toff_struct_id := thisstructid;
+"
+"      finalpanel.toff_panel_id := matchedpanelid;
+"
+"      finalpanel.last_update_date := thispanel.last_update_date;
+"
+"      finalpanel.last_updated_by := thispanel.last_updated_by;
+"
+"      finalpanel.last_update_login := thispanel.last_update_login;
+"
+"
+"
+"      if isnew then
+"
+"    --prec_takeoff.warning( 'Insert' );
+"
+"
+"
+"        insert into reco_toff_panel_coordinates values finalpanel;
+"
+"      else
+"
+"   -- prec_takeoff.warning( 'Update' );
+"
+"        update reco_toff_panel_coordinates set row = finalpanel where panel_coord_id = finalpanel.panel_coord_id;
+"
+"      end if;
+"
+"   end loop;
+"
+"   --
+"
+"   commit;
+"
+"   retcode := 0;
+"
+"   errbuf := 'Coordinates Imported.';
+"
+"exception
+"
+"  when others then
+"
+"    errbuf := 'Failed at panel('||lastcoord||') --Loading Error:'||to_char(sqlcode);
+"
+"    retcode := sqlcode;
+"
+"
+"
+"    if getstruct%ISOPEN then
+"
+"       close getstruct;
+"
+"    end if;
+"
+"    if getpanels%ISOPEN then
+"
+"       close getpanels;
+"
+"    end if;
+"
+"    if getpanel%ISOPEN then
+"
+"       close getpanel;
+"
+"    end if;
+"
+"    if lookforstructure%ISOPEN then
+"
+"       close lookforstructure;
+"
+"    end if;
+"
+"    if getmatch%ISOPEN then
+"
+"       close getmatch;
+"
+"    end if;
+"
+"    rollback to coordinates;
+"
+"end;
+"
+"
+"
+"procedure coord_import( p_struct_id in number, p_import_id in varchar2 ) is
+"
+"/*
+"
+"  For structure name, determines most recent version of coordinates
+"
+"   checks for whether structure is
+"
+"      coordinate activated (takeoff create > coord start or coords exist)
+"
+"      import coordinates using above routine
+"
+"  otherwise, does nothing
+"
+"
+"
+"  THIS PROCEDURE SHOULD ONLY BE CALLED FROM prec_takeoff DURING IMPORT
+"
+"*/
+"
+"
+"
+"cursor checkstruct is  select ts.toff_struct_id, ts.structure_name, p.project_number, ts.creation_date
+"
+"        from reco_toff_structs ts, prec_project_products pp, prec_projects p
+"
+"        where toff_struct_id = p_struct_id and pp.product_id = ts.toff_job_id and p.project_id = pp.project_id;
+"
+"
+"
+"cursor coordsexist is select 'Y' from reco_toff_panel_coordinates where toff_struct_id = p_struct_id;
+"
+"doesexist varchar2(1) := 'N';
+"
+"
+"
+"structdata   checkstruct%ROWTYPE;
+"
+"
+"
+"searchproj varchar2(30);
+"
+"searchname varchar2(30);
+"
+"
+"
+"cursor lookforimports is select toff_struct_pending_id from reco_toff_struct_coords
+"
+"                          where project_number = searchproj
+"
+"                             and structure_name = searchname
+"
+"                         order by creation_date desc;
+"
+"
+"
+"lastimport  number;
+"
+"
+"
+"cutoffdate date;
+"
+"xx varchar2(2000);
+"
+"yy number;
+"
+"takeoffid number;
+"
+"begin
+"
+"
+"
+"  open checkstruct;
+"
+"  fetch checkstruct into structdata;
+"
+"  if checkstruct%NOTFOUND then
+"
+"    -- invalid id
+"
+"    close checkstruct;
+"
+"    prec_takeoff.warning('Invalid structure '||to_char(p_struct_id)||' for coordinates import' );
+"
+"    return;
+"
+"  end if;
+"
+"  close checkstruct;
+"
+"  -- now determine if we should even look at this
+"
+"  open coordsexist;
+"
+"  fetch coordsexist into doesexist;
+"
+"  if coordsexist%notfound then
+"
+"     doesexist := 'N';
+"
+"  end if;
+"
+"  close coordsexist;
+"
+"
+"
+"  if nvl(doesexist,'N') = 'Y'  then
+"
+"
+"
+"    -- 1/22/20 change to add import id from takeoff as we should know it
+"
+"     if p_import_id is null then
+"
+"        searchproj := structdata.project_number;
+"
+"        searchname := structdata.structure_name;
+"
+"
+"
+"        open lookforimports;
+"
+"        fetch lookforimports into lastimport;
+"
+"        if lookforimports%notfound then
+"
+"           close lookforimports;
+"
+"           prec_takeoff.warning('No coordinates found to import for '||searchproj||','||searchname );
+"
+"           return;
+"
+"        end if;
+"
+"        close lookforimports;
+"
+"        takeoffid  := p_struct_id;
+"
+"        else
+"
+"        lastimport := p_import_id;
+"
+"        takeoffid := p_struct_id;
+"
+"        end if;
+"
+"
+"
+"     process_coord_import( xx, yy, lastimport, takeoffid );
+"
+"     prec_takeoff.warning( xx );
+"
+"  end if;
+"
+"
+"
+"  end;
+"
+"
+"
+"
+"
+"-- builds wall panel list for pcf
+"
+"procedure generate_wall_panels( p_pcf in number )  is
+"
+"
+"
+"  cursor getwalls is select w.* from prec_pcf_walls w, prec_pcf p
+"
+"                      where p.pcf_id = p_pcf
+"
+"                         and w.pcf_id = p.pcf_id
+"
+"                         and exists ( select * from prec_pcf_panels
+"
+"                                     where pcf_id = w.pcf_id) ;
+"
+"
+"
+"  cursor getmeasure(pcf number) is select unit_of_measure
+"
+"                          from prec_pcf p
+"
+"                         where pcf_id = pcf;
+"
+"measuretype varchar2(1);
+"
+"walls   prec_pcf_walls%ROWTYPE;
+"
+"entry   prec_pcf_wall_panels%ROWTYPE;
+"
+"mark    prec_pcf_panels%ROWTYPE;
+"
+"  cursor getreq( pcf number) is select * from prec_pcf_panels
+"
+"          where pcf_id = pcf order by mark_number;
+"
+"
+"
+"  cursor matchtakeoff( struct number, pn varchar2, ties number, reins varchar2, fin varchar2,
+"
+"                       w varchar2, thick varchar2,
+"
+"                       adds varchar2, a varchar2 ) is
+"
+"   select toff_panel_id, quantity_required from reco_toff_panels
+"
+"     where toff_struct_id = struct
+"
+"      and panel_name = pn
+"
+"      and tie_strip_quantity = ties
+"
+"      and nvl(panel_reinforcements,'-') = nvl(reins,'-')
+"
+"      and nvl(panel_finish,'-') = nvl(fin,'-')
+"
+"      and ( nvl(width,0) = nvl(w,0) OR
+"
+"            nvl(width,0) = trunc(nvl(w,0),decode(measuretype,'E',2,'M',3)) OR
+"
+"            nvl(width,0) = round(nvl(w,0),decode(measuretype,'E',2,'M',3))  )
+"
+"      and (nvl(thickness,0) in (nvl(thick,0),decode(nvl(thick,0),0,-1,thick)) OR
+"
+"           nvl(thickness,0) = trunc(nvl(thick,0),2) OR
+"
+"           nvl(thickness,0) = round(nvl(thick,0),2) )
+"
+"      and nvl(panel_additions,'-') = nvl(adds,'-')
+"
+"      and ( nvl(area_per_piece,0) = nvl(a,0)  OR
+"
+"            trunc(nvl(area_per_piece,0),decode(measuretype,'E',2,'M',3)) = trunc(nvl(a,0),decode(measuretype,'E',2,'M',3)) OR
+"
+"            round(nvl(area_per_piece,0),decode(measuretype,'E',2,'M',3)) = round(nvl(a,0),decode(measuretype,'E',2,'M',3)) );
+"
+"myqty number;
+"
+"mypanelid number;
+"
+"crnt  varchar2(500);
+"
+"begin
+"
+"  -- remove entries for the revision and recreate
+"
+"  delete from prec_pcf_wall_panels where pcf_id = p_pcf;
+"
+"  commit;
+"
+"  for walls in getwalls loop
+"
+"      open getmeasure( walls.pcf_id);
+"
+"      fetch getmeasure into measuretype;
+"
+"      close getmeasure;
+"
+"
+"
+"      entry := null;
+"
+"      entry.pcf_id := walls.pcf_id;
+"
+"      entry.wall_name := walls.wall_name;
+"
+"      entry.structure_id := walls.structure_id;
+"
+"
+"
+"      for mark in getreq( walls.pcf_id) loop
+"
+"          if entry.structure_id is null then
+"
+"             -- no takeoff match, just present marks as is
+"
+"             entry.mark_number := mark.mark_number;
+"
+"             entry.quantity := mark.quantity_required;
+"
+"          else
+"
+"             open matchtakeoff( entry.structure_id, mark.panel_name,
+"
+"              mark.tie_strip_quantity, mark.panel_reinforcements,mark.panel_finish,
+"
+"              mark.width, mark.thickness, mark.panel_additions,
+"
+"              mark.area_per_piece );
+"
+"             fetch matchtakeoff into mypanelid, myqty;
+"
+"             if matchtakeoff%NOTFOUND then
+"
+"                -- we are ignoring past mark differences for import
+"
+"                mypanelid := null;
+"
+"                myqty := 0;
+"
+"             end if;
+"
+"             close matchtakeoff;
+"
+"             entry.mark_number := mark.mark_number;
+"
+"             --entry.toff_panel_id := mypanelid;
+"
+"             entry.quantity := myqty;
+"
+"
+"
+"          end if;
+"
+"       if entry.quantity <> 0 then
+"
+"          crnt := to_char(entry.pcf_id)||'/'||to_char(entry.mark_number)||'/'||entry.wall_name;
+"
+"          insert into prec_pcf_wall_panels values entry;
+"
+"       end if;
+"
+"       end loop;
+"
+"       commit;
+"
+"   end loop;
+"
+"exception
+"
+"when others then
+"
+"dbms_output.put_line( crnt );
+"
+"dbms_output.put_line(sqlerrm);
+"
+"
+"
+"end;
+"
+"
+"
+"procedure clear_prodimport(p_pcf in number) is
+"
+"begin
+"
+"  delete from reco_toff_pcf_import where pcf_id = p_pcf;
+"
+"end;
+"
+"
+"
+"procedure send_structure_to_prod( structureid in number,
+"
+"                                  pcfid in number )
+"
+"is
+"
+"  cursor check4wall
+"
+"  is
+"
+"    select  pcfwall.wall_area,
+"
+"            pcfwall.wall_name
+"
+"    from  reco_toff_structs toffs,
+"
+"          prec_pcf_walls pcfwall
+"
+"    where   pcfwall.pcf_id = pcfid
+"
+"    and     ( pcfwall.wall_name = toffs.structure_name
+"
+"              or
+"
+"              pcfwall.structure_id = toffs.toff_struct_id )
+"
+"    and     toffs.toff_struct_id = structureid;
+"
+"
+"
+"  curarea number := 0;
+"
+"  curname  varchar2(60);
+"
+"begin
+"
+"  clear_prodimport( pcfid );
+"
+"  commit;
+"
+"  -- changes as part of panel wall breakout
+"
+"  insert into reco_toff_pcf_import ( quantity, name, tiestrips, reinforcements, width, thickness,
+"
+"                           additions, finish, area, pcf_id, structure_id )
+"
+"  select quantity_required, panel_name, tie_strip_quantity, panel_reinforcements,
+"
+"         width, thickness, panel_additions, panel_finish, area_per_piece,
+"
+"         pcfid, toff_struct_id
+"
+"    from reco_toff_panels
+"
+"   where toff_struct_id = structureid;
+"
+"
+"
+"  -- now update wall info
+"
+"  open check4wall;
+"
+"  fetch check4wall into curarea, curname;
+"
+"  if check4wall%notfound then
+"
+"     curarea := -1;
+"
+"  end if;
+"
+"  close check4wall;
+"
+"
+"
+"  if curarea = -1      -- not found
+"
+"  then
+"
+"     insert into prec_pcf_walls (pcf_id,wall_name,wall_area, structure_id)
+"
+"      select pcfid, structure_name, total_area, toff_struct_id
+"
+"       from reco_toff_structs
+"
+"      where toff_struct_id = structureid;
+"
+"  else -- found wall, update area
+"
+"    update prec_pcf_walls
+"
+"    set structure_id = structureid,
+"
+"        wall_area = ( select total_area
+"
+"                      from reco_toff_structs
+"
+"                      where toff_struct_id = structureid )
+"
+"     where pcf_id = pcfid
+"
+"     and wall_name = curname
+"
+"     and nvl(structure_id,structureid) = structureid;
+"
+"  end if;
+"
+"
+"
+"end;
+"
+"
+"
+"procedure begin_prod_takeoff( pcfid in number ) is
+"
+"-- pcf is processed, screen already should have revised
+"
+"
+"
+"  CURSOR getproj IS
+"
+"   SELECT *
+"
+"     FROM prec_pcf v
+"
+"    WHERE v.pcf_id = pcfid;
+"
+"    thepcf  prec_pcf%ROWTYPE;
+"
+"--
+"
+"pcf  NUMBER;
+"
+"rev  NUMBER;
+"
+"pid  NUMBER;
+"
+"measuretype   VARCHAR2(1);
+"
+"product  VARCHAR2(3);
+"
+"CURSOR prods IS
+"
+"   SELECT COUNT(*), MAX(mark_number) FROM prec_pcf_panels
+"
+"    WHERE pcf_id = pcf;
+"
+"isrev NUMBER;
+"
+"maxmark NUMBER;
+"
+"CURSOR getnewdata IS
+"
+"   SELECT SUM(quantity) qty, NAME, tiestrips, reinforcements,
+"
+"          ROUND(width,3) width,
+"
+"          ROUND(thickness,2) thickness, NVL(additions,'-') additions, FINISH,
+"
+"          ROUND(area,3) area
+"
+"    FROM reco_toff_pcf_import
+"
+"   WHERE NAME != 'EXECUTE' and pcf_id = pcfid
+"
+"   GROUP BY NAME, tiestrips, reinforcements, ROUND(width,3),
+"
+"            ROUND(thickness,2),
+"
+"            NVL(additions,'-'),FINISH, ROUND(area,3)
+"
+"   ORDER BY FINISH, reinforcements, NAME, tiestrips;
+"
+"CURSOR getolddata( pcf number, n VARCHAR2, TIES NUMBER, reins VARCHAR2, w NUMBER,
+"
+"                   thick NUMBER, adds VARCHAR2, fin VARCHAR2, a NUMBER ) IS
+"
+"   SELECT quantity_required, mark_number, pc_id, thickness, width, area_per_piece
+"
+"     FROM prec_pcf_panels
+"
+"    WHERE pcf_id = pcf
+"
+"      AND panel_name = n
+"
+"      AND tie_strip_quantity = TIES
+"
+"      AND NVL(panel_reinforcements,'-') = NVL(reins,'-')
+"
+"      AND NVL(panel_finish,'-') = NVL(fin,'-')
+"
+"      AND ( NVL(width,0) = NVL(w,0) OR
+"
+"            NVL(width,0) = TRUNC(NVL(w,0),3) OR
+"
+"            NVL(width,0) = ROUND(NVL(w,0),3)  )
+"
+"      AND (NVL(thickness,0) IN (NVL(thick,0),DECODE(NVL(thick,0),0,-1,thick)) OR
+"
+"           NVL(thickness,0) = TRUNC(NVL(thick,0),2) OR
+"
+"           NVL(thickness,0) = ROUND(NVL(thick,0),2) )
+"
+"      AND NVL(panel_additions,'-') = NVL(adds,'-')
+"
+"      AND ( NVL(area_per_piece,0) = NVL(A,0)  OR
+"
+"            TRUNC(NVL(area_per_piece,0),3) = TRUNC(NVL(A,0),3) OR
+"
+"            ROUND(NVL(area_per_piece,0),3) = ROUND(NVL(A,0),3) );
+"
+"
+"
+"CURSOR getdefaults( prod VARCHAR2 ) IS
+"
+"  SELECT default_additions, default_reinforcements, default_width FROM prec_products
+"
+"   WHERE product_code = prod;
+"
+"
+"
+"dfltre       prec_pcf_panels.panel_reinforcements%TYPE;
+"
+"dfltfi       prec_pcf_panels.panel_finish%TYPE;
+"
+"dfltad       prec_pcf_panels.panel_additions%TYPE;
+"
+"dfltwi       prec_pcf_panels.width%TYPE;
+"
+"dfltth       prec_pcf_panels.thickness%TYPE;
+"
+"
+"
+"
+"
+"quan  NUMBER;
+"
+"mark  NUMBER;
+"
+"pcid  NUMBER;
+"
+"oldthk NUMBER;
+"
+"oldwid NUMBER;
+"
+"oldarea NUMBER;
+"
+"thk   NUMBER := 0;
+"
+"
+"
+"description VARCHAR2(80);
+"
+"BEGIN
+"
+"  --INSERT INTO prodimport( NAME ) VALUES ( 'EXECUTE' );
+"
+"  IF pcfid IS NOT NULL
+"
+"  THEN
+"
+"     UPDATE prec_pcf SET takeoff_date = TRUNC(SYSDATE)
+"
+"      WHERE pcf_id = pcfid AND takeoff_date IS NULL ;
+"
+"     UPDATE prec_pcf SET revision_date = TRUNC(SYSDATE)
+"
+"      WHERE pcf_id = pcfid;
+"
+"      commit;
+"
+"
+"
+"  END IF;
+"
+"  pcf := pcfid;
+"
+"  OPEN getproj;
+"
+"  FETCH getproj INTO thepcf;
+"
+"  IF thepcf.pcf_id IS NULL THEN
+"
+"     CLOSE getproj;
+"
+"     RAISE NO_DATA_FOUND;
+"
+"  END IF;
+"
+"  CLOSE getproj;
+"
+"  pid := thepcf.project_id;
+"
+"  
+"
+"  open getdefaults( product );
+"
+"  fetch getdefaults into dfltad, dfltre, dfltwi;
+"
+"  CLOSE getdefaults;
+"
+"
+"
+"  OPEN prods;
+"
+"  FETCH prods INTO isrev, maxmark;
+"
+"  CLOSE prods;
+"
+"  IF isrev = 0 THEN  -- new pcf, need to just dump data in
+"
+"     mark := 0;
+"
+"     FOR eachone IN getnewdata LOOP
+"
+"       mark := mark + 1;
+"
+"       IF NVL(eachone.thickness,-1) = -1 THEN
+"
+"          thk := 0;
+"
+"       ELSE
+"
+"          thk := eachone.thickness;
+"
+"       END IF;
+"
+"  description := '(';
+"
+"  IF dfltre <> eachone.reinforcements THEN
+"
+"     description := description||eachone.reinforcements;
+"
+"  END IF;
+"
+"  IF dfltwi <> eachone.width THEN
+"
+"     description := description||LTRIM(TO_CHAR(eachone.width,'90.00'));
+"
+"  END IF;
+"
+"  IF dfltad <> eachone.additions THEN
+"
+"     description := description||eachone.additions;
+"
+"  END IF;
+"
+"
+"
+"  IF description = '(' THEN
+"
+"     description := NULL;
+"
+"  ELSE
+"
+"     description := description||')';
+"
+"  END IF;
+"
+"  IF NVL(eachone.tiestrips,0) = 0 THEN
+"
+"     description := eachone.name||description;
+"
+"  ELSE
+"
+"     description := eachone.name||LTRIM(TO_CHAR(eachone.tiestrips))||description;
+"
+"  END IF;
+"
+"
+"
+"       INSERT INTO prec_pcf_panels ( pc_id, project_id,
+"
+"              pcf_id, mark_number, quantity_required,
+"
+"              panel_name, tie_strip_quantity, panel_reinforcements,
+"
+"              panel_finish, width, thickness, panel_additions, area_per_piece,
+"
+"              last_update_date, last_updated_by, creation_date, created_by,
+"
+"              mark_description )  VALUES
+"
+"              ( prec_pc_id_seq.nextval,
+"
+"              pid, pcfid, mark, eachone.qty, eachone.name,
+"
+"              eachone.tiestrips, eachone.reinforcements, eachone.finish,
+"
+"              eachone.width, thk, eachone.additions, eachone.area,
+"
+"              NULL,NULL,NULL,NULL,description );
+"
+"     END LOOP;
+"
+"  ELSE
+"
+"     -- check revised marks against recorded ones and update
+"
+"     FOR eachone IN getnewdata LOOP
+"
+"       IF NVL(eachone.thickness,-1) = -1 THEN
+"
+"            thk := 0;
+"
+"         ELSE
+"
+"            thk := eachone.thickness;
+"
+"         END IF;
+"
+"         OPEN getolddata( pcfid, eachone.name, eachone.tiestrips, eachone.reinforcements,
+"
+"               eachone.width, thk, eachone.additions,
+"
+"               eachone.finish, eachone.area );
+"
+"         FETCH getolddata INTO quan, mark, pcid, oldthk, oldwid, oldarea;
+"
+"         IF getolddata%NOTFOUND THEN
+"
+"            quan := 0;
+"
+"            mark := 0;
+"
+"            pcid := 0;
+"
+"         END IF;
+"
+"         CLOSE getolddata;
+"
+"         IF pcid != 0 THEN  -- means we found this mark
+"
+"            dbms_output.put_line( eachone.name||' '||mark );
+"
+"            IF quan != eachone.qty THEN   -- mark changed quantities
+"
+"               UPDATE prec_pcf_panels
+"
+"                  SET quantity_required = eachone.qty
+"
+"                WHERE pc_id = pcid ;
+"
+"            END IF;
+"
+"               IF oldthk != thk THEN
+"
+"                  UPDATE prec_pcf_panels
+"
+"                     SET thickness = thk
+"
+"                   WHERE pc_id = pcid ;
+"
+"               END IF;
+"
+"               IF oldwid != eachone.width THEN
+"
+"                  UPDATE prec_pcf_panels
+"
+"                     SET width = eachone.width
+"
+"                   WHERE pc_id = pcid ;
+"
+"               END IF;
+"
+"               IF oldarea != eachone.area THEN
+"
+"                  UPDATE prec_pcf_panels
+"
+"                     SET area_per_piece = eachone.area
+"
+"                   WHERE pc_id = pcid;
+"
+"               END IF;
+"
+"            -- otherwise, keep going
+"
+"         ELSE  -- mark not found, append new mark
+"
+"  description := '(';
+"
+"  IF dfltre <> eachone.reinforcements THEN
+"
+"     description := description||eachone.reinforcements;
+"
+"  END IF;
+"
+"  IF dfltwi <> eachone.width THEN
+"
+"     description := description||LTRIM(TO_CHAR(eachone.width,'90.00'));
+"
+"  END IF;
+"
+"  IF dfltad <> eachone.additions THEN
+"
+"     description := description||eachone.additions;
+"
+"  END IF;
+"
+"
+"
+"  IF description = '(' THEN
+"
+"     description := NULL;
+"
+"  ELSE
+"
+"     description := description||')';
+"
+"  END IF;
+"
+"  IF NVL(eachone.tiestrips,0) = 0 THEN
+"
+"     description := eachone.name||description;
+"
+"  ELSE
+"
+"     description := eachone.name||LTRIM(TO_CHAR(eachone.tiestrips))||description;
+"
+"  END IF;
+"
+"
+"
+"            INSERT INTO prec_pcf_panels ( pc_id, project_id,
+"
+"              pcf_id, mark_number, quantity_required,
+"
+"              panel_name, tie_strip_quantity, panel_reinforcements,
+"
+"              panel_finish, width, thickness, panel_additions, area_per_piece,
+"
+"              last_update_date, last_updated_by, creation_date, created_by,
+"
+"              mark_description )  VALUES
+"
+"              ( prec_pc_id_seq.nextval,
+"
+"              pid, pcf, maxmark+1, eachone.qty, eachone.name,
+"
+"              eachone.tiestrips, eachone.reinforcements, eachone.finish,
+"
+"              eachone.width, eachone.thickness, eachone.additions, eachone.area,
+"
+"              NULL,NULL,NULL,NULL, description );
+"
+"            maxmark := maxmark + 1;
+"
+"         END IF;
+"
+"     END LOOP;
+"
+"     -- now update old marks that now have no match
+"
+"     UPDATE prec_pcf_panels
+"
+"          SET quantity_required = 0
+"
+"      WHERE pcf_id = pcfid
+"
+"        AND NOT EXISTS ( SELECT * FROM reco_toff_pcf_import  p
+"
+"             WHERE NAME = panel_name
+"
+"               AND NVL(tiestrips,0) = NVL(tie_strip_quantity,0)
+"
+"               AND NVL(reinforcements,'-') = NVL(panel_reinforcements,'-')
+"
+"               AND NVL(FINISH,'-') = NVL(panel_finish,'-')
+"
+"               AND ( NVL(p.width,0) = NVL(prec_pcf_panels.width,0) OR
+"
+"                     TRUNC(NVL(p.width,0),3) = NVL(prec_pcf_panels.width,0) OR
+"
+"                     ROUND(NVL(p.width,0),3) = NVL(prec_pcf_panels.width,0) )
+"
+"               AND ( NVL(p.thickness,-1) = NVL(prec_pcf_panels.thickness,-1) OR
+"
+"                     TRUNC(NVL(DECODE(p.thickness,0,-1,p.thickness),-1),2) =
+"
+"                          NVL(prec_pcf_panels.thickness,-1) OR
+"
+"                     ROUND(NVL(DECODE(p.thickness,0,-1,p.thickness),-1),2) =
+"
+"                          NVL(prec_pcf_panels.thickness,-1) )
+"
+"               AND NVL(additions,'-') = NVL(panel_additions,'-')
+"
+"               AND ( NVL(area_per_piece,0) = NVL(area,0)  OR
+"
+"                     NVL(area_per_piece,0) = TRUNC(NVL(area,0),3) OR
+"
+"                     NVL(area_per_piece,0) = ROUND(NVL(area,0),3) ) );
+"
+"   END IF;
+"
+"
+"
+"   update prec_pcf set surface_area = (select sum(area_per_piece*quantity_required) from prec_pcf_panels where pcf_id = prec_pcf.pcf_id)
+"
+"     where pcf_id = pcfid;
+"
+"     
+"
+"     clear_prodimport( pcfid );
+"
+"-- ignoring 0 qty marks
+"
+"  --reco_toff_coordinates.generate_wall_panels( pcf, rev );
+"
+"
+"
+"--committed by calling process
+"
+"exception 
+"
+"  when others then 
+"
+"    raise;
+"
+"end;
+"
+"
+"
+"
+"
+END prec_takeoff;
+
+
+
+SELECT object_name,
+       object_type,
+       status
+FROM user_objects
+WHERE object_name IN (
+    'RECO_TOFFPANPEND_SEQ',
+    'RECO_TOFFPARPEND_SEQ',
+    'RECO_TOFF_JOBS_V',
+    'RECO_TOFF_PANEL_PENDING',
+    'RECO_TOFF_STRUCT_PENDING'
+)
+ORDER BY object_name;
+
+RECO_TOFFPANPEND_SEQ	SEQUENCE	VALID
+RECO_TOFFPARPEND_SEQ	SEQUENCE	VALID
+RECO_TOFF_JOBS_V	VIEW	VALID
+RECO_TOFF_PANEL_PENDING	TABLE	VALID
+RECO_TOFF_STRUCT_PENDING	TABLE	VALID
+
+
+in prod
+
+SELECT object_name,
+       object_type,
+       status
+FROM user_objects
+WHERE object_name IN (
+    'PREC_CTW_PENDING_LOADER',
+    'PREC_DOCUMENT',
+    'PREC_DOCUMENT_BI',
+    'PREC_TAKEOFF',
+    'PREC_TW_JSON',
+    'PREC_TW_JSON_V',
+    'PREC_TWALL_JSON_BUILDER'
+)
+ORDER BY object_type, object_name;
+
+PREC_TAKEOFF	PACKAGE	VALID
+PREC_TAKEOFF	PACKAGE BODY	VALID
+PREC_DOCUMENT	TABLE	VALID:
