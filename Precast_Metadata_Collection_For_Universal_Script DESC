@@ -1,0 +1,1226 @@
+/* PRECAST WEB / ORACLE / JOB COST - METADATA COLLECTION SCRIPT */
+SET LINESIZE 250
+SET PAGESIZE 500
+SET LONG 100000
+SET LONGCHUNKSIZE 100000
+SET TRIMSPOOL ON
+SET VERIFY OFF
+SET SERVEROUTPUT ON
+
+PROMPT ===== A. ORACLE EBS / RECO OBJECTS =====
+DESC RECO.RECO_PCF_V
+DESC RECO.RECO_PCF
+DESC RECO.RECO_PCF_CURRENT
+DESC RECO.RECO_PRODUCTION
+DESC RECO.RECO_PRODUCTION_V
+DESC RECO.RECO_PRODUCTION_REQUIREMENTS
+DESC RECO.RECO_LOT_NUMBERS
+DESC RECO.RECO_LB_PROD_BILLING
+DESC RECO.RECO_FLORIDA_PROD_BILLING
+DESC RECO.RECO_PRECAST_LINKAGE
+DESC RECO.RECO_PRECAST_EXPENDITURES
+
+PROMPT ===== B. ORACLE PROJECTS OBJECTS =====
+DESC APPS.PA_TRANSACTION_INTERFACE_ALL
+DESC APPS.PA_EXPENDITURE_ITEMS_ALL
+DESC APPS.PA_PROJECTS_ALL
+DESC APPS.PA_TASKS
+
+PROMPT ===== C. PRECAST WEB OBJECTS THROUGH RECOWEBPROD =====
+DESC PREC_PCF@RECOWEBPROD
+DESC PREC_PCF_PANELS@RECOWEBPROD
+DESC PREC_TRANS_HEADER@RECOWEBPROD
+DESC PREC_TRANSACTIONS@RECOWEBPROD
+DESC PREC_BATCHES@RECOWEBPROD
+DESC PREC_BATCH_HEADERS@RECOWEBPROD
+DESC PREC_BATCH_TRANSACTIONS@RECOWEBPROD
+DESC WEB_RE_OUTBOUND_LOTS@RECOWEBPROD
+DESC WEB_RE_OUTBOUND_PROD@RECOWEBPROD
+
+===== A. ORACLE EBS / RECO OBJECTS =====
+Name                      Null?    Type          
+------------------------- -------- ------------- 
+PROJECT_NUM               NOT NULL VARCHAR2(25)  
+PROJECT_STATUS            NOT NULL VARCHAR2(30)  
+TASK_NUMBER               NOT NULL VARCHAR2(25)  
+VENDOR_NAME                        VARCHAR2(240) 
+VENDOR_SITE_CODE                   VARCHAR2(15)  
+DESCRIPTION                        VARCHAR2(50)  
+EXPENDITURE_TYPE          NOT NULL VARCHAR2(30)  
+REVISION_NUMBER           NOT NULL NUMBER        
+UNIT_PRICE                         NUMBER        
+TAKEOFF_DATE                       DATE          
+REVISION_DATE                      DATE          
+REQUIRED_PSI                       NUMBER        
+PROJECT_NAME              NOT NULL VARCHAR2(30)  
+DISTRIBUTION_RULE                  VARCHAR2(30)  
+TASK_NAME                 NOT NULL VARCHAR2(20)  
+VENDOR_ADDRESS                     VARCHAR2(866) 
+PROJECT_ID                NOT NULL NUMBER        
+TASK_ID                   NOT NULL NUMBER        
+VENDOR_ID                          NUMBER        
+VENDOR_SITE_ID                     NUMBER        
+PCF_ID                    NOT NULL NUMBER        
+VENDOR_NUM                         VARCHAR2(30)  
+SHIPPING_COST                      NUMBER        
+SHIPPING_TASK_ID                   NUMBER        
+SHIPPING_EXPENDITURE_TYPE          VARCHAR2(30)  
+SHIPPING_TASK_NUMBER               VARCHAR2(25)  
+PCT_COMPLETE                       NUMBER        
+CASTING_FINISH_FACTOR              NUMBER        
+PCF_TYPE                  NOT NULL VARCHAR2(1)   
+DEFAULT_CONCRETE_TYPE              VARCHAR2(20)  
+DIRECT_COST                        NUMBER        
+CREATED_BY                NOT NULL NUMBER(15)    
+CREATION_DATE             NOT NULL DATE          
+LAST_UPDATED_BY           NOT NULL NUMBER(15)    
+LAST_UPDATE_DATE          NOT NULL DATE          
+LAST_UPDATE_LOGIN         NOT NULL NUMBER(15)    
+rowid                              ROWID         
+SHIPPING_TASK_NAME                 VARCHAR2(20)  
+PO_NUMBER                          VARCHAR2(50)  
+Name                      Null?    Type         
+------------------------- -------- ------------ 
+PCF_ID                    NOT NULL NUMBER       
+REVISION_NUMBER           NOT NULL NUMBER       
+PROJECT_ID                NOT NULL NUMBER       
+TASK_ID                   NOT NULL NUMBER       
+EXPENDITURE_TYPE          NOT NULL VARCHAR2(30) 
+VENDOR_ID                          NUMBER       
+VENDOR_SITE_ID                     NUMBER       
+UNIT_PRICE                         NUMBER       
+TAKEOFF_DATE                       DATE         
+LAST_UPDATE_DATE          NOT NULL DATE         
+LAST_UPDATED_BY           NOT NULL NUMBER(15)   
+CREATION_DATE             NOT NULL DATE         
+CREATED_BY                NOT NULL NUMBER(15)   
+LAST_UPDATE_LOGIN         NOT NULL NUMBER(15)   
+REVISION_DATE                      DATE         
+REQUIRED_PSI                       NUMBER       
+DESCRIPTION                        VARCHAR2(50) 
+SHIPPING_COST                      NUMBER       
+SHIPPING_TASK_ID                   NUMBER       
+SHIPPING_EXPENDITURE_TYPE          VARCHAR2(30) 
+PCT_COMPLETE                       NUMBER       
+CASTING_FINISH_FACTOR              NUMBER       
+PCF_TYPE                  NOT NULL VARCHAR2(1)  
+DEFAULT_CONCRETE_TYPE              VARCHAR2(20) 
+DIRECT_COST                        NUMBER       
+PO_NUMBER                          VARCHAR2(50) 
+Name              Null?    Type       
+----------------- -------- ---------- 
+PCF_ID            NOT NULL NUMBER     
+REVISION_NUMBER   NOT NULL NUMBER     
+LAST_UPDATE_DATE  NOT NULL DATE       
+LAST_UPDATED_BY   NOT NULL NUMBER(15) 
+CREATION_DATE     NOT NULL DATE       
+CREATED_BY        NOT NULL NUMBER(15) 
+LAST_UPDATE_LOGIN NOT NULL NUMBER(15) 
+Name              Null?    Type       
+----------------- -------- ---------- 
+PRODUCTION_ID     NOT NULL NUMBER     
+PROJECT_ID        NOT NULL NUMBER     
+PC_ID             NOT NULL NUMBER     
+LOT_ID            NOT NULL NUMBER     
+QUANTITY_PRODUCED NOT NULL NUMBER     
+LAST_UPDATE_DATE  NOT NULL DATE       
+LAST_UPDATED_BY   NOT NULL NUMBER(15) 
+CREATION_DATE     NOT NULL DATE       
+CREATED_BY        NOT NULL NUMBER(15) 
+LAST_UPDATE_LOGIN NOT NULL NUMBER(15) 
+Name                 Null?    Type         
+-------------------- -------- ------------ 
+MARK_NUMBER          NOT NULL NUMBER       
+LOT_NUMBER           NOT NULL VARCHAR2(25) 
+QUANTITY_PRODUCED    NOT NULL NUMBER       
+LOT_DATE             NOT NULL DATE         
+AREA_PER_PIECE                NUMBER       
+AREA_TOTAL                    NUMBER       
+PANEL_NAME                    VARCHAR2(25) 
+TIE_STRIP_QUANTITY            NUMBER       
+PANEL_REINFORCEMENTS          VARCHAR2(10) 
+PANEL_FINISH                  VARCHAR2(25) 
+WIDTH                         NUMBER       
+THICKNESS                     NUMBER       
+PANEL_ADDITIONS               VARCHAR2(25) 
+PRODUCTION_ID        NOT NULL NUMBER       
+PROJECT_ID           NOT NULL NUMBER       
+PC_ID                NOT NULL NUMBER       
+LOT_ID               NOT NULL NUMBER       
+TASK_ID              NOT NULL NUMBER       
+PCF_ID               NOT NULL NUMBER       
+BILLED_FLAG                   VARCHAR2(1)  
+BILLED_DATE                   DATE         
+LOT_TYPE             NOT NULL VARCHAR2(25) 
+STRENGTH_7_DAY                NUMBER       
+STRENGTH_28_DAY               NUMBER       
+TEST_METHOD                   VARCHAR2(25) 
+TEST_DAYS                     NUMBER       
+WACO_LOT_ID                   NUMBER       
+QUANTITY_REQUIRED    NOT NULL NUMBER       
+REQ_TOTAL                     NUMBER       
+QUANTITY_BILLED      NOT NULL NUMBER       
+CREATED_BY           NOT NULL NUMBER(15)   
+CREATION_DATE        NOT NULL DATE         
+LAST_UPDATED_BY      NOT NULL NUMBER(15)   
+LAST_UPDATE_DATE     NOT NULL DATE         
+LAST_UPDATE_LOGIN    NOT NULL NUMBER(15)   
+rowid                         ROWID        
+Name                 Null?    Type         
+-------------------- -------- ------------ 
+PC_ID                NOT NULL NUMBER       
+PROJECT_ID           NOT NULL NUMBER       
+PCF_ID               NOT NULL NUMBER       
+REVISION_NUMBER      NOT NULL NUMBER       
+MARK_NUMBER          NOT NULL NUMBER       
+QUANTITY_REQUIRED    NOT NULL NUMBER       
+QUANTITY_BILLED      NOT NULL NUMBER       
+PANEL_NAME                    VARCHAR2(25) 
+TIE_STRIP_QUANTITY            NUMBER       
+PANEL_REINFORCEMENTS          VARCHAR2(10) 
+PANEL_FINISH                  VARCHAR2(25) 
+WIDTH                         NUMBER       
+THICKNESS                     NUMBER       
+PANEL_ADDITIONS               VARCHAR2(25) 
+AREA_PER_PIECE                NUMBER       
+LAST_UPDATE_DATE     NOT NULL DATE         
+LAST_UPDATED_BY      NOT NULL NUMBER(15)   
+CREATION_DATE        NOT NULL DATE         
+CREATED_BY           NOT NULL NUMBER(15)   
+LAST_UPDATE_LOGIN    NOT NULL NUMBER(15)   
+PANEL_DESCRIPTION             VARCHAR2(80) 
+Name              Null?    Type         
+----------------- -------- ------------ 
+LOT_ID            NOT NULL NUMBER       
+PCF_ID            NOT NULL NUMBER       
+LOT_NUMBER        NOT NULL VARCHAR2(25) 
+LOT_TYPE          NOT NULL VARCHAR2(25) 
+LOT_DATE          NOT NULL DATE         
+STRENGTH_7_DAY             NUMBER       
+STRENGTH_28_DAY            NUMBER       
+TEST_METHOD                VARCHAR2(25) 
+TEST_DAYS                  NUMBER       
+BILLED_FLAG                VARCHAR2(1)  
+BILLED_DATE                DATE         
+LAST_UPDATE_DATE  NOT NULL DATE         
+LAST_UPDATED_BY   NOT NULL NUMBER(15)   
+CREATION_DATE     NOT NULL DATE         
+CREATED_BY        NOT NULL NUMBER(15)   
+LAST_UPDATE_LOGIN NOT NULL NUMBER(15)   
+WACO_LOT_ID                NUMBER       
+PRECAST_LOT_ID             NUMBER       
+Name             Null? Type         
+---------------- ----- ------------ 
+TNUM                   VARCHAR2(10) 
+LOT_ID                 NUMBER       
+END_OF_WEEK            DATE         
+LOT_DATE               DATE         
+PROJECT_NUM            VARCHAR2(25) 
+TASK_NUMBER            VARCHAR2(25) 
+EXPENDITURE_TYPE       VARCHAR2(30) 
+QTY                    NUMBER       
+CALCCOST               NUMBER       
+PCF_ID                 NUMBER       
+UNIT_PRICE             NUMBER       
+Name             Null? Type         
+---------------- ----- ------------ 
+TNUM                   VARCHAR2(10) 
+LOT_ID                 NUMBER       
+END_OF_WEEK            DATE         
+LOT_DATE               DATE         
+PROJECT_NUM            VARCHAR2(25) 
+TASK_NUMBER            VARCHAR2(25) 
+EXPENDITURE_TYPE       VARCHAR2(30) 
+QTY                    NUMBER       
+CALCCOST               NUMBER       
+PCF_ID                 NUMBER       
+UNIT_PRICE             NUMBER       
+Name             Null?    Type         
+---------------- -------- ------------ 
+TNUM             NOT NULL VARCHAR2(10) 
+LOT_ID           NOT NULL NUMBER       
+CREATION_DATE    NOT NULL DATE         
+LAST_UPDATE_DATE          DATE         
+Name                  Null?    Type          
+--------------------- -------- ------------- 
+TASK_NUMBER           NOT NULL VARCHAR2(25)  
+EXPENDITURE_TYPE      NOT NULL VARCHAR2(30)  
+EXPENDITURE_ITEM_DATE NOT NULL DATE          
+QUANTITY                       NUMBER        
+PCF_ID                         VARCHAR2(150) 
+REVISION                       VARCHAR2(150) 
+TNUM                           VARCHAR2(150) 
+TASK_ID               NOT NULL NUMBER(15)    
+PROJECT_ID                     NUMBER(15)    
+DENOM_RAW_COST                 NUMBER        
+===== B. ORACLE PROJECTS OBJECTS =====
+Name                          Null?    Type          
+----------------------------- -------- ------------- 
+TRANSACTION_SOURCE            NOT NULL VARCHAR2(30)  
+BATCH_NAME                    NOT NULL VARCHAR2(240) 
+EXPENDITURE_ENDING_DATE       NOT NULL DATE          
+EMPLOYEE_NUMBER                        VARCHAR2(30)  
+ORGANIZATION_NAME                      VARCHAR2(240) 
+EXPENDITURE_ITEM_DATE         NOT NULL DATE          
+PROJECT_NUMBER                         VARCHAR2(25)  
+TASK_NUMBER                            VARCHAR2(25)  
+EXPENDITURE_TYPE              NOT NULL VARCHAR2(30)  
+NON_LABOR_RESOURCE                     VARCHAR2(20)  
+NON_LABOR_RESOURCE_ORG_NAME            VARCHAR2(240) 
+QUANTITY                      NOT NULL NUMBER        
+RAW_COST                               NUMBER        
+EXPENDITURE_COMMENT                    VARCHAR2(240) 
+TRANSACTION_STATUS_CODE       NOT NULL VARCHAR2(2)   
+TRANSACTION_REJECTION_CODE             VARCHAR2(30)  
+EXPENDITURE_ID                         NUMBER(15)    
+ORIG_TRANSACTION_REFERENCE    NOT NULL VARCHAR2(50)  
+ATTRIBUTE_CATEGORY                     VARCHAR2(30)  
+ATTRIBUTE1                             VARCHAR2(150) 
+ATTRIBUTE2                             VARCHAR2(150) 
+ATTRIBUTE3                             VARCHAR2(150) 
+ATTRIBUTE4                             VARCHAR2(150) 
+ATTRIBUTE5                             VARCHAR2(150) 
+ATTRIBUTE6                             VARCHAR2(150) 
+ATTRIBUTE7                             VARCHAR2(150) 
+ATTRIBUTE8                             VARCHAR2(150) 
+ATTRIBUTE9                             VARCHAR2(150) 
+ATTRIBUTE10                            VARCHAR2(150) 
+RAW_COST_RATE                          NUMBER        
+INTERFACE_ID                           NUMBER(15)    
+UNMATCHED_NEGATIVE_TXN_FLAG            VARCHAR2(1)   
+EXPENDITURE_ITEM_ID                    NUMBER(15)    
+ORG_ID                                 NUMBER(15)    
+DR_CODE_COMBINATION_ID                 NUMBER(15)    
+CR_CODE_COMBINATION_ID                 NUMBER(15)    
+CDL_SYSTEM_REFERENCE1                  VARCHAR2(30)  
+CDL_SYSTEM_REFERENCE2                  VARCHAR2(30)  
+CDL_SYSTEM_REFERENCE3                  VARCHAR2(30)  
+GL_DATE                                DATE          
+BURDENED_COST                          NUMBER        
+BURDENED_COST_RATE                     NUMBER        
+SYSTEM_LINKAGE                         VARCHAR2(30)  
+TXN_INTERFACE_ID              NOT NULL NUMBER(15)    
+USER_TRANSACTION_SOURCE                VARCHAR2(80)  
+CREATED_BY                             NUMBER(15)    
+CREATION_DATE                          DATE          
+LAST_UPDATED_BY                        NUMBER(15)    
+LAST_UPDATE_DATE                       DATE          
+RECEIPT_CURRENCY_AMOUNT                NUMBER        
+RECEIPT_CURRENCY_CODE                  VARCHAR2(15)  
+RECEIPT_EXCHANGE_RATE                  NUMBER        
+DENOM_CURRENCY_CODE                    VARCHAR2(15)  
+DENOM_RAW_COST                         NUMBER        
+DENOM_BURDENED_COST                    NUMBER        
+ACCT_RATE_DATE                         DATE          
+ACCT_RATE_TYPE                         VARCHAR2(30)  
+ACCT_EXCHANGE_RATE                     NUMBER        
+ACCT_RAW_COST                          NUMBER        
+ACCT_BURDENED_COST                     NUMBER        
+ACCT_EXCHANGE_ROUNDING_LIMIT           NUMBER        
+PROJECT_CURRENCY_CODE                  VARCHAR2(15)  
+PROJECT_RATE_DATE                      DATE          
+PROJECT_RATE_TYPE                      VARCHAR2(30)  
+PROJECT_EXCHANGE_RATE                  NUMBER        
+ORIG_EXP_TXN_REFERENCE1                VARCHAR2(60)  
+ORIG_EXP_TXN_REFERENCE2                VARCHAR2(60)  
+ORIG_EXP_TXN_REFERENCE3                VARCHAR2(60)  
+ORIG_USER_EXP_TXN_REFERENCE            VARCHAR2(60)  
+VENDOR_NUMBER                          VARCHAR2(30)  
+OVERRIDE_TO_ORGANIZATION_NAME          VARCHAR2(240) 
+REVERSED_ORIG_TXN_REFERENCE            VARCHAR2(60)  
+BILLABLE_FLAG                          VARCHAR2(1)   
+PERSON_BUSINESS_GROUP_NAME             VARCHAR2(240) 
+PROJFUNC_CURRENCY_CODE                 VARCHAR2(15)  
+PROJFUNC_COST_RATE_TYPE                VARCHAR2(30)  
+PROJFUNC_COST_RATE_DATE                DATE          
+PROJFUNC_COST_EXCHANGE_RATE            NUMBER        
+PROJECT_RAW_COST                       NUMBER        
+PROJECT_BURDENED_COST                  NUMBER        
+ASSIGNMENT_NAME                        VARCHAR2(80)  
+WORK_TYPE_NAME                         VARCHAR2(80)  
+CDL_SYSTEM_REFERENCE4                  VARCHAR2(30)  
+ACCRUAL_FLAG                           VARCHAR2(1)   
+PROJECT_ID                             NUMBER(15)    
+TASK_ID                                NUMBER(15)    
+PERSON_ID                              NUMBER(15)    
+ORGANIZATION_ID                        NUMBER(15)    
+NON_LABOR_RESOURCE_ORG_ID              NUMBER(15)    
+VENDOR_ID                              NUMBER(15)    
+OVERRIDE_TO_ORGANIZATION_ID            NUMBER(15)    
+ASSIGNMENT_ID                          NUMBER(15)    
+WORK_TYPE_ID                           NUMBER        
+PERSON_BUSINESS_GROUP_ID               NUMBER(15)    
+INVENTORY_ITEM_ID                      NUMBER        
+WIP_RESOURCE_ID                        NUMBER        
+UNIT_OF_MEASURE                        VARCHAR2(30)  
+PO_NUMBER                              VARCHAR2(20)  
+PO_HEADER_ID                           NUMBER        
+PO_LINE_NUM                            NUMBER        
+PO_LINE_ID                             NUMBER        
+PERSON_TYPE                            VARCHAR2(30)  
+PO_PRICE_TYPE                          VARCHAR2(30)  
+ADJUSTED_EXPENDITURE_ITEM_ID           NUMBER(15)    
+FC_DOCUMENT_TYPE                       VARCHAR2(3)   
+DOCUMENT_TYPE                          VARCHAR2(30)  
+DOCUMENT_DISTRIBUTION_TYPE             VARCHAR2(30)  
+SI_ASSETS_ADDITION_FLAG                VARCHAR2(1)   
+CDL_SYSTEM_REFERENCE5                  NUMBER(15)    
+SC_XFER_CODE                           VARCHAR2(1)   
+ADJUSTED_TXN_INTERFACE_ID              NUMBER(15)    
+NET_ZERO_ADJUSTMENT_FLAG               VARCHAR2(1)   
+LEGAL_ENTITY_ID                        NUMBER(15)    
+RECEIVER_LEGAL_ENTITY_ID               NUMBER(15)    
+LEGAL_ENTITY_NAME                      VARCHAR2(240) 
+RECEIVER_LEGAL_ENTITY_NAME             VARCHAR2(240) 
+JOB_ID                                 NUMBER(15)    
+JOB_NAME                               VARCHAR2(700) 
+LOCATION_ID                            NUMBER(15)    
+LOCATION_CODE                          VARCHAR2(20)  
+PAY_ELEMENT_TYPE_ID                    NUMBER(9)     
+CBS_ELEMENT_ID                         NUMBER(15)    
+CBS_ELEMENT_NAME                       VARCHAR2(250) 
+Name                           Null?    Type          
+------------------------------ -------- ------------- 
+EXPENDITURE_ITEM_ID            NOT NULL NUMBER(15)    
+LAST_UPDATE_DATE               NOT NULL DATE          
+LAST_UPDATED_BY                NOT NULL NUMBER(15)    
+CREATION_DATE                  NOT NULL DATE          
+CREATED_BY                     NOT NULL NUMBER(15)    
+EXPENDITURE_ID                 NOT NULL NUMBER(15)    
+TASK_ID                        NOT NULL NUMBER(15)    
+EXPENDITURE_ITEM_DATE          NOT NULL DATE          
+EXPENDITURE_TYPE               NOT NULL VARCHAR2(30)  
+COST_DISTRIBUTED_FLAG          NOT NULL VARCHAR2(1)   
+REVENUE_DISTRIBUTED_FLAG       NOT NULL VARCHAR2(1)   
+BILLABLE_FLAG                  NOT NULL VARCHAR2(1)   
+BILL_HOLD_FLAG                 NOT NULL VARCHAR2(1)   
+QUANTITY                                NUMBER        
+NON_LABOR_RESOURCE                      VARCHAR2(20)  
+ORGANIZATION_ID                         NUMBER(15)    
+JOB_ID                                  NUMBER(15)    
+OVERRIDE_TO_ORGANIZATION_ID             NUMBER(15)    
+RAW_COST                                NUMBER        
+RAW_COST_RATE                           NUMBER        
+BURDEN_COST                             NUMBER        
+BURDEN_COST_RATE                        NUMBER        
+COST_DIST_REJECTION_CODE                VARCHAR2(30)  
+LABOR_COST_MULTIPLIER_NAME              VARCHAR2(20)  
+RAW_REVENUE                             NUMBER(22,5)  
+BILL_RATE                               NUMBER(22,5)  
+ACCRUED_REVENUE                         NUMBER(22,5)  
+ACCRUAL_RATE                            NUMBER(22,5)  
+ADJUSTED_REVENUE                        NUMBER(22,5)  
+ADJUSTED_RATE                           NUMBER(22,5)  
+BILL_AMOUNT                             NUMBER(22,5)  
+FORECAST_REVENUE                        NUMBER(22,5)  
+BILL_RATE_MULTIPLIER                    NUMBER(22,5)  
+REV_DIST_REJECTION_CODE                 VARCHAR2(30)  
+EVENT_NUM                               NUMBER(15)    
+EVENT_TASK_ID                           NUMBER(15)    
+BILL_JOB_ID                             NUMBER(15)    
+BILL_JOB_BILLING_TITLE                  VARCHAR2(80)  
+BILL_EMPLOYEE_BILLING_TITLE             VARCHAR2(80)  
+ADJUSTED_EXPENDITURE_ITEM_ID            NUMBER(15)    
+NET_ZERO_ADJUSTMENT_FLAG                VARCHAR2(1)   
+TRANSFERRED_FROM_EXP_ITEM_ID            NUMBER(15)    
+CONVERTED_FLAG                          VARCHAR2(1)   
+LAST_UPDATE_LOGIN                       NUMBER(15)    
+REQUEST_ID                              NUMBER(15)    
+PROGRAM_APPLICATION_ID                  NUMBER(15)    
+PROGRAM_ID                              NUMBER(15)    
+PROGRAM_UPDATE_DATE                     DATE          
+ATTRIBUTE_CATEGORY                      VARCHAR2(30)  
+ATTRIBUTE1                              VARCHAR2(150) 
+ATTRIBUTE2                              VARCHAR2(150) 
+ATTRIBUTE3                              VARCHAR2(150) 
+ATTRIBUTE4                              VARCHAR2(150) 
+ATTRIBUTE5                              VARCHAR2(150) 
+ATTRIBUTE6                              VARCHAR2(150) 
+ATTRIBUTE7                              VARCHAR2(150) 
+ATTRIBUTE8                              VARCHAR2(150) 
+ATTRIBUTE9                              VARCHAR2(150) 
+ATTRIBUTE10                             VARCHAR2(150) 
+COST_IND_COMPILED_SET_ID                NUMBER(15)    
+REV_IND_COMPILED_SET_ID                 NUMBER(15)    
+INV_IND_COMPILED_SET_ID                 NUMBER(15)    
+COST_BURDEN_DISTRIBUTED_FLAG            VARCHAR2(1)   
+IND_COST_DIST_REJECTION_CODE            VARCHAR2(30)  
+ORIG_TRANSACTION_REFERENCE              VARCHAR2(50)  
+TRANSACTION_SOURCE                      VARCHAR2(30)  
+PROJECT_ID                              NUMBER(15)    
+SOURCE_EXPENDITURE_ITEM_ID              NUMBER(15)    
+ORG_ID                                  NUMBER(15)    
+DENORM_ID                               NUMBER(15)    
+SYSTEM_LINKAGE_FUNCTION        NOT NULL VARCHAR2(3)   
+BURDEN_SUM_DEST_RUN_ID                  NUMBER(15)    
+RECEIPT_CURRENCY_AMOUNT                 NUMBER        
+RECEIPT_CURRENCY_CODE                   VARCHAR2(15)  
+RECEIPT_EXCHANGE_RATE                   NUMBER        
+DENOM_CURRENCY_CODE                     VARCHAR2(15)  
+DENOM_RAW_COST                          NUMBER        
+DENOM_BURDENED_COST                     NUMBER        
+ACCT_CURRENCY_CODE                      VARCHAR2(15)  
+ACCT_RATE_DATE                          DATE          
+ACCT_RATE_TYPE                          VARCHAR2(30)  
+ACCT_EXCHANGE_RATE                      NUMBER        
+ACCT_RAW_COST                           NUMBER        
+ACCT_BURDENED_COST                      NUMBER        
+ACCT_EXCHANGE_ROUNDING_LIMIT            NUMBER        
+PROJECT_CURRENCY_CODE                   VARCHAR2(15)  
+PROJECT_RATE_DATE                       DATE          
+PROJECT_RATE_TYPE                       VARCHAR2(30)  
+PROJECT_EXCHANGE_RATE                   NUMBER        
+CC_CROSS_CHARGE_CODE           NOT NULL VARCHAR2(1)   
+CC_PRVDR_ORGANIZATION_ID                NUMBER        
+CC_RECVR_ORGANIZATION_ID                NUMBER        
+CC_REJECTION_CODE                       VARCHAR2(30)  
+DENOM_TP_CURRENCY_CODE                  VARCHAR2(15)  
+DENOM_TRANSFER_PRICE                    NUMBER        
+ACCT_TP_RATE_TYPE                       VARCHAR2(30)  
+ACCT_TP_RATE_DATE                       DATE          
+ACCT_TP_EXCHANGE_RATE                   NUMBER        
+ACCT_TRANSFER_PRICE                     NUMBER        
+PROJACCT_TRANSFER_PRICE                 NUMBER        
+CC_MARKUP_BASE_CODE                     VARCHAR2(1)   
+TP_BASE_AMOUNT                          NUMBER        
+CC_CROSS_CHARGE_TYPE                    VARCHAR2(2)   
+RECVR_ORG_ID                            NUMBER        
+CC_BL_DISTRIBUTED_CODE         NOT NULL VARCHAR2(1)   
+CC_IC_PROCESSED_CODE           NOT NULL VARCHAR2(1)   
+TP_IND_COMPILED_SET_ID                  NUMBER        
+TP_BILL_RATE                            NUMBER        
+TP_BILL_MARKUP_PERCENTAGE               NUMBER        
+TP_SCHEDULE_LINE_PERCENTAGE             NUMBER        
+TP_RULE_PERCENTAGE                      NUMBER        
+CC_PRVDR_COST_RECLASS_CODE              VARCHAR2(1)   
+CRL_ASSET_CREATION_STATUS_CODE          VARCHAR2(1)   
+CRL_ASSET_CREATION_REJ_CODE             VARCHAR2(30)  
+COST_JOB_ID                             NUMBER(15)    
+TP_JOB_ID                               NUMBER(15)    
+PROV_PROJ_BILL_JOB_ID                   NUMBER(15)    
+COST_DIST_WARNING_CODE                  VARCHAR2(30)  
+PROJECT_TP_RATE_DATE                    DATE          
+PROJECT_TP_RATE_TYPE                    VARCHAR2(30)  
+PROJECT_TP_EXCHANGE_RATE                NUMBER        
+PROJFUNC_TP_RATE_DATE                   DATE          
+PROJFUNC_TP_RATE_TYPE                   VARCHAR2(30)  
+PROJFUNC_TP_EXCHANGE_RATE               NUMBER        
+PROJFUNC_TRANSFER_PRICE                 NUMBER        
+BILL_TRANS_FORECAST_CURR_CODE           VARCHAR2(15)  
+BILL_TRANS_FORECAST_REVENUE             NUMBER        
+PROJFUNC_REV_RATE_DATE                  DATE          
+PROJFUNC_REV_EXCHANGE_RATE              NUMBER        
+PROJFUNC_COST_RATE_TYPE                 VARCHAR2(30)  
+PROJFUNC_COST_RATE_DATE                 DATE          
+PROJFUNC_COST_EXCHANGE_RATE             NUMBER        
+PROJECT_RAW_COST                        NUMBER        
+PROJECT_BURDENED_COST                   NUMBER        
+ASSIGNMENT_ID                           NUMBER(15)    
+WORK_TYPE_ID                            NUMBER(15)    
+PROJFUNC_RAW_REVENUE                    NUMBER        
+PROJECT_BILL_AMOUNT                     NUMBER        
+PROJFUNC_CURRENCY_CODE                  VARCHAR2(15)  
+PROJECT_RAW_REVENUE                     NUMBER        
+PROJECT_TRANSFER_PRICE                  NUMBER        
+TP_AMT_TYPE_CODE                        VARCHAR2(30)  
+BILL_TRANS_CURRENCY_CODE                VARCHAR2(15)  
+BILL_TRANS_RAW_REVENUE                  NUMBER        
+BILL_TRANS_BILL_AMOUNT                  NUMBER        
+BILL_TRANS_ADJUSTED_REVENUE             NUMBER        
+REVPROC_CURRENCY_CODE                   VARCHAR2(15)  
+REVPROC_RATE_TYPE                       VARCHAR2(30)  
+REVPROC_RATE_DATE                       DATE          
+REVPROC_EXCHANGE_RATE                   NUMBER        
+INVPROC_CURRENCY_CODE                   VARCHAR2(15)  
+INVPROC_RATE_TYPE                       VARCHAR2(30)  
+INVPROC_RATE_DATE                       DATE          
+DISCOUNT_PERCENTAGE                     NUMBER        
+LABOR_MULTIPLIER                        NUMBER        
+AMOUNT_CALCULATION_CODE                 VARCHAR2(15)  
+BILL_MARKUP_PERCENTAGE                  NUMBER        
+RATE_SOURCE_ID                          NUMBER(15)    
+INVPROC_EXCHANGE_RATE                   NUMBER        
+INV_GEN_REJECTION_CODE                  VARCHAR2(30)  
+PROJFUNC_BILL_AMOUNT                    NUMBER        
+PROJECT_REV_RATE_TYPE                   VARCHAR2(30)  
+PROJECT_REV_RATE_DATE                   DATE          
+PROJECT_REV_EXCHANGE_RATE               NUMBER        
+PROJFUNC_REV_RATE_TYPE                  VARCHAR2(30)  
+PROJFUNC_INV_RATE_TYPE                  VARCHAR2(30)  
+PROJFUNC_INV_RATE_DATE                  DATE          
+PROJFUNC_INV_EXCHANGE_RATE              NUMBER        
+PROJECT_INV_RATE_TYPE                   VARCHAR2(30)  
+PROJECT_INV_RATE_DATE                   DATE          
+PROJECT_INV_EXCHANGE_RATE               NUMBER        
+PROJFUNC_FCST_RATE_TYPE                 VARCHAR2(30)  
+PROJFUNC_FCST_RATE_DATE                 DATE          
+PROJFUNC_FCST_EXCHANGE_RATE             NUMBER        
+PRVDR_ACCRUAL_DATE                      DATE          
+RECVR_ACCRUAL_DATE                      DATE          
+RATE_DISC_REASON_CODE                   VARCHAR2(30)  
+POSTED_DENOM_BURDENED_COST              NUMBER        
+POSTED_PROJECT_BURDENED_COST            NUMBER        
+POSTED_PROJFUNC_BURDENED_COST           NUMBER        
+POSTED_ACCT_BURDENED_COST               NUMBER        
+ADJUSTMENT_TYPE                         VARCHAR2(150) 
+CAPITAL_EVENT_ID                        NUMBER(15)    
+PO_LINE_ID                              NUMBER        
+PO_PRICE_TYPE                           VARCHAR2(30)  
+WIP_RESOURCE_ID                         NUMBER        
+INVENTORY_ITEM_ID                       NUMBER        
+UNIT_OF_MEASURE                         VARCHAR2(30)  
+SRC_SYSTEM_LINKAGE_FUNCTION             VARCHAR2(3)   
+DOCUMENT_HEADER_ID                      NUMBER(15)    
+DOCUMENT_DISTRIBUTION_ID                NUMBER(15)    
+DOCUMENT_LINE_NUMBER                    NUMBER(15)    
+DOCUMENT_PAYMENT_ID                     NUMBER(15)    
+VENDOR_ID                               NUMBER        
+DOCUMENT_TYPE                           VARCHAR2(30)  
+DOCUMENT_DISTRIBUTION_TYPE              VARCHAR2(30)  
+HISTORICAL_FLAG                         VARCHAR2(1)   
+LEGAL_ENTITY_ID                         NUMBER(15)    
+RECEIVER_LEGAL_ENTITY_ID                NUMBER(15)    
+ADD_INV_GROUP                           VARCHAR2(40)  
+BILL_GROUP                              VARCHAR2(40)  
+REVENUE_HOLD_FLAG                       VARCHAR2(1)   
+LOCATION_ID                             NUMBER(15)    
+PAY_ELEMENT_TYPE_ID                     NUMBER(15)    
+COSTING_METHOD                          VARCHAR2(150) 
+RATE_SOURCE_CODE                        VARCHAR2(30)  
+PAYROLL_ACCRUAL_FLAG                    VARCHAR2(1)   
+RBC_ELEMENT_TYPE_ID                     NUMBER(9)     
+INTERFACE_RUN_ID                        NUMBER(15)    
+CBS_ELEMENT_ID                          NUMBER(15)    
+FCB_PROCESS_FLAG                        VARCHAR2(1)   
+Name                          Null?    Type          
+----------------------------- -------- ------------- 
+PROJECT_ID                    NOT NULL NUMBER(15)    
+NAME                          NOT NULL VARCHAR2(30)  
+SEGMENT1                      NOT NULL VARCHAR2(25)  
+LAST_UPDATE_DATE              NOT NULL DATE          
+LAST_UPDATED_BY               NOT NULL NUMBER(15)    
+CREATION_DATE                 NOT NULL DATE          
+CREATED_BY                    NOT NULL NUMBER(15)    
+LAST_UPDATE_LOGIN             NOT NULL NUMBER(15)    
+PROJECT_TYPE                  NOT NULL VARCHAR2(20)  
+CARRYING_OUT_ORGANIZATION_ID  NOT NULL NUMBER(15)    
+PUBLIC_SECTOR_FLAG            NOT NULL VARCHAR2(1)   
+PROJECT_STATUS_CODE           NOT NULL VARCHAR2(30)  
+DESCRIPTION                            VARCHAR2(250) 
+START_DATE                             DATE          
+COMPLETION_DATE                        DATE          
+CLOSED_DATE                            DATE          
+DISTRIBUTION_RULE                      VARCHAR2(30)  
+LABOR_INVOICE_FORMAT_ID                NUMBER(15)    
+NON_LABOR_INVOICE_FORMAT_ID            NUMBER(15)    
+RETENTION_INVOICE_FORMAT_ID            NUMBER(15)    
+RETENTION_PERCENTAGE                   NUMBER(17,2)  
+BILLING_OFFSET                         NUMBER(15)    
+BILLING_CYCLE                          NUMBER(15)    
+LABOR_STD_BILL_RATE_SCHDL              VARCHAR2(20)  
+LABOR_BILL_RATE_ORG_ID                 NUMBER(15)    
+LABOR_SCHEDULE_FIXED_DATE              DATE          
+LABOR_SCHEDULE_DISCOUNT                NUMBER(7,4)   
+TEMPLATE_FLAG                          VARCHAR2(1)   
+VERIFICATION_DATE                      DATE          
+CREATED_FROM_PROJECT_ID                NUMBER(15)    
+TEMPLATE_START_DATE_ACTIVE             DATE          
+NON_LABOR_STD_BILL_RATE_SCHDL          VARCHAR2(30)  
+TEMPLATE_END_DATE_ACTIVE               DATE          
+NON_LABOR_BILL_RATE_ORG_ID             NUMBER(15)    
+NON_LABOR_SCHEDULE_FIXED_DATE          DATE          
+NON_LABOR_SCHEDULE_DISCOUNT            NUMBER(7,4)   
+LIMIT_TO_TXN_CONTROLS_FLAG             VARCHAR2(1)   
+PROJECT_LEVEL_FUNDING_FLAG             VARCHAR2(1)   
+INVOICE_COMMENT                        VARCHAR2(240) 
+UNBILLED_RECEIVABLE_DR                 NUMBER(22,5)  
+UNEARNED_REVENUE_CR                    NUMBER(22,5)  
+REQUEST_ID                             NUMBER(15)    
+PROGRAM_ID                             NUMBER(15)    
+PROGRAM_APPLICATION_ID                 NUMBER(15)    
+PROGRAM_UPDATE_DATE                    DATE          
+SUMMARY_FLAG                  NOT NULL VARCHAR2(1)   
+ENABLED_FLAG                  NOT NULL VARCHAR2(1)   
+SEGMENT2                               VARCHAR2(25)  
+SEGMENT3                               VARCHAR2(25)  
+SEGMENT4                               VARCHAR2(25)  
+SEGMENT5                               VARCHAR2(25)  
+SEGMENT6                               VARCHAR2(25)  
+SEGMENT7                               VARCHAR2(25)  
+SEGMENT8                               VARCHAR2(25)  
+SEGMENT9                               VARCHAR2(25)  
+SEGMENT10                              VARCHAR2(25)  
+ATTRIBUTE_CATEGORY                     VARCHAR2(30)  
+ATTRIBUTE1                             VARCHAR2(150) 
+ATTRIBUTE2                             VARCHAR2(150) 
+ATTRIBUTE3                             VARCHAR2(150) 
+ATTRIBUTE4                             VARCHAR2(150) 
+ATTRIBUTE5                             VARCHAR2(150) 
+ATTRIBUTE6                             VARCHAR2(150) 
+ATTRIBUTE7                             VARCHAR2(150) 
+ATTRIBUTE8                             VARCHAR2(150) 
+ATTRIBUTE9                             VARCHAR2(150) 
+ATTRIBUTE10                            VARCHAR2(150) 
+COST_IND_RATE_SCH_ID                   NUMBER(15)    
+REV_IND_RATE_SCH_ID                    NUMBER(15)    
+INV_IND_RATE_SCH_ID                    NUMBER(15)    
+COST_IND_SCH_FIXED_DATE                DATE          
+REV_IND_SCH_FIXED_DATE                 DATE          
+INV_IND_SCH_FIXED_DATE                 DATE          
+LABOR_SCH_TYPE                         VARCHAR2(1)   
+NON_LABOR_SCH_TYPE                     VARCHAR2(1)   
+OVR_COST_IND_RATE_SCH_ID               NUMBER(15)    
+OVR_REV_IND_RATE_SCH_ID                NUMBER(15)    
+OVR_INV_IND_RATE_SCH_ID                NUMBER(15)    
+ORG_ID                                 NUMBER(15)    
+PM_PRODUCT_CODE                        VARCHAR2(30)  
+PM_PROJECT_REFERENCE                   VARCHAR2(25)  
+ACTUAL_START_DATE                      DATE          
+ACTUAL_FINISH_DATE                     DATE          
+EARLY_START_DATE                       DATE          
+EARLY_FINISH_DATE                      DATE          
+LATE_START_DATE                        DATE          
+LATE_FINISH_DATE                       DATE          
+SCHEDULED_START_DATE                   DATE          
+SCHEDULED_FINISH_DATE                  DATE          
+ADW_NOTIFY_FLAG                        VARCHAR2(1)   
+BILLING_CYCLE_ID                       NUMBER(15)    
+WF_STATUS_CODE                         VARCHAR2(30)  
+OUTPUT_TAX_CODE                        VARCHAR2(50)  
+RETENTION_TAX_CODE                     VARCHAR2(50)  
+PROJECT_CURRENCY_CODE         NOT NULL VARCHAR2(15)  
+ALLOW_CROSS_CHARGE_FLAG       NOT NULL VARCHAR2(1)   
+PROJECT_RATE_DATE                      DATE          
+PROJECT_RATE_TYPE                      VARCHAR2(30)  
+CC_PROCESS_LABOR_FLAG         NOT NULL VARCHAR2(1)   
+LABOR_TP_SCHEDULE_ID                   NUMBER        
+LABOR_TP_FIXED_DATE                    DATE          
+CC_PROCESS_NL_FLAG            NOT NULL VARCHAR2(1)   
+NL_TP_SCHEDULE_ID                      NUMBER        
+NL_TP_FIXED_DATE                       DATE          
+CC_TAX_TASK_ID                         NUMBER        
+BILL_JOB_GROUP_ID                      NUMBER(15)    
+COST_JOB_GROUP_ID                      NUMBER(15)    
+ROLE_LIST_ID                           NUMBER(15)    
+WORK_TYPE_ID                           NUMBER(15)    
+CALENDAR_ID                            NUMBER(15)    
+LOCATION_ID                            NUMBER(15)    
+PROBABILITY_MEMBER_ID                  NUMBER(15)    
+PROJECT_VALUE                          NUMBER        
+EXPECTED_APPROVAL_DATE                 DATE          
+RECORD_VERSION_NUMBER                  NUMBER(15)    
+INITIAL_TEAM_TEMPLATE_ID               NUMBER(15)    
+JOB_BILL_RATE_SCHEDULE_ID              NUMBER        
+EMP_BILL_RATE_SCHEDULE_ID              NUMBER        
+COMPETENCE_MATCH_WT                    NUMBER        
+AVAILABILITY_MATCH_WT                  NUMBER        
+JOB_LEVEL_MATCH_WT                     NUMBER        
+ENABLE_AUTOMATED_SEARCH                VARCHAR2(1)   
+SEARCH_MIN_AVAILABILITY                NUMBER        
+SEARCH_ORG_HIER_ID                     NUMBER(15)    
+SEARCH_STARTING_ORG_ID                 NUMBER(15)    
+SEARCH_COUNTRY_CODE                    VARCHAR2(2)   
+MIN_CAND_SCORE_REQD_FOR_NOM            NUMBER        
+NON_LAB_STD_BILL_RT_SCH_ID             NUMBER(15)    
+INVPROC_CURRENCY_TYPE                  VARCHAR2(30)  
+REVPROC_CURRENCY_CODE                  VARCHAR2(15)  
+PROJECT_BIL_RATE_DATE_CODE             VARCHAR2(30)  
+PROJECT_BIL_RATE_TYPE                  VARCHAR2(30)  
+PROJECT_BIL_RATE_DATE                  DATE          
+PROJECT_BIL_EXCHANGE_RATE              NUMBER        
+PROJFUNC_CURRENCY_CODE                 VARCHAR2(15)  
+PROJFUNC_BIL_RATE_DATE_CODE            VARCHAR2(30)  
+PROJFUNC_BIL_RATE_TYPE                 VARCHAR2(30)  
+PROJFUNC_BIL_RATE_DATE                 DATE          
+PROJFUNC_BIL_EXCHANGE_RATE             NUMBER        
+FUNDING_RATE_DATE_CODE                 VARCHAR2(30)  
+FUNDING_RATE_TYPE                      VARCHAR2(30)  
+FUNDING_RATE_DATE                      DATE          
+FUNDING_EXCHANGE_RATE                  NUMBER        
+BASELINE_FUNDING_FLAG                  VARCHAR2(1)   
+PROJFUNC_COST_RATE_TYPE                VARCHAR2(30)  
+PROJFUNC_COST_RATE_DATE                DATE          
+INV_BY_BILL_TRANS_CURR_FLAG            VARCHAR2(1)   
+MULTI_CURRENCY_BILLING_FLAG            VARCHAR2(1)   
+SPLIT_COST_FROM_WORKPLAN_FLAG          VARCHAR2(1)   
+SPLIT_COST_FROM_BILL_FLAG              VARCHAR2(1)   
+ASSIGN_PRECEDES_TASK                   VARCHAR2(1)   
+PRIORITY_CODE                          VARCHAR2(30)  
+RETN_BILLING_INV_FORMAT_ID             NUMBER(15)    
+RETN_ACCOUNTING_FLAG                   VARCHAR2(1)   
+ADV_ACTION_SET_ID                      NUMBER(15)    
+START_ADV_ACTION_SET_FLAG              VARCHAR2(1)   
+REVALUATE_FUNDING_FLAG                 VARCHAR2(1)   
+INCLUDE_GAINS_LOSSES_FLAG              VARCHAR2(1)   
+TARGET_START_DATE                      DATE          
+TARGET_FINISH_DATE                     DATE          
+BASELINE_START_DATE                    DATE          
+BASELINE_FINISH_DATE                   DATE          
+SCHEDULED_AS_OF_DATE                   DATE          
+BASELINE_AS_OF_DATE                    DATE          
+LABOR_DISC_REASON_CODE                 VARCHAR2(30)  
+NON_LABOR_DISC_REASON_CODE             VARCHAR2(30)  
+SECURITY_LEVEL                         NUMBER        
+ACTUAL_AS_OF_DATE                      DATE          
+SCHEDULED_DURATION                     NUMBER        
+BASELINE_DURATION                      NUMBER        
+ACTUAL_DURATION                        NUMBER        
+LONG_NAME                              VARCHAR2(240) 
+BTC_COST_BASE_REV_CODE                 VARCHAR2(90)  
+ASSET_ALLOCATION_METHOD                VARCHAR2(30)  
+CAPITAL_EVENT_PROCESSING               VARCHAR2(30)  
+CINT_RATE_SCH_ID                       NUMBER(15)    
+CINT_ELIGIBLE_FLAG                     VARCHAR2(1)   
+CINT_STOP_DATE                         DATE          
+SYS_PROGRAM_FLAG                       VARCHAR2(1)   
+STRUCTURE_SHARING_CODE                 VARCHAR2(30)  
+ENABLE_TOP_TASK_CUSTOMER_FLAG          VARCHAR2(1)   
+ENABLE_TOP_TASK_INV_MTH_FLAG           VARCHAR2(1)   
+REVENUE_ACCRUAL_METHOD                 VARCHAR2(30)  
+INVOICE_METHOD                         VARCHAR2(30)  
+PROJFUNC_ATTR_FOR_AR_FLAG              VARCHAR2(1)   
+PJI_SOURCE_FLAG                        VARCHAR2(1)   
+ALLOW_MULTI_PROGRAM_ROLLUP             VARCHAR2(1)   
+PROJ_REQ_RES_FORMAT_ID                 NUMBER        
+PROJ_ASGMT_RES_FORMAT_ID               NUMBER        
+FUNDING_APPROVAL_STATUS_CODE           VARCHAR2(30)  
+REVTRANS_CURRENCY_TYPE                 VARCHAR2(30)  
+DATE_EFF_FUNDS_CONSUMPTION             VARCHAR2(1)   
+AR_REC_NOTIFY_FLAG            NOT NULL VARCHAR2(1)   
+AUTO_RELEASE_PWP_INV          NOT NULL VARCHAR2(1)   
+BILL_LABOR_ACCRUAL                     VARCHAR2(1)   
+ADJ_ON_STD_INV                         VARCHAR2(2)   
+CBS_VERSION_ID                         NUMBER(15)    
+IC_LABOR_TP_SCHEDULE_ID                NUMBER(22)    
+IC_LABOR_TP_FIXED_DATE                 DATE          
+IC_NL_TP_SCHEDULE_ID                   NUMBER(22)    
+IC_NL_TP_FIXED_DATE                    DATE          
+CBS_ENABLE_FLAG                        VARCHAR2(1)   
+PJT_ROLLUP_ENABLED_FLAG                VARCHAR2(1)   
+OLAP_GROUP                             NUMBER        
+OLAP_TASK_ID                           NUMBER        
+INV_LINE_GROUP                         VARCHAR2(30)  
+DERIVE_BILLING_FROM_OKE_FLAG           VARCHAR2(1)   
+BILLING_FUNDS_CHECK_FC_FLAG            VARCHAR2(1)   
+COST_PLUS_FIXED_FEE_FLAG               VARCHAR2(1)   
+PROGRESS_PAYMENT_FLAG                  VARCHAR2(1)   
+RATE_PERCENTAGE                        NUMBER(17,2)  
+LIQUIDATION_RATE_PERCENTAGE            NUMBER(17,2)  
+ALT_LIQUIDATION_RATE_PER               NUMBER(17,2)  
+BILL_GROUP_ID                          NUMBER        
+WITHHOLD_AMOUNT                        NUMBER(22,5)  
+FEE_PERCENTAGE                         NUMBER(17,2)  
+FEE_RATE                               NUMBER(22,5)  
+FEE_RATE_SCHEDULE_ID                   NUMBER        
+OVR_FEE_RATE_SCHEDULE_ID               NUMBER        
+FEE_REVENUE_SCHEDULE_ID                NUMBER        
+LABOR_FEE_RATE_CURRENCY_CODE           VARCHAR2(15)  
+DEFERRED_ROLLUP_ENABLED_FLAG           VARCHAR2(1)   
+LAST_SUMMARIZATION_DATE                DATE          
+PROJ_SOV_LEVEL                         VARCHAR2(1)   
+CONTRACT_ID                            NUMBER        
+PROJ_SOV_FRM_CNTRT_FLAG                VARCHAR2(1)   
+WP_BASELINE_VER_FLAG                   VARCHAR2(1)   
+POBG_FLAG                              VARCHAR2(1)   
+RMCS_INTEGRATION_FLAG                  VARCHAR2(1)   
+SLA_ACC_END_DATE                       DATE          
+USE_WORKPLAN_AS_ACB                    VARCHAR2(1)   
+ACB_PLAN_TYPE_ID                       NUMBER        
+REVTRANS_RATE_DATE_CODE                VARCHAR2(30)  
+REVTRANS_RATE_TYPE                     VARCHAR2(30)  
+REVTRANS_RATE_DATE                     DATE          
+REVTRANS_EXCHANGE_RATE                 NUMBER        
+IGT_FLAG                               VARCHAR2(1)   
+AUTO_FUNDING_FM_POBG                   VARCHAR2(1)   
+UBR_UER_ACCT_FLAG                      VARCHAR2(1)   
+Name                          Null?    Type          
+----------------------------- -------- ------------- 
+TASK_ID                       NOT NULL NUMBER(15)    
+PROJECT_ID                    NOT NULL NUMBER(15)    
+TASK_NUMBER                   NOT NULL VARCHAR2(25)  
+CREATION_DATE                 NOT NULL DATE          
+CREATED_BY                    NOT NULL NUMBER(15)    
+LAST_UPDATE_DATE              NOT NULL DATE          
+LAST_UPDATED_BY               NOT NULL NUMBER(15)    
+LAST_UPDATE_LOGIN             NOT NULL NUMBER(15)    
+TASK_NAME                     NOT NULL VARCHAR2(20)  
+TOP_TASK_ID                   NOT NULL NUMBER(15)    
+WBS_LEVEL                     NOT NULL NUMBER(3)     
+READY_TO_BILL_FLAG            NOT NULL VARCHAR2(1)   
+READY_TO_DISTRIBUTE_FLAG      NOT NULL VARCHAR2(1)   
+PARENT_TASK_ID                         NUMBER(15)    
+DESCRIPTION                            VARCHAR2(250) 
+CARRYING_OUT_ORGANIZATION_ID  NOT NULL NUMBER(15)    
+SERVICE_TYPE_CODE                      VARCHAR2(30)  
+TASK_MANAGER_PERSON_ID                 NUMBER(9)     
+CHARGEABLE_FLAG                        VARCHAR2(1)   
+BILLABLE_FLAG                          VARCHAR2(1)   
+LIMIT_TO_TXN_CONTROLS_FLAG             VARCHAR2(1)   
+START_DATE                             DATE          
+COMPLETION_DATE                        DATE          
+ADDRESS_ID                             NUMBER(15)    
+LABOR_BILL_RATE_ORG_ID                 NUMBER(15)    
+LABOR_STD_BILL_RATE_SCHDL              VARCHAR2(20)  
+LABOR_SCHEDULE_FIXED_DATE              DATE          
+LABOR_SCHEDULE_DISCOUNT                NUMBER(7,4)   
+NON_LABOR_BILL_RATE_ORG_ID             NUMBER(15)    
+NON_LABOR_STD_BILL_RATE_SCHDL          VARCHAR2(30)  
+NON_LABOR_SCHEDULE_FIXED_DATE          DATE          
+NON_LABOR_SCHEDULE_DISCOUNT            NUMBER(7,4)   
+LABOR_COST_MULTIPLIER_NAME             VARCHAR2(20)  
+REQUEST_ID                             NUMBER(15)    
+PROGRAM_APPLICATION_ID                 NUMBER(15)    
+PROGRAM_ID                             NUMBER(15)    
+PROGRAM_UPDATE_DATE                    DATE          
+ATTRIBUTE_CATEGORY                     VARCHAR2(30)  
+ATTRIBUTE1                             VARCHAR2(150) 
+ATTRIBUTE2                             VARCHAR2(150) 
+ATTRIBUTE3                             VARCHAR2(150) 
+ATTRIBUTE4                             VARCHAR2(150) 
+ATTRIBUTE5                             VARCHAR2(150) 
+ATTRIBUTE6                             VARCHAR2(150) 
+ATTRIBUTE7                             VARCHAR2(150) 
+ATTRIBUTE8                             VARCHAR2(150) 
+ATTRIBUTE9                             VARCHAR2(150) 
+ATTRIBUTE10                            VARCHAR2(150) 
+COST_IND_RATE_SCH_ID                   NUMBER(15)    
+REV_IND_RATE_SCH_ID                    NUMBER(15)    
+INV_IND_RATE_SCH_ID                    NUMBER(15)    
+COST_IND_SCH_FIXED_DATE                DATE          
+REV_IND_SCH_FIXED_DATE                 DATE          
+INV_IND_SCH_FIXED_DATE                 DATE          
+LABOR_SCH_TYPE                         VARCHAR2(1)   
+NON_LABOR_SCH_TYPE                     VARCHAR2(1)   
+OVR_COST_IND_RATE_SCH_ID               NUMBER(15)    
+OVR_INV_IND_RATE_SCH_ID                NUMBER(15)    
+OVR_REV_IND_RATE_SCH_ID                NUMBER(15)    
+PM_PRODUCT_CODE                        VARCHAR2(30)  
+PM_TASK_REFERENCE                      VARCHAR2(25)  
+ACTUAL_START_DATE                      DATE          
+ACTUAL_FINISH_DATE                     DATE          
+EARLY_START_DATE                       DATE          
+EARLY_FINISH_DATE                      DATE          
+LATE_START_DATE                        DATE          
+LATE_FINISH_DATE                       DATE          
+SCHEDULED_START_DATE                   DATE          
+SCHEDULED_FINISH_DATE                  DATE          
+ADW_NOTIFY_FLAG                        VARCHAR2(1)   
+ALLOW_CROSS_CHARGE_FLAG       NOT NULL VARCHAR2(1)   
+PROJECT_RATE_DATE                      DATE          
+PROJECT_RATE_TYPE                      VARCHAR2(30)  
+CC_PROCESS_LABOR_FLAG         NOT NULL VARCHAR2(1)   
+LABOR_TP_SCHEDULE_ID                   NUMBER        
+LABOR_TP_FIXED_DATE                    DATE          
+CC_PROCESS_NL_FLAG            NOT NULL VARCHAR2(1)   
+NL_TP_SCHEDULE_ID                      NUMBER        
+NL_TP_FIXED_DATE                       DATE          
+RECEIVE_PROJECT_INVOICE_FLAG           VARCHAR2(1)   
+WORK_TYPE_ID                           NUMBER(15)    
+RECORD_VERSION_NUMBER                  NUMBER(15)    
+JOB_BILL_RATE_SCHEDULE_ID              NUMBER        
+EMP_BILL_RATE_SCHEDULE_ID              NUMBER        
+TASKFUNC_COST_RATE_TYPE                VARCHAR2(30)  
+TASKFUNC_COST_RATE_DATE                DATE          
+NON_LAB_STD_BILL_RT_SCH_ID             NUMBER(15)    
+LABOR_DISC_REASON_CODE                 VARCHAR2(30)  
+NON_LABOR_DISC_REASON_CODE             VARCHAR2(30)  
+LONG_TASK_NAME                         VARCHAR2(240) 
+RETIREMENT_COST_FLAG                   VARCHAR2(1)   
+CINT_ELIGIBLE_FLAG                     VARCHAR2(1)   
+CINT_STOP_DATE                         DATE          
+REVENUE_ACCRUAL_METHOD                 VARCHAR2(30)  
+INVOICE_METHOD                         VARCHAR2(30)  
+CUSTOMER_ID                            NUMBER        
+GEN_ETC_SOURCE_CODE                    VARCHAR2(30)  
+BILL_SCHE_OVRD_FLAG                    VARCHAR2(1)   
+ADJ_ON_STD_INV                         VARCHAR2(2)   
+IC_LABOR_TP_SCHEDULE_ID                NUMBER(22)    
+IC_LABOR_TP_FIXED_DATE                 DATE          
+IC_NL_TP_SCHEDULE_ID                   NUMBER(22)    
+IC_NL_TP_FIXED_DATE                    DATE          
+INV_LINE_GROUP                         VARCHAR2(30)  
+BILL_GROUP_ID                          NUMBER        
+COST_PLUS_FIXED_FEE_FLAG               VARCHAR2(1)   
+PROGRESS_PAYMENT_FLAG                  VARCHAR2(1)   
+FEE_RATE_SCHEDULE_ID                   NUMBER        
+OVR_FEE_RATE_SCHEDULE_ID               NUMBER        
+FEE_REVENUE_SCHEDULE_ID                NUMBER        
+RETENTION_PERCENTAGE                   NUMBER(17,2)  
+RATE_PERCENTAGE                        NUMBER(17,2)  
+LIQUIDATION_RATE_PERCENTAGE            NUMBER(17,2)  
+ALT_LIQUIDATION_RATE_PER               NUMBER(17,2)  
+WITHHOLD_AMOUNT                        NUMBER(22,5)  
+FEE_RATE                               NUMBER(25,5)  
+FEE_PERCENTAGE                         NUMBER(17,2)  
+SUBCONTRACT_FLAG                       VARCHAR2(1)   
+===== C. PRECAST WEB OBJECTS THROUGH RECOWEBPROD =====
+Name                      Null?    Type         
+------------------------- -------- ------------ 
+PCF_ID                    NOT NULL NUMBER       
+REVISION_NUMBER           NOT NULL NUMBER       
+PROJECT_ID                NOT NULL NUMBER       
+PROJECT_NUMBER                     VARCHAR2(30) 
+VENDOR_ID                          NUMBER       
+VENDOR_SITE_ID                     NUMBER       
+TAKEOFF_DATE                       DATE         
+REVISION_DATE                      DATE         
+TASK_NUMBER               NOT NULL VARCHAR2(30) 
+PRODUCT_CODE                       VARCHAR2(3)  
+UNIT_OF_MEASURE                    VARCHAR2(10) 
+EXPENDITURE_TYPE          NOT NULL VARCHAR2(30) 
+SHIPPING_TASK_NUMBER               VARCHAR2(30) 
+SHIPPING_EXPENDITURE_TYPE          VARCHAR2(30) 
+DIRECT_COST                        NUMBER       
+UNIT_PRICE                         NUMBER       
+SHIPPING_COST                      NUMBER       
+PCT_COMPLETE                       NUMBER       
+DESCRIPTION                        VARCHAR2(50) 
+REQUIRED_PSI                       NUMBER       
+CASTING_FINISH_FACTOR              NUMBER       
+DEFAULT_CONCRETE_TYPE              VARCHAR2(20) 
+SURFACE_AREA                       NUMBER       
+PCF_TYPE                  NOT NULL VARCHAR2(1)  
+JOB_STATUS                         VARCHAR2(1)  
+CLOSE_DATE                         DATE         
+CREATED_BY                NOT NULL VARCHAR2(30) 
+LAST_UPDATED_BY           NOT NULL VARCHAR2(30) 
+CREATION_DATE             NOT NULL DATE         
+LAST_UPDATE_DATE          NOT NULL DATE         
+Name                 Null?    Type         
+-------------------- -------- ------------ 
+PCF_ID               NOT NULL NUMBER       
+MARK_NUMBER          NOT NULL NUMBER       
+PC_ID                NOT NULL NUMBER       
+PROJECT_ID           NOT NULL NUMBER       
+QUANTITY_REQUIRED    NOT NULL NUMBER       
+PANEL_NAME                    VARCHAR2(25) 
+TIE_STRIP_QUANTITY            NUMBER       
+PANEL_REINFORCEMENTS          VARCHAR2(10) 
+PANEL_FINISH                  VARCHAR2(25) 
+WIDTH                         NUMBER       
+THICKNESS                     NUMBER       
+PANEL_ADDITIONS               VARCHAR2(25) 
+AREA_PER_PIECE                NUMBER       
+LAST_UPDATE_DATE     NOT NULL DATE         
+LAST_UPDATED_BY      NOT NULL VARCHAR2(30) 
+CREATION_DATE        NOT NULL DATE         
+CREATED_BY           NOT NULL VARCHAR2(30) 
+MARK_DESCRIPTION              VARCHAR2(80) 
+Name                  Null?    Type          
+--------------------- -------- ------------- 
+HEADER_ID             NOT NULL NUMBER        
+VENDOR_SITE_ID        NOT NULL NUMBER        
+PRIMARY_PCF_ID                 NUMBER        
+TRANSACTION_DATE      NOT NULL DATE          
+MONDAY_DATE                    DATE          
+TRANSACTION_TYPE      NOT NULL VARCHAR2(1)   
+TRANSACTION_STATUS             VARCHAR2(1)   
+EBS_STATUS                     VARCHAR2(1)   
+STATUS_DATE                    DATE          
+POSTED_DATE           NOT NULL DATE          
+RELATED_HEADER_ID              NUMBER        
+LOT_NUMBER                     VARCHAR2(25)  
+RECO_LOT_ID                    NUMBER        
+OLD_LOT_ID                     NUMBER        
+SHIPPER_NUMBER                 VARCHAR2(30)  
+DELIVERY_DATE                  DATE          
+DELIVERY_TIME                  VARCHAR2(10)  
+PICKUP_ADDRESS_ID              NUMBER        
+DELIVERY_ADDRESS_ID            NUMBER        
+CARRIER                        VARCHAR2(60)  
+DRIVER                         VARCHAR2(50)  
+DRIVER_EMAIL                   VARCHAR2(100) 
+TRUCK                          VARCHAR2(50)  
+TRAILER                        VARCHAR2(50)  
+ORDER_NUMBER                   VARCHAR2(50)  
+SITE_CONTACT                   VARCHAR2(50)  
+SITE_CONTACT_NUMBER            VARCHAR2(30)  
+SITE_CONTACT_EMAIL             VARCHAR2(100) 
+RECO_CUSTOMER_EMAIL            VARCHAR2(100) 
+AVR_WEIGHT                     NUMBER        
+DEMURRAGE                      NUMBER        
+DEMURRAGE_RATE                 NUMBER        
+COST_PER_UNIT                  NUMBER        
+OLD_SHIPMENT_ID                NUMBER        
+FROM_REVISION                  NUMBER        
+TO_REVISION                    NUMBER        
+CREATION_DATE         NOT NULL DATE          
+LAST_UPDATE_DATE      NOT NULL DATE          
+CREATED_BY            NOT NULL VARCHAR2(30)  
+LAST_UPDATED_BY       NOT NULL VARCHAR2(30)  
+COMMENTS                       CLOB          
+DELIVERY_INSTRUCTIONS          CLOB          
+SHIPMENT_FOOTER                CLOB          
+ADJ_WEIGHT                     NUMBER        
+FREIGHT_COST                   NUMBER        
+SHIPMENT_STATUS                VARCHAR2(30)  
+WORKSHEET_FLAG                 VARCHAR2(1)   
+BOL_FLAG                       VARCHAR2(1)   
+STRUCTURE_ID                   NUMBER        
+WALL_NAME                      VARCHAR2(60)  
+TICKET_NUMBER                  NUMBER        
+LOAD_NUMBER                    NUMBER        
+Name                   Null?    Type         
+---------------------- -------- ------------ 
+HEADER_ID              NOT NULL NUMBER       
+TRANSACTION_ID         NOT NULL NUMBER       
+PCF_ID                 NOT NULL NUMBER       
+MARK_NUMBER            NOT NULL NUMBER       
+RELATED_TRANSACTION_ID          NUMBER       
+QUANTITY               NOT NULL NUMBER       
+QTY_STANDARD                    NUMBER       
+QTY_OVERAGE                     NUMBER       
+QTY_PAID_OVER                   NUMBER       
+QTY_SHIPPED                     NUMBER       
+CREATION_DATE          NOT NULL DATE         
+LAST_UPDATE_DATE       NOT NULL DATE         
+CREATED_BY             NOT NULL VARCHAR2(30) 
+LAST_UPDATED_BY        NOT NULL VARCHAR2(30) 
+Name          Null?    Type        
+------------- -------- ----------- 
+BATCH_ID      NOT NULL NUMBER      
+CREATION_DATE NOT NULL DATE        
+BATCH_TYPE    NOT NULL VARCHAR2(2) 
+BATCH_STATUS  NOT NULL VARCHAR2(1) 
+STATUS_DATE   NOT NULL DATE        
+BATCH_ERR_MSG          CLOB        
+Name             Null?    Type         
+---------------- -------- ------------ 
+BATCH_ID         NOT NULL NUMBER       
+HEADER_ID        NOT NULL NUMBER       
+PCF_ID                    NUMBER       
+REVISION_NUMBER           NUMBER       
+LOT_NUMBER                VARCHAR2(25) 
+LOT_DATE                  DATE         
+TRANSACTION_TYPE          VARCHAR2(1)  
+Name           Null?    Type   
+-------------- -------- ------ 
+BATCH_ID       NOT NULL NUMBER 
+HEADER_ID      NOT NULL NUMBER 
+TRANSACTION_ID NOT NULL NUMBER 
+MARK_NUMBER             NUMBER 
+QUANTITY                NUMBER 
+QTY_STANDARD            NUMBER 
+QTY_OVERAGE             NUMBER 
+QTY_PAID_OVER           NUMBER 
+QTY_SHIPPED             NUMBER 
+Name            Null?    Type           
+--------------- -------- -------------- 
+BATCH_ID        NOT NULL NUMBER         
+PRECAST_LOT_ID  NOT NULL NUMBER         
+PCF_ID          NOT NULL NUMBER         
+REVISION_NUMBER NOT NULL NUMBER         
+LOT_NUMBER      NOT NULL VARCHAR2(25)   
+LOT_DATE        NOT NULL DATE           
+LOT_TYPE        NOT NULL VARCHAR2(25)   
+LOT_STATUS               VARCHAR2(30)   
+DATE_STATUS              DATE           
+STATUS_DESC              VARCHAR2(1024) 
+Name              Null?    Type   
+----------------- -------- ------ 
+PRECAST_LOT_ID    NOT NULL NUMBER 
+PC_ID             NOT NULL NUMBER 
+QUANTITY_PRODUCED NOT NULL NUMBER 
+PROJECT_ID        NOT NULL NUMBER 
+
+
+PROMPT ===== D. OBJECT TYPES / OWNERS =====
+SELECT owner, object_name, object_type, status
+FROM all_objects
+WHERE object_name IN (
+ 'RECO_PCF_V','RECO_PCF','RECO_PCF_CURRENT',
+ 'RECO_PRODUCTION','RECO_PRODUCTION_V','RECO_PRODUCTION_REQUIREMENTS',
+ 'RECO_LOT_NUMBERS','RECO_LB_PROD_BILLING','RECO_FLORIDA_PROD_BILLING',
+ 'RECO_PRECAST_LINKAGE','RECO_PRECAST_EXPENDITURES',
+ 'PA_TRANSACTION_INTERFACE_ALL','PA_EXPENDITURE_ITEMS_ALL',
+ 'PA_PROJECTS_ALL','PA_TASKS'
+)
+ORDER BY object_name, owner;
+
+APPS	PA_EXPENDITURE_ITEMS_ALL	SYNONYM	VALID
+PA	PA_EXPENDITURE_ITEMS_ALL	TABLE	VALID
+RECO	PA_EXPENDITURE_ITEMS_ALL	SYNONYM	VALID
+XX_BLACKLINE	PA_EXPENDITURE_ITEMS_ALL	SYNONYM	VALID
+APPS	PA_PROJECTS_ALL	SYNONYM	VALID
+PA	PA_PROJECTS_ALL	TABLE	VALID
+RECO	PA_PROJECTS_ALL	SYNONYM	VALID
+XX_BLACKLINE	PA_PROJECTS_ALL	SYNONYM	VALID
+APPS	PA_TASKS	SYNONYM	VALID
+PA	PA_TASKS	TABLE	VALID
+RECO	PA_TASKS	SYNONYM	VALID
+XX_BLACKLINE	PA_TASKS	SYNONYM	VALID
+APPS	PA_TRANSACTION_INTERFACE_ALL	SYNONYM	VALID
+PA	PA_TRANSACTION_INTERFACE_ALL	TABLE	VALID
+RECO	PA_TRANSACTION_INTERFACE_ALL	SYNONYM	VALID
+APPS	RECO_FLORIDA_PROD_BILLING	SYNONYM	VALID
+RECO	RECO_FLORIDA_PROD_BILLING	TABLE	VALID
+RECOWEB	RECO_FLORIDA_PROD_BILLING	SYNONYM	VALID
+APPS	RECO_LB_PROD_BILLING	SYNONYM	VALID
+RECO	RECO_LB_PROD_BILLING	TABLE	VALID
+APPS	RECO_LOT_NUMBERS	SYNONYM	VALID
+RECO	RECO_LOT_NUMBERS	TABLE	VALID
+RECOWEB	RECO_LOT_NUMBERS	SYNONYM	VALID
+APPS	RECO_PCF	SYNONYM	VALID
+RECO	RECO_PCF	TABLE	VALID
+RECOWEB	RECO_PCF	SYNONYM	VALID
+APPS	RECO_PCF_CURRENT	SYNONYM	VALID
+RECO	RECO_PCF_CURRENT	TABLE	VALID
+RECOWEB	RECO_PCF_CURRENT	SYNONYM	VALID
+APPS	RECO_PCF_V	SYNONYM	VALID
+RECO	RECO_PCF_V	VIEW	VALID
+RECOWEB	RECO_PCF_V	SYNONYM	VALID
+APPS	RECO_PRECAST_EXPENDITURES	SYNONYM	VALID
+RECO	RECO_PRECAST_EXPENDITURES	VIEW	VALID
+RECOWEB	RECO_PRECAST_EXPENDITURES	SYNONYM	VALID
+APPS	RECO_PRECAST_LINKAGE	SYNONYM	VALID
+RECO	RECO_PRECAST_LINKAGE	TABLE	VALID
+RECOWEB	RECO_PRECAST_LINKAGE	SYNONYM	VALID
+APPS	RECO_PRODUCTION	SYNONYM	VALID
+RECO	RECO_PRODUCTION	TABLE	VALID
+RECOWEB	RECO_PRODUCTION	SYNONYM	VALID
+APPS	RECO_PRODUCTION_REQUIREMENTS	SYNONYM	VALID
+RECO	RECO_PRODUCTION_REQUIREMENTS	TABLE	VALID
+RECOWEB	RECO_PRODUCTION_REQUIREMENTS	SYNONYM	VALID
+APPS	RECO_PRODUCTION_V	SYNONYM	VALID
+PHONES	RECO_PRODUCTION_V	SYNONYM	VALID
+PRODUCTION_EXPORT	RECO_PRODUCTION_V	SYNONYM	VALID
+RECO	RECO_PRODUCTION_V	VIEW	VALID
+RECOWEB	RECO_PRODUCTION_V	SYNONYM	VALID
+
+PROMPT ===== E. RECO_BILL_PRODUCTION SOURCE =====
+SELECT line, text
+FROM all_source
+WHERE owner = 'RECO'
+  AND name = 'RECO_BILL_PRODUCTION'
+  AND type = 'PACKAGE BODY'
+ORDER BY line;
+
+PROMPT ===== F. SAMPLE ROWS FOR A KNOWN PCF =====
+DEFINE SAMPLE_PCF_ID = '184558'
+
+SELECT * FROM RECO.RECO_PCF_V
+WHERE PCF_ID = TO_NUMBER('&&SAMPLE_PCF_ID');
+
+SELECT * FROM RECO.RECO_PRODUCTION_V
+WHERE PCF_ID = TO_NUMBER('&&SAMPLE_PCF_ID')
+  AND ROWNUM <= 20;
+
+SELECT * FROM RECO.RECO_LOT_NUMBERS
+WHERE PCF_ID = TO_NUMBER('&&SAMPLE_PCF_ID')
+  AND ROWNUM <= 20;
+
+SELECT * FROM PREC_PCF@RECOWEBPROD
+WHERE PCF_ID = TO_NUMBER('&&SAMPLE_PCF_ID');
+
+SELECT * FROM PREC_PCF_PANELS@RECOWEBPROD
+WHERE PCF_ID = TO_NUMBER('&&SAMPLE_PCF_ID')
+  AND ROWNUM <= 20;
+
+SELECT h.*, t.*
+FROM PREC_TRANS_HEADER@RECOWEBPROD h
+JOIN PREC_TRANSACTIONS@RECOWEBPROD t
+  ON t.HEADER_ID = h.HEADER_ID
+WHERE t.PCF_ID = TO_NUMBER('&&SAMPLE_PCF_ID')
+  AND ROWNUM <= 20;
+
+PROMPT ===== END =====
